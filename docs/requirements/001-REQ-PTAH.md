@@ -6,8 +6,8 @@
 |-------|--------|
 | **Document ID** | REQ-PTAH |
 | **Parent Document** | [PTAH_PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 1.3 |
-| **Date** | March 8, 2026 |
+| **Version** | 1.4 |
+| **Date** | March 9, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 | **Approval Date** | Pending |
@@ -16,7 +16,7 @@
 
 ## 1. Purpose
 
-This requirements document formalizes the Ptah v4.0 — a deployable framework that installs into any Git repository and coordinates three specialized Claude agents (PM Agent, Dev Agent, Test Agent) to collaboratively build software engineering projects.
+This requirements document formalizes the Ptah v4.0 — a deployable framework that installs into any Git repository and coordinates four specialized Claude agents (PM Agent, Dev Agent, Frontend Agent, Test Agent) to collaboratively build software engineering projects.
 
 Ptah v4.0 replaces the file-based thread protocol from v3.0 with Discord threads as the coordination layer. The repository reverts to its natural role as a versioned artifact store. The Orchestrator is the Discord bot itself — one process, one deployment, started via `ptah start`.
 
@@ -108,7 +108,7 @@ Each user story describes a real-world situation that the product must support. 
 
 - CLI commands: `ptah init` (scaffolding) and `ptah start` (Orchestrator)
 - Discord-based coordination: threads, embeds, @mentions via Discord MCP
-- Three agent Skills: PM Agent, Dev Agent, Test Agent — all stateless
+- Four agent Skills: PM Agent, Dev Agent, Frontend Agent, Test Agent — all stateless
 - Context Bundle assembly with three-layer model and token budget enforcement
 - Three resume patterns (A: agent-to-agent, B: user answer, C: review loop)
 - User question routing via `pending.md` with Discord reply writeback
@@ -145,7 +145,7 @@ See Section 4.1 for detailed assumptions with impact analysis.
 | A-03 | The repository has Git initialized before `ptah init` is run | Initial commit will fail if Git is not initialized |
 | A-04 | Discord thread history is sufficient for coordination state — no database is required | If Discord has outages or rate limits, coordination is blocked |
 | A-05 | Four turns (two iterations) are sufficient for any review loop between agents | If agents consistently need more rounds, the escalation-to-user path becomes the norm rather than the exception |
-| A-06 | The three existing Claude Skills (PM, Dev, Test) serve as the baseline agent definitions | New Skills must conform to the same stateless, Context Bundle-only interface |
+| A-06 | The four existing Claude Skills (PM, Dev, Frontend, Test) serve as the baseline agent definitions | New Skills must conform to the same stateless, Context Bundle-only interface |
 | A-07 | `claude-sonnet-4-20250514` is the default model for all Skill invocations | Model availability or pricing changes may require config updates |
 
 ### 4.2 Constraints
@@ -273,14 +273,14 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 | **Source User Stories** | [US-01] |
 | **Dependencies** | [REQ-IN-01], [REQ-IN-02], [REQ-IN-03], [REQ-IN-04] |
 
-#### REQ-IN-07: Scaffold ptah/ Runtime Directory
+#### REQ-IN-07: Scaffold Skills from Existing .claude/skills/
 
 | Field | Detail |
 |-------|--------|
 | **ID** | REQ-IN-07 |
-| **Title** | Create ptah/ runtime directory with placeholder Skill definitions |
-| **Description** | `ptah init` shall create the `ptah/skills/` directory with placeholder Skill definition files for each active agent (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and an empty `ptah/templates/` directory. These paths are referenced by `ptah.config.json` (`agents.skills` and `docs.templates`). Placeholder Skill files contain a header and a TODO note — actual Skill system prompts are written during Phase 2. The `ptah/` directory is separate from `.claude/skills/` (which is the developer's Claude Code workflow). |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect the repo THEN: `ptah/skills/pm-agent.md`, `ptah/skills/dev-agent.md`, `ptah/skills/test-agent.md` exist as placeholder files, `ptah/templates/` exists as an empty directory, and all paths referenced in `ptah.config.json` are valid |
+| **Title** | Copy existing Claude Code skills as agent Skill definitions |
+| **Description** | `ptah init` shall leverage the existing `.claude/skills/` directory as the source for agent Skill definitions. Instead of creating placeholder files under `ptah/skills/`, init shall copy the existing Claude Code skill markdown files into the scaffolded `ptah/skills/` directory, mapping them to Ptah agent roles: `.claude/skills/product-manager/SKILL.md` → `ptah/skills/pm-agent.md`, `.claude/skills/backend-engineer/SKILL.md` → `ptah/skills/dev-agent.md`, `.claude/skills/frontend-engineer/SKILL.md` → `ptah/skills/frontend-agent.md`, `.claude/skills/test-engineer/SKILL.md` → `ptah/skills/test-agent.md`. Init shall also create an empty `ptah/templates/` directory. These paths are referenced by `ptah.config.json` (`agents.skills` and `docs.templates`). If a source skill file does not exist under `.claude/skills/`, init shall fall back to creating a placeholder file with a header and TODO note for that agent. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have `.claude/skills/product-manager/SKILL.md`, `.claude/skills/backend-engineer/SKILL.md`, `.claude/skills/frontend-engineer/SKILL.md`, and `.claude/skills/test-engineer/SKILL.md` in my repo WHEN: I run `ptah init` THEN: `ptah/skills/pm-agent.md`, `ptah/skills/dev-agent.md`, `ptah/skills/frontend-agent.md`, `ptah/skills/test-agent.md` contain the content copied from their respective `.claude/skills/` sources, `ptah/templates/` exists as an empty directory, and all paths referenced in `ptah.config.json` are valid |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -292,8 +292,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-08 |
 | **Title** | Pre-create agent log files and open-questions files |
-| **Description** | `ptah init` shall pre-create the following operational files with header stubs: (1) `docs/agent-logs/pm-agent.md`, `docs/agent-logs/dev-agent.md`, `docs/agent-logs/test-agent.md` — one per active agent, matching agent IDs in `ptah.config.json`. (2) `docs/open-questions/pending.md` and `docs/open-questions/resolved.md` — used by the Orchestrator in Phase 5 for user question routing. File names for agent logs must match the agent IDs in the config. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect `docs/agent-logs/` and `docs/open-questions/` THEN: Three agent log files exist (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and two open-questions files exist (`pending.md`, `resolved.md`), each with a header stub |
+| **Description** | `ptah init` shall pre-create the following operational files with header stubs: (1) `docs/agent-logs/pm-agent.md`, `docs/agent-logs/dev-agent.md`, `docs/agent-logs/frontend-agent.md`, `docs/agent-logs/test-agent.md` — one per active agent, matching agent IDs in `ptah.config.json`. (2) `docs/open-questions/pending.md` and `docs/open-questions/resolved.md` — used by the Orchestrator in Phase 5 for user question routing. File names for agent logs must match the agent IDs in the config. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect `docs/agent-logs/` and `docs/open-questions/` THEN: Four agent log files exist (`pm-agent.md`, `dev-agent.md`, `frontend-agent.md`, `test-agent.md`) and two open-questions files exist (`pending.md`, `resolved.md`), each with a header stub |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -889,6 +889,7 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 | 1.1 | March 8, 2026 | Product Manager | Resolved all 5 open questions (OQ-001 through OQ-005). Added REQ-DI-09, REQ-PQ-05, REQ-SI-11, REQ-SI-12, REQ-SI-13. Added constraint C-09. Added risk R-08. Updated REQ-SI-04 and REQ-IN-04 with OQ decision details. |
 | 1.2 | March 8, 2026 | Product Manager | Added Section 3 (Scope Boundaries) with explicit In Scope, Out of Scope, and Assumptions. Fixed P0 count from 38 to 49. Fixed Phase 3 count from 20 to 21. Renumbered sections 3-10 to 4-11 to accommodate new scope section. |
 | 1.3 | March 8, 2026 | Product Manager | Added REQ-IN-07 (scaffold ptah/ runtime directory with placeholder Skills) and REQ-IN-08 (pre-create agent log files and open-questions files). Updated REQ-IN-06 to clarify no-op commit behavior when all files are skipped. P0 count updated from 49 to 51. Phase 1 count updated from 7 to 9. |
+| 1.4 | March 9, 2026 | Product Manager | Updated REQ-IN-07: `ptah init` now copies existing `.claude/skills/` Claude Code skill files as the scaffolded agent Skill definitions instead of creating placeholder files. Mapping: `product-manager` → `pm-agent`, `backend-engineer` → `dev-agent`, `frontend-engineer` → `frontend-agent`, `test-engineer` → `test-agent`. Falls back to placeholder if source skill not found. Added Frontend Agent as fourth active agent — updated Purpose (Section 1), Scope (Section 3.1), Assumption A-06, REQ-IN-07, and REQ-IN-08. |
 
 ---
 
