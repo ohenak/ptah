@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 8, 2026 |
-| **Version** | 1.1 |
+| **Version** | 1.3 |
 | **Status** | Draft |
 
 ---
@@ -25,12 +25,14 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | User Scenario | Requirement | Specification | Priority | Phase | Status |
 |---------------|-------------|---------------|----------|-------|--------|
-| [US-01] | [REQ-IN-01] | Pending Spec | P0 | 1 | Pending Spec |
-| [US-01] | [REQ-IN-02] | Pending Spec | P0 | 1 | Pending Spec |
-| [US-01] | [REQ-IN-03] | Pending Spec | P0 | 1 | Pending Spec |
-| [US-01] | [REQ-IN-04] | Pending Spec | P0 | 1 | Pending Spec |
-| [US-01] | [REQ-IN-05] | Pending Spec | P0 | 1 | Pending Spec |
-| [US-01] | [REQ-IN-06] | Pending Spec | P0 | 1 | Pending Spec |
+| [US-01] | [REQ-IN-01] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-02] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-03] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-04] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-05] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-06] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-07] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
+| [US-01] | [REQ-IN-08] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
 | [US-02], [US-04] | [REQ-DI-01] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-05] | [REQ-DI-02] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-04] | [REQ-DI-03] | Pending Spec | P0 | 2 | Pending Spec |
@@ -74,7 +76,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-06] | [REQ-NF-03] | Pending Spec | P0 | 4 | Pending Spec |
 | [US-04] | [REQ-NF-04] | Pending Spec | P0 | 3 | Pending Spec |
 | [US-06] | [REQ-NF-05] | Pending Spec | P0 | 4 | Pending Spec |
-| [US-01], [US-05] | [REQ-NF-06] | Pending Spec | P0 | 1 | Pending Spec |
+| [US-01], [US-05] | [REQ-NF-06] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | 1 | Specified |
 | [US-04], [US-06] | [REQ-NF-07] | Pending Spec | P0 | 3 | Pending Spec |
 | [US-08] | [REQ-NF-08] | Pending Spec | P1 | 7 | Pending Spec |
 
@@ -86,7 +88,7 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | User Scenario | Title | Requirement Count | Fully Specified? |
 |---------------|-------|-------------------|------------------|
-| [US-01] | Developer Bootstraps MAES in an Existing Repository | 7 | No (0 of 7 specified) |
+| [US-01] | Developer Bootstraps MAES in an Existing Repository | 9 | Yes (9 of 9 specified) |
 | [US-02] | Orchestrator Coordinates Agent-to-Agent Review | 14 | No (0 of 14 specified) |
 | [US-03] | Agent Asks User a Blocking Question | 8 | No (0 of 8 specified) |
 | [US-04] | Orchestrator Assembles Context for Stateless Skill Invocation | 17 | No (0 of 17 specified) |
@@ -99,12 +101,14 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | Requirement | Title | Specification Count | Status |
 |-------------|-------|---------------------|--------|
-| [REQ-IN-01] | Create /docs folder structure | 0 | Pending |
-| [REQ-IN-02] | Seed markdown templates | 0 | Pending |
-| [REQ-IN-03] | Create docs/overview.md | 0 | Pending |
-| [REQ-IN-04] | Generate configuration file with defaults | 0 | Pending |
-| [REQ-IN-05] | Detect and skip existing files | 0 | Pending |
-| [REQ-IN-06] | Commit scaffolded structure | 0 | Pending |
+| [REQ-IN-01] | Create /docs folder structure | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-02] | Seed markdown templates | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-03] | Create docs/overview.md | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-04] | Generate configuration file with defaults | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-05] | Detect and skip existing files | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-06] | Commit scaffolded structure | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-07] | Create maes/ runtime directory with placeholder Skills | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
+| [REQ-IN-08] | Pre-create agent log files and open-questions files | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
 | [REQ-DI-01] | Orchestrator owns all Discord I/O | 0 | Pending |
 | [REQ-DI-02] | Watch #agent-updates threads | 0 | Pending |
 | [REQ-DI-03] | Read full thread history | 0 | Pending |
@@ -148,7 +152,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-NF-03] | Idempotency | 0 | Pending |
 | [REQ-NF-04] | Token efficiency | 0 | Pending |
 | [REQ-NF-05] | Auditability | 0 | Pending |
-| [REQ-NF-06] | Security | 0 | Pending |
+| [REQ-NF-06] | Security | 1 | Specified ([TSPEC-maes-init](../specifications/TSPEC-maes-init.md)) |
 | [REQ-NF-07] | Portability | 0 | Pending |
 | [REQ-NF-08] | Extensibility | 0 | Pending |
 
@@ -161,7 +165,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- All 52 requirements are pending specification (Phase 3 — Specification Definition has not yet been executed)
+- 45 of 54 requirements are pending specification (Phase 1 requirements specified by TSPEC-maes-init; Phases 2-7 pending)
 
 ---
 
@@ -171,13 +175,15 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | Requirement | Specification | Priority | User Scenarios |
 |-------------|---------------|----------|----------------|
-| [REQ-IN-01] | Pending | P0 | [US-01] |
-| [REQ-IN-02] | Pending | P0 | [US-01] |
-| [REQ-IN-03] | Pending | P0 | [US-01] |
-| [REQ-IN-04] | Pending | P0 | [US-01] |
-| [REQ-IN-05] | Pending | P0 | [US-01] |
-| [REQ-IN-06] | Pending | P0 | [US-01] |
-| [REQ-NF-06] | Pending | P0 | [US-01], [US-05] |
+| [REQ-IN-01] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-02] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-03] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-04] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-05] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-06] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-07] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-IN-08] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01] |
+| [REQ-NF-06] | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | P0 | [US-01], [US-05] |
 
 ### Phase 2 — Discord Bot
 
@@ -261,7 +267,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | Document | Location | Description |
 |----------|----------|-------------|
 | Requirements | [REQ-MAES](../requirements/REQ-MAES.md) | Functional and non-functional requirements for MAES v4.0 |
-| Specifications | Pending | Detailed specifications (Phase 3 — Specification Definition) |
+| TSPEC — maes init | [TSPEC-maes-init](../specifications/TSPEC-maes-init.md) | Technical specification for Phase 1 (`maes init`) |
+| Specifications (Phases 2-7) | Pending | Detailed specifications for remaining phases |
 | PRD | [MAES PRD v4.0](../MAES_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -272,6 +279,8 @@ This matrix provides full traceability from user scenarios through requirements 
 |---------|------|--------|---------|
 | 1.0 | March 8, 2026 | Product Manager | Initial traceability matrix — US → REQ mapping complete; SPEC column pending Phase 3 |
 | 1.1 | March 8, 2026 | Product Manager | Added 5 new requirements from OQ resolutions: REQ-DI-09, REQ-PQ-05, REQ-SI-11, REQ-SI-12, REQ-SI-13. Updated coverage counts. |
+| 1.2 | March 8, 2026 | Product Manager | Added REQ-IN-07 and REQ-IN-08 from ANALYSIS-maes-init.md question resolutions. US-01 coverage updated from 7 to 9. Total requirements updated from 52 to 54. |
+| 1.3 | March 8, 2026 | Backend Engineer | Updated Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) to reference TSPEC-maes-init. 9 of 54 requirements now specified. |
 
 ---
 
