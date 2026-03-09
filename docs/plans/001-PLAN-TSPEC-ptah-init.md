@@ -137,5 +137,5 @@ Phase A (1-4) → Phase B (5-8) → Phase C (9-12b) → Phase D (13-25) → Phas
 - [x] Code reviewed against requirement acceptance criteria (REQ-IN-01 through REQ-IN-08, REQ-NF-06)
 - [x] Implementation matches TSPEC-ptah-init.md (module architecture, protocols, algorithm, file manifest)
 - [x] All 45 properties in PROPERTIES-ptah-init.md v1.2 are covered by at least one task
-- [ ] Changes committed in logical units with `type(scope): description` format
-- [ ] Pushed to remote for review
+- [x] Changes committed in logical units with `type(scope): description` format
+- [x] Pushed to remote for review
