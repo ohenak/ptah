@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-MAES |
 | **Parent Document** | [MAES PRD v4.0](../MAES_PRD_v4.0.docx) |
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | March 8, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -228,7 +228,7 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 | **ID** | REQ-IN-03 |
 | **Title** | Create project overview template |
 | **Description** | `maes init` shall create `docs/overview.md` with a blank project overview template that serves as cold-start context for all agent invocations. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I open `docs/overview.md` THEN: A blank project overview template exists with sections for project goals, stakeholders, and scope |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I open `docs/overview.md` THEN: A blank project overview template exists with sections for project goals, stakeholders, scope, and technical context |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -266,12 +266,38 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-06 |
 | **Title** | Commit scaffolded structure |
-| **Description** | `maes init` shall create an initial Git commit with the message: `[MAES] init: scaffolded docs structure`. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` and new files were created WHEN: I check `git log` THEN: The most recent commit has the message `[MAES] init: scaffolded docs structure` and contains all scaffolded files |
+| **Description** | `maes init` shall create an initial Git commit with the message: `[MAES] init: scaffolded docs structure`. If no new files were created (all files already exist and were skipped per [REQ-IN-05]), the commit shall be skipped — no empty commits. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` and new files were created WHEN: I check `git log` THEN: The most recent commit has the message `[MAES] init: scaffolded docs structure` and contains all scaffolded files. If no new files were created (all skipped), no commit is made. |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
 | **Dependencies** | [REQ-IN-01], [REQ-IN-02], [REQ-IN-03], [REQ-IN-04] |
+
+#### REQ-IN-07: Scaffold maes/ Runtime Directory
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-IN-07 |
+| **Title** | Create maes/ runtime directory with placeholder Skill definitions |
+| **Description** | `maes init` shall create the `maes/skills/` directory with placeholder Skill definition files for each active agent (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and an empty `maes/templates/` directory. These paths are referenced by `maes.config.json` (`agents.skills` and `docs.templates`). Placeholder Skill files contain a header and a TODO note — actual Skill system prompts are written during Phase 2. The `maes/` directory is separate from `.claude/skills/` (which is the developer's Claude Code workflow). |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I inspect the repo THEN: `maes/skills/pm-agent.md`, `maes/skills/dev-agent.md`, `maes/skills/test-agent.md` exist as placeholder files, `maes/templates/` exists as an empty directory, and all paths referenced in `maes.config.json` are valid |
+| **Priority** | P0 |
+| **Phase** | Phase 1 |
+| **Source User Stories** | [US-01] |
+| **Dependencies** | [REQ-IN-04] |
+
+#### REQ-IN-08: Pre-create Operational Files
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-IN-08 |
+| **Title** | Pre-create agent log files and open-questions files |
+| **Description** | `maes init` shall pre-create the following operational files with header stubs: (1) `docs/agent-logs/pm-agent.md`, `docs/agent-logs/dev-agent.md`, `docs/agent-logs/test-agent.md` — one per active agent, matching agent IDs in `maes.config.json`. (2) `docs/open-questions/pending.md` and `docs/open-questions/resolved.md` — used by the Orchestrator in Phase 5 for user question routing. File names for agent logs must match the agent IDs in the config. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I inspect `docs/agent-logs/` and `docs/open-questions/` THEN: Three agent log files exist (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and two open-questions files exist (`pending.md`, `resolved.md`), each with a header stub |
+| **Priority** | P0 |
+| **Phase** | Phase 1 |
+| **Source User Stories** | [US-01] |
+| **Dependencies** | [REQ-IN-01] |
 
 ### 6.2 Discord I/O (DI)
 
@@ -815,7 +841,7 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 49 | REQ-IN-01 through REQ-IN-06, REQ-DI-01 through REQ-DI-05, REQ-DI-07, REQ-DI-08, REQ-DI-09, REQ-CB-01 through REQ-CB-05, REQ-RP-01 through REQ-RP-05, REQ-PQ-01 through REQ-PQ-05, REQ-SI-01 through REQ-SI-13, REQ-NF-01 through REQ-NF-07 |
+| P0 | 51 | REQ-IN-01 through REQ-IN-08, REQ-DI-01 through REQ-DI-05, REQ-DI-07, REQ-DI-08, REQ-DI-09, REQ-CB-01 through REQ-CB-05, REQ-RP-01 through REQ-RP-05, REQ-PQ-01 through REQ-PQ-05, REQ-SI-01 through REQ-SI-13, REQ-NF-01 through REQ-NF-07 |
 | P1 | 3 | REQ-DI-06, REQ-CB-06, REQ-NF-08 |
 | P2 | 0 | — |
 
@@ -823,7 +849,7 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 
 | Phase | Count | IDs |
 |-------|-------|-----|
-| Phase 1 — Init | 7 | REQ-IN-01, REQ-IN-02, REQ-IN-03, REQ-IN-04, REQ-IN-05, REQ-IN-06, REQ-NF-06 |
+| Phase 1 — Init | 9 | REQ-IN-01, REQ-IN-02, REQ-IN-03, REQ-IN-04, REQ-IN-05, REQ-IN-06, REQ-IN-07, REQ-IN-08, REQ-NF-06 |
 | Phase 2 — Discord Bot | 3 | REQ-DI-01, REQ-DI-02, REQ-DI-03 |
 | Phase 3 — Skill Routing | 21 | REQ-DI-04, REQ-DI-05, REQ-DI-09, REQ-CB-01, REQ-CB-02, REQ-CB-03, REQ-CB-04, REQ-CB-05, REQ-CB-06, REQ-RP-01, REQ-RP-03, REQ-RP-04, REQ-SI-01, REQ-SI-02, REQ-SI-03, REQ-SI-04, REQ-SI-11, REQ-SI-12, REQ-NF-01, REQ-NF-04, REQ-NF-07 |
 | Phase 4 — Artifact Commits | 6 | REQ-SI-05, REQ-SI-06, REQ-SI-09, REQ-SI-13, REQ-NF-03, REQ-NF-05 |
@@ -862,6 +888,7 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 | 1.0 | March 8, 2026 | Product Manager | Initial requirements document derived from MAES PRD v4.0 |
 | 1.1 | March 8, 2026 | Product Manager | Resolved all 5 open questions (OQ-001 through OQ-005). Added REQ-DI-09, REQ-PQ-05, REQ-SI-11, REQ-SI-12, REQ-SI-13. Added constraint C-09. Added risk R-08. Updated REQ-SI-04 and REQ-IN-04 with OQ decision details. |
 | 1.2 | March 8, 2026 | Product Manager | Added Section 3 (Scope Boundaries) with explicit In Scope, Out of Scope, and Assumptions. Fixed P0 count from 38 to 49. Fixed Phase 3 count from 20 to 21. Renumbered sections 3-10 to 4-11 to accommodate new scope section. |
+| 1.3 | March 8, 2026 | Product Manager | Added REQ-IN-07 (scaffold maes/ runtime directory with placeholder Skills) and REQ-IN-08 (pre-create agent log files and open-questions files). Updated REQ-IN-06 to clarify no-op commit behavior when all files are skipped. P0 count updated from 49 to 51. Phase 1 count updated from 7 to 9. |
 
 ---
 
