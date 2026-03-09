@@ -112,6 +112,61 @@ describe("CLI integration", () => {
     });
   });
 
+  // Help output
+  describe("help", () => {
+    it("prints help and exits 0 when no arguments provided", async () => {
+      const result = await runCli(tempDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("ptah");
+      expect(result.stdout).toContain("Usage:");
+      expect(result.stdout).toContain("init");
+    });
+
+    it("prints help and exits 0 for 'help' subcommand", async () => {
+      const result = await runCli(tempDir, "help");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Usage:");
+      expect(result.stdout).toContain("init");
+    });
+
+    it("prints help and exits 0 for '--help' flag", async () => {
+      const result = await runCli(tempDir, "--help");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Usage:");
+      expect(result.stdout).toContain("init");
+    });
+
+    it("prints version in help output", async () => {
+      const result = await runCli(tempDir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("0.1.0");
+    });
+
+    it("still exits 1 for unknown subcommands", async () => {
+      const result = await runCli(tempDir, "unknown");
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Unknown command");
+    });
+
+    // Task 38: help text includes start command
+    it("includes start command in help output", async () => {
+      const result = await runCli(tempDir, "--help");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("start");
+      expect(result.stdout).toContain("Start the Orchestrator as a Discord bot");
+    });
+  });
+
+  // Task 39: ptah start without valid config
+  describe("start command", () => {
+    it("exits with 1 and shows actionable error when no config file exists", async () => {
+      const result = await runCli(tempDir, "start");
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("ptah.config.json not found");
+      expect(result.stderr).toContain("ptah init");
+    });
+  });
+
   // Task 39: CLI exit codes
   describe("exit codes", () => {
     it("exits with 0 on success", async () => {

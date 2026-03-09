@@ -74,4 +74,32 @@ describe("FakeFileSystem", () => {
     const fs = new FakeFileSystem();
     expect(fs.basename("/")).toBe("");
   });
+
+  describe("readFile", () => {
+    it("returns content for existing file", async () => {
+      const fs = new FakeFileSystem();
+      fs.addExisting("config.json", '{"key": "value"}');
+      const content = await fs.readFile("config.json");
+      expect(content).toBe('{"key": "value"}');
+    });
+
+    it("returns content written via writeFile", async () => {
+      const fs = new FakeFileSystem();
+      await fs.writeFile("test.txt", "hello world");
+      const content = await fs.readFile("test.txt");
+      expect(content).toBe("hello world");
+    });
+
+    it("throws with ENOENT code for missing file", async () => {
+      const fs = new FakeFileSystem();
+      try {
+        await fs.readFile("missing.txt");
+        expect.fail("should have thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as NodeJS.ErrnoException).code).toBe("ENOENT");
+        expect((error as Error).message).toContain("missing.txt");
+      }
+    });
+  });
 });

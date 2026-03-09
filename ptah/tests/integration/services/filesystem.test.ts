@@ -85,6 +85,28 @@ describe("NodeFileSystem", () => {
     });
   });
 
+  // Task 34: readFile()
+  describe("readFile", () => {
+    it("returns file content as UTF-8 string", async () => {
+      const content = "hello world\nline two\n日本語テスト";
+      await nodeFs.writeFile(nodePath.join(tempDir, "test.txt"), content, "utf-8");
+
+      const result = await nfs.readFile("test.txt");
+      expect(result).toBe(content);
+    });
+
+    it("throws with ENOENT code for missing files", async () => {
+      try {
+        await nfs.readFile("nonexistent.txt");
+        expect.fail("Expected readFile to throw");
+      } catch (error: unknown) {
+        expect(error).toBeInstanceOf(Error);
+        const nodeError = error as NodeJS.ErrnoException;
+        expect(nodeError.code).toBe("ENOENT");
+      }
+    });
+  });
+
   // Task 29: cwd() and basename()
   describe("cwd and basename", () => {
     it("cwd returns the configured working directory", () => {
