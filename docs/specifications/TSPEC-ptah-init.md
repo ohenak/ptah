@@ -1,9 +1,9 @@
-# Technical Specification: `maes init` CLI Command
+# Technical Specification: `ptah init` CLI Command
 
 | Field | Detail |
 |-------|--------|
-| **Requirements** | [REQ-IN-01](../requirements/REQ-MAES.md) through [REQ-IN-08](../requirements/REQ-MAES.md), [REQ-NF-06](../requirements/REQ-MAES.md) |
-| **Analysis** | [ANALYSIS-maes-init.md](./ANALYSIS-maes-init.md) |
+| **Requirements** | [REQ-IN-01](../requirements/REQ-PTAH.md) through [REQ-IN-08](../requirements/REQ-PTAH.md), [REQ-NF-06](../requirements/REQ-PTAH.md) |
+| **Analysis** | [ANALYSIS-ptah-init.md](./ANALYSIS-ptah-init.md) |
 | **Date** | March 8, 2026 |
 | **Status** | Draft (Rev 3 — PM + TE review feedback addressed) |
 
@@ -11,7 +11,7 @@
 
 ## 1. Summary
 
-A TypeScript/Node.js CLI command (`maes init`) that scaffolds the MAES project structure into an existing Git repository. It creates the `/docs` folder hierarchy, `maes/` runtime directory, `maes.config.json`, seeds template files, and commits the result — all idempotently (existing files are skipped, not overwritten).
+A TypeScript/Node.js CLI command (`ptah init`) that scaffolds the Ptah project structure into an existing Git repository. It creates the `/docs` folder hierarchy, `ptah/` runtime directory, `ptah.config.json`, seeds template files, and commits the result — all idempotently (existing files are skipped, not overwritten).
 
 ---
 
@@ -23,7 +23,7 @@ A TypeScript/Node.js CLI command (`maes init`) that scaffolds the MAES project s
 | Language | TypeScript 5.x | Type safety, IDE support |
 | Package manager | npm | Standard, no additional tooling |
 | Test framework | Vitest | Fast, ESM-native, TS-first |
-| CLI entry point | `bin/maes.ts` via `tsx` | Zero-compile dev workflow; `tsc` for production build |
+| CLI entry point | `bin/ptah.ts` via `tsx` | Zero-compile dev workflow; `tsc` for production build |
 | Build | `tsc` → `dist/` | Standard TS compilation |
 
 **No external dependencies for Phase 1.** The init command uses only Node.js built-in modules (`fs`, `path`, `child_process`). Third-party packages (discord.js, @anthropic-ai/sdk) are deferred to Phase 2+.
@@ -33,15 +33,15 @@ A TypeScript/Node.js CLI command (`maes init`) that scaffolds the MAES project s
 ## 3. Project Structure
 
 ```
-maes/                          ← npm package root (new)
+ptah/                          ← npm package root (new)
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts
 ├── bin/
-│   └── maes.ts                ← CLI entry point
+│   └── ptah.ts                ← CLI entry point
 ├── src/
 │   ├── commands/
-│   │   └── init.ts            ← maes init command logic
+│   │   └── init.ts            ← ptah init command logic
 │   ├── services/
 │   │   ├── filesystem.ts      ← FileSystem protocol + NodeFileSystem impl
 │   │   └── git.ts             ← GitClient protocol + NodeGitClient impl
@@ -61,14 +61,14 @@ maes/                          ← npm package root (new)
         └── factories.ts       ← Test doubles and factories
 ```
 
-**Note:** The `maes/` package directory is at the repo root, alongside `docs/` and `.claude/`. This is the MAES framework source code — not to be confused with the `maes/` runtime directory that `maes init` scaffolds inside target repos.
+**Note:** The `ptah/` package directory is at the repo root, alongside `docs/` and `.claude/`. This is the Ptah framework source code — not to be confused with the `ptah/` runtime directory that `ptah init` scaffolds inside target repos.
 
-Wait — naming collision. The MAES source code package and the scaffolded `maes/` runtime directory inside target repos share the same name. To avoid confusion:
+Wait — naming collision. The Ptah source code package and the scaffolded `ptah/` runtime directory inside target repos share the same name. To avoid confusion:
 
-- **MAES source code** lives in this repo's root as an npm package (with `package.json`, `src/`, etc.)
-- **Scaffolded `maes/` directory** is what `maes init` creates inside the *target* repo where the user runs the command
+- **Ptah source code** lives in this repo's root as an npm package (with `package.json`, `src/`, etc.)
+- **Scaffolded `ptah/` directory** is what `ptah init` creates inside the *target* repo where the user runs the command
 
-When developing MAES itself, running `maes init` in the MAES source repo would create a `maes/skills/` and `maes/templates/` directory alongside the source `src/`. This is acceptable — the scaffolded files don't conflict with the source code.
+When developing Ptah itself, running `ptah init` in the Ptah source repo would create a `ptah/skills/` and `ptah/templates/` directory alongside the source `src/`. This is acceptable — the scaffolded files don't conflict with the source code.
 
 ---
 
@@ -77,7 +77,7 @@ When developing MAES itself, running `maes init` in the MAES source repo would c
 ### 4.1 Dependency Graph
 
 ```
-bin/maes.ts
+bin/ptah.ts
   └── src/commands/init.ts (InitCommand)
         ├── src/services/filesystem.ts (FileSystem protocol)
         └── src/services/git.ts (GitClient protocol)
@@ -135,7 +135,7 @@ class InitCommand {
 ### 4.4 Composition Root
 
 ```typescript
-// bin/maes.ts
+// bin/ptah.ts
 const fs = new NodeFileSystem();
 const git = new NodeGitClient();
 const command = new InitCommand(fs, git);
@@ -147,7 +147,7 @@ const result = await command.execute();
 
 ## 5. File Manifest
 
-The following is the complete list of files and directories that `maes init` creates. Each entry includes the exact content for files with content.
+The following is the complete list of files and directories that `ptah init` creates. Each entry includes the exact content for files with content.
 
 ### 5.1 Directories (created empty or as parents)
 
@@ -160,12 +160,12 @@ The following is the complete list of files and directories that `maes init` cre
 | `docs/architecture/diagrams/` | REQ-IN-01 |
 | `docs/open-questions/` | REQ-IN-01 |
 | `docs/agent-logs/` | REQ-IN-01 |
-| `maes/skills/` | REQ-IN-07 |
-| `maes/templates/` | REQ-IN-07 |
+| `ptah/skills/` | REQ-IN-07 |
+| `ptah/templates/` | REQ-IN-07 |
 
 **Excluded:** `docs/threads/` (C-07)
 
-**Empty directory handling:** Git does not track empty directories. Directories that contain no files in the manifest get a `.gitkeep` placeholder file to ensure they survive `git clone`. These are: `docs/architecture/decisions/`, `docs/architecture/diagrams/`, and `maes/templates/`. The `.gitkeep` files are empty (zero bytes).
+**Empty directory handling:** Git does not track empty directories. Directories that contain no files in the manifest get a `.gitkeep` placeholder file to ensure they survive `git clone`. These are: `docs/architecture/decisions/`, `docs/architecture/diagrams/`, and `ptah/templates/`. The `.gitkeep` files are empty (zero bytes).
 
 ### 5.2 Files with Content
 
@@ -263,7 +263,7 @@ _Questions from agents will be appended here by the Orchestrator._
 _Answered questions are moved here from pending.md by the Orchestrator._
 ```
 
-#### maes/skills/pm-agent.md (REQ-IN-07)
+#### ptah/skills/pm-agent.md (REQ-IN-07)
 
 ```markdown
 # PM Agent Skill
@@ -272,7 +272,7 @@ _Answered questions are moved here from pending.md by the Orchestrator._
 <!-- This file is loaded by the Orchestrator as the PM Agent's role prompt. -->
 ```
 
-#### maes/skills/dev-agent.md (REQ-IN-07)
+#### ptah/skills/dev-agent.md (REQ-IN-07)
 
 ```markdown
 # Dev Agent Skill
@@ -281,7 +281,7 @@ _Answered questions are moved here from pending.md by the Orchestrator._
 <!-- This file is loaded by the Orchestrator as the Dev Agent's role prompt. -->
 ```
 
-#### maes/skills/test-agent.md (REQ-IN-07)
+#### ptah/skills/test-agent.md (REQ-IN-07)
 
 ```markdown
 # Test Agent Skill
@@ -298,11 +298,11 @@ Empty file (zero bytes). Ensures directory survives `git clone`.
 
 Empty file (zero bytes). Ensures directory survives `git clone`.
 
-#### maes/templates/.gitkeep (REQ-IN-07)
+#### ptah/templates/.gitkeep (REQ-IN-07)
 
 Empty file (zero bytes). Ensures directory survives `git clone`.
 
-#### maes.config.json (REQ-IN-04)
+#### ptah.config.json (REQ-IN-04)
 
 The `project.name` field is auto-detected from the current directory name via `path.basename(process.cwd())`, with fallback to `"my-app"` when `basename()` returns an empty string (e.g., running from the filesystem root `/`). The fallback condition is strictly: `basename === "" ? "my-app" : basename`.
 
@@ -315,9 +315,9 @@ The `project.name` field is auto-detected from the current directory name via `p
   "agents": {
     "active": ["pm-agent", "dev-agent", "test-agent"],
     "skills": {
-      "pm-agent": "./maes/skills/pm-agent.md",
-      "dev-agent": "./maes/skills/dev-agent.md",
-      "test-agent": "./maes/skills/test-agent.md"
+      "pm-agent": "./ptah/skills/pm-agent.md",
+      "dev-agent": "./ptah/skills/dev-agent.md",
+      "test-agent": "./ptah/skills/test-agent.md"
     },
     "model": "claude-sonnet-4-6",
     "max_tokens": 8192
@@ -338,12 +338,12 @@ The `project.name` field is auto-detected from the current directory name via `p
     "retry_attempts": 3
   },
   "git": {
-    "commit_prefix": "[MAES]",
+    "commit_prefix": "[ptah]",
     "auto_commit": true
   },
   "docs": {
     "root": "docs",
-    "templates": "./maes/templates"
+    "templates": "./ptah/templates"
   }
 }
 ```
@@ -360,8 +360,8 @@ The `project.name` field is auto-detected from the current directory name via `p
 
 2. Check for pre-existing staged changes (git.hasStagedChanges())
    → If staged changes exist, exit with error:
-     "Staged changes detected. Please commit or stash them before running 'maes init'."
-   → This prevents polluting the [MAES] init commit with unrelated user changes.
+     "Staged changes detected. Please commit or stash them before running 'ptah init'."
+   → This prevents polluting the [ptah] init commit with unrelated user changes.
 
 3. Build file manifest (all files from Section 5)
 
@@ -381,11 +381,11 @@ The `project.name` field is auto-detected from the current directory name via `p
 
 7. If created[] is non-empty:
    a. git.add(created)
-   b. git.commit("[MAES] init: scaffolded docs structure")
+   b. git.commit("[ptah] init: scaffolded docs structure")
       (Commit message is hardcoded — not derived from config `git.commit_prefix`.
        The config file is being created during this very operation, so it cannot
-       be read yet. The `[MAES]` prefix is a compile-time constant.)
-   → Print: "✓  Committed: [MAES] init: scaffolded docs structure"
+       be read yet. The `[ptah]` prefix is a compile-time constant.)
+   → Print: "✓  Committed: [ptah] init: scaffolded docs structure"
    → Return { created: [...], skipped: [...], committed: true }
 ```
 
@@ -429,7 +429,7 @@ The `project.name` field is auto-detected from the current directory name via `p
 | Git add fails | Print error (files are already created on disk) | 1 |
 | Git commit fails | Print error (files are already created on disk) | 1 |
 
-No partial rollback — if some files are created and the commit fails, the created files remain on disk. The user can re-run `maes init` safely (idempotent).
+No partial rollback — if some files are created and the commit fails, the created files remain on disk. The user can re-run `ptah init` safely (idempotent).
 
 ---
 
@@ -503,10 +503,10 @@ class FakeGitClient implements GitClient {
 | REQ-IN-01 | `InitCommand.execute()`, `config/defaults.ts` (DIRECTORY_MANIFEST) | Creates /docs folder hierarchy from manifest |
 | REQ-IN-02 | `InitCommand.execute()`, `config/defaults.ts` (FILE_MANIFEST) | Seeds 4 template files in `docs/initial_project/` |
 | REQ-IN-03 | `config/defaults.ts` (FILE_MANIFEST entry for `docs/overview.md`) | Overview template with project goals, stakeholders, scope, technical context |
-| REQ-IN-04 | `config/defaults.ts` (`buildConfig()`), `InitCommand.execute()` | Generates `maes.config.json` with defaults and auto-detected project name |
+| REQ-IN-04 | `config/defaults.ts` (`buildConfig()`), `InitCommand.execute()` | Generates `ptah.config.json` with defaults and auto-detected project name |
 | REQ-IN-05 | `InitCommand.execute()` (exists check before each write) | Skips existing files, reports them, preserves content |
 | REQ-IN-06 | `InitCommand.execute()` (git.add + git.commit after file creation) | Conditional commit — only when created[] is non-empty |
-| REQ-IN-07 | `config/defaults.ts` (FILE_MANIFEST entries for `maes/skills/*`) | Scaffolds `maes/skills/` with 3 placeholder Skill files and `maes/templates/` |
+| REQ-IN-07 | `config/defaults.ts` (FILE_MANIFEST entries for `ptah/skills/*`) | Scaffolds `ptah/skills/` with 3 placeholder Skill files and `ptah/templates/` |
 | REQ-IN-08 | `config/defaults.ts` (FILE_MANIFEST entries for agent-logs and open-questions) | Pre-creates 3 agent log files + 2 open-questions files |
 | REQ-NF-06 | `config/defaults.ts` (`buildConfig()`) | Config contains env var names, never secret values |
 
@@ -516,9 +516,9 @@ class FakeGitClient implements GitClient {
 
 | # | Location | Description | Impact |
 |---|----------|-------------|--------|
-| 1 | `package.json` `"bin"` field | Registers `maes` as a CLI command | Users run `npx maes init` or `maes init` (if globally installed) |
-| 2 | `maes.config.json` | Schema consumed by Phase 2+ Orchestrator | Schema must remain backward-compatible across phases |
-| 3 | `maes/skills/*.md` | Placeholder files populated in Phase 2 | File paths must match `agents.skills` config entries |
+| 1 | `package.json` `"bin"` field | Registers `ptah` as a CLI command | Users run `npx ptah init` or `ptah init` (if globally installed) |
+| 2 | `ptah.config.json` | Schema consumed by Phase 2+ Orchestrator | Schema must remain backward-compatible across phases |
+| 3 | `ptah/skills/*.md` | Placeholder files populated in Phase 2 | File paths must match `agents.skills` config entries |
 | 4 | `docs/` structure | Convention used by all agents and Orchestrator | Structure must match PRD Section 7 exactly |
 | 5 | Git working tree | Init command operates on cwd | Must be inside a Git repo (Assumption A-03) |
 

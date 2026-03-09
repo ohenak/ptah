@@ -1,11 +1,11 @@
-# Test Engineer Review: TSPEC-maes-init.md
+# Test Engineer Review: TSPEC-ptah-init.md
 
 | Field | Detail |
 |-------|--------|
-| **Reviewed Document** | [TSPEC-maes-init.md](./TSPEC-maes-init.md) |
-| **Requirements** | [REQ-IN-01 through REQ-IN-08, REQ-NF-06](../requirements/REQ-MAES.md) |
-| **Analysis** | [ANALYSIS-maes-init.md](./ANALYSIS-maes-init.md) |
-| **PM Review** | [REVIEW-TSPEC-maes-init.md](./REVIEW-TSPEC-maes-init.md) |
+| **Reviewed Document** | [TSPEC-ptah-init.md](./TSPEC-ptah-init.md) |
+| **Requirements** | [REQ-IN-01 through REQ-IN-08, REQ-NF-06](../requirements/REQ-PTAH.md) |
+| **Analysis** | [ANALYSIS-ptah-init.md](./ANALYSIS-ptah-init.md) |
+| **PM Review** | [REVIEW-TSPEC-ptah-init.md](./REVIEW-TSPEC-ptah-init.md) |
 | **Reviewer** | Test Engineer |
 | **Date** | March 8, 2026 |
 | **Status** | All questions resolved |
@@ -16,10 +16,10 @@
 
 | Document | Location | Findings |
 |----------|----------|----------|
-| Requirements | `docs/requirements/REQ-MAES.md` | 9 requirements in scope (REQ-IN-01–08, REQ-NF-06), all P0 |
-| Technical Specification | `docs/specifications/TSPEC-maes-init.md` | 12 sections covering architecture, manifest, algorithm, services, error handling, tests |
-| Analysis | `docs/specifications/ANALYSIS-maes-init.md` | 10 questions resolved — all fed into TSPEC |
-| PM Review | `docs/specifications/REVIEW-TSPEC-maes-init.md` | 10 questions raised (Q1–Q10), conditional approval pending resolution |
+| Requirements | `docs/requirements/REQ-PTAH.md` | 9 requirements in scope (REQ-IN-01–08, REQ-NF-06), all P0 |
+| Technical Specification | `docs/specifications/TSPEC-ptah-init.md` | 12 sections covering architecture, manifest, algorithm, services, error handling, tests |
+| Analysis | `docs/specifications/ANALYSIS-ptah-init.md` | 10 questions resolved — all fed into TSPEC |
+| PM Review | `docs/specifications/REVIEW-TSPEC-ptah-init.md` | 10 questions raised (Q1–Q10), conditional approval pending resolution |
 | Execution Plan | — | None exists yet |
 
 ---
@@ -30,8 +30,8 @@
 |---|----------|------------|-------|
 | 1 | FileSystem protocol | `InitCommand` ↔ `NodeFileSystem` | Abstracts all disk I/O; test doubles replace in tests |
 | 2 | GitClient protocol | `InitCommand` ↔ `NodeGitClient` | Abstracts all Git CLI calls; test doubles replace in tests |
-| 3 | InitCommand composition | `bin/maes.ts` wires `NodeFileSystem` + `NodeGitClient` → `InitCommand` | Composition root — no tests specified for wiring |
-| 4 | `maes.config.json` schema | Phase 1 (init) → Phase 2+ (Orchestrator) | Schema must remain backward-compatible |
+| 3 | InitCommand composition | `bin/ptah.ts` wires `NodeFileSystem` + `NodeGitClient` → `InitCommand` | Composition root — no tests specified for wiring |
+| 4 | `ptah.config.json` schema | Phase 1 (init) → Phase 2+ (Orchestrator) | Schema must remain backward-compatible |
 
 ---
 
@@ -59,16 +59,16 @@ TSPEC Section 9.3 states "All **15 files** created with correct content," but th
 | 8 | `docs/agent-logs/test-agent.md` |
 | 9 | `docs/open-questions/pending.md` |
 | 10 | `docs/open-questions/resolved.md` |
-| 11 | `maes/skills/pm-agent.md` |
-| 12 | `maes/skills/dev-agent.md` |
-| 13 | `maes/skills/test-agent.md` |
-| 14 | `maes.config.json` |
+| 11 | `ptah/skills/pm-agent.md` |
+| 12 | `ptah/skills/dev-agent.md` |
+| 13 | `ptah/skills/test-agent.md` |
+| 14 | `ptah.config.json` |
 
 **Question:** Which file is the 15th, or should Section 9.3 say "14 files"?
 
 **Test impact:** The exact file count determines the assertion in "All files created with correct content" tests. An incorrect count will cause false positives or negatives.
 
-> **Resolution (Backend Engineer):** Fixed in TSPEC Rev 2 (PM review). The correct count is **17 files**: 14 content files + 3 `.gitkeep` files for empty directories (`docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, `maes/templates/.gitkeep`). Section 9.3 updated. Tests should assert `created.length === 17` for a clean init on an empty repo (excluding directories, which are not counted in `created[]` for files — see Q4 resolution).
+> **Resolution (Backend Engineer):** Fixed in TSPEC Rev 2 (PM review). The correct count is **17 files**: 14 content files + 3 `.gitkeep` files for empty directories (`docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, `ptah/templates/.gitkeep`). Section 9.3 updated. Tests should assert `created.length === 17` for a clean init on an empty repo (excluding directories, which are not counted in `created[]` for files — see Q4 resolution).
 
 ---
 
@@ -104,9 +104,9 @@ Git does not track empty directories. The TSPEC creates directories that may con
 |-----------|------------|
 | `docs/architecture/decisions/` | No |
 | `docs/architecture/diagrams/` | No |
-| `maes/templates/` | No |
+| `ptah/templates/` | No |
 
-REQ-IN-07 acceptance criteria explicitly states "`maes/templates/` exists as an empty directory."
+REQ-IN-07 acceptance criteria explicitly states "`ptah/templates/` exists as an empty directory."
 
 **Impact:** `git add` will silently skip empty directories. They will not appear in the commit. After cloning the repo, these directories will not exist — violating REQ-IN-01 and REQ-IN-07.
 
@@ -114,7 +114,7 @@ REQ-IN-07 acceptance criteria explicitly states "`maes/templates/` exists as an 
 
 **Test impact:** Without resolution, any test asserting "all 9 directories exist after clone" will fail for these 3 directories. Tests running against in-memory `FakeFileSystem` will pass (since the fake tracks dirs independently of Git), creating a false sense of correctness — the integration boundary with real Git is where this breaks.
 
-> **Resolution (Backend Engineer):** Fixed in TSPEC Rev 2 (PM review). Added `.gitkeep` files (empty, zero bytes) to all 3 empty directories: `docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, `maes/templates/.gitkeep`. These are included in the file manifest (Section 5.2) and counted in the 17-file total. The `FakeFileSystem` masking concern is valid — unit tests verify that `.gitkeep` files are written to the correct paths; the real Git behavior is implicitly covered because any file in a directory causes Git to track it. No separate integration test is needed for Phase 1.
+> **Resolution (Backend Engineer):** Fixed in TSPEC Rev 2 (PM review). Added `.gitkeep` files (empty, zero bytes) to all 3 empty directories: `docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, `ptah/templates/.gitkeep`. These are included in the file manifest (Section 5.2) and counted in the 17-file total. The `FakeFileSystem` masking concern is valid — unit tests verify that `.gitkeep` files are written to the correct paths; the real Git behavior is implicitly covered because any file in a directory causes Git to track it. No separate integration test is needed for Phase 1.
 
 ---
 
@@ -164,15 +164,15 @@ Section 7.1 specifies that `writeFile` "creates parent dirs if needed." The algo
 | Field | Detail |
 |-------|--------|
 | **Severity** | Clarification |
-| **TSPEC Section** | 6 (Algorithm, step 6b) and 5.2 (`maes.config.json`) |
+| **TSPEC Section** | 6 (Algorithm, step 6b) and 5.2 (`ptah.config.json`) |
 
-The algorithm hardcodes the commit message as `"[MAES] init: scaffolded docs structure"`. The generated config contains `git.commit_prefix: "[MAES]"`. These are currently aligned but independently defined.
+The algorithm hardcodes the commit message as `"[ptah] init: scaffolded docs structure"`. The generated config contains `git.commit_prefix: "[ptah]"`. These are currently aligned but independently defined.
 
 **Question:** Should the init command derive the prefix from the config, or is hardcoding intentional? Since the config file is being *created* during init (chicken-and-egg scenario), hardcoding seems reasonable — but the spec should state this explicitly.
 
 **Test impact:** Tests need to assert the exact commit message. If the prefix is config-derived, the test must inject a config; if hardcoded, the test simply asserts the literal string. Clear spec prevents brittle tests.
 
-> **Resolution (Backend Engineer):** Hardcoded is intentional — chicken-and-egg. The config file `maes.config.json` is being **created** during init, so it cannot be read from yet. The commit message `"[MAES] init: scaffolded docs structure"` is a compile-time constant. Updated Algorithm step 7b with explicit note. Tests should assert the exact literal string: `expect(git.commits[0]).toBe("[MAES] init: scaffolded docs structure")`.
+> **Resolution (Backend Engineer):** Hardcoded is intentional — chicken-and-egg. The config file `ptah.config.json` is being **created** during init, so it cannot be read from yet. The commit message `"[ptah] init: scaffolded docs structure"` is a compile-time constant. Updated Algorithm step 7b with explicit note. Tests should assert the exact literal string: `expect(git.commits[0]).toBe("[ptah] init: scaffolded docs structure")`.
 
 ---
 
@@ -199,9 +199,9 @@ Section 8 covers four error scenarios: not a Git repo, Git not installed, permis
 |-------|--------|
 | **Severity** | Coverage gap |
 | **TSPEC Section** | 9.3 (Test Categories) |
-| **Requirement** | Success Metrics (REQ-MAES Section 5): `maes init` must complete in < 30 seconds |
+| **Requirement** | Success Metrics (REQ-PTAH Section 5): `ptah init` must complete in < 30 seconds |
 
-The Analysis document (Section 2) and Success Metrics both state `maes init` must complete in **< 30 seconds**. No test category in Section 9.3 covers performance.
+The Analysis document (Section 2) and Success Metrics both state `ptah init` must complete in **< 30 seconds**. No test category in Section 9.3 covers performance.
 
 **Question:** Should there be a performance property and test? Given init does no network I/O and creates ~14 files, this is likely met implicitly — but an explicit timeout-based assertion would prevent regressions as the manifest grows.
 
@@ -221,7 +221,7 @@ The Analysis document (Section 2) and Success Metrics both state `maes init` mus
 
 The TSPEC notes the exclusion (Section 5.1: "Excluded: `docs/threads/` (C-07)") but Section 9.3 test categories don't include a negative test verifying `docs/threads/` is NOT created.
 
-**Question:** Should there be an explicit test assertion that `docs/threads/` does not exist after `maes init` runs? REQ-IN-01 AC explicitly calls this out, making it a testable acceptance criterion.
+**Question:** Should there be an explicit test assertion that `docs/threads/` does not exist after `ptah init` runs? REQ-IN-01 AC explicitly calls this out, making it a testable acceptance criterion.
 
 **Test impact:** A single assertion (`expect(fs.hasDir('docs/threads/')).toBe(false)`) in the directory creation test suite would cover this. Low cost, high traceability value.
 
@@ -234,7 +234,7 @@ The TSPEC notes the exclusion (Section 5.1: "Excluded: `docs/threads/` (C-07)") 
 | Field | Detail |
 |-------|--------|
 | **Severity** | Clarification |
-| **TSPEC Section** | 5.2 (`maes.config.json`) |
+| **TSPEC Section** | 5.2 (`ptah.config.json`) |
 
 The TSPEC says `project.name` is "auto-detected from the current directory name via `path.basename(process.cwd())`, with fallback to `"my-app"`." However, `path.basename()` always returns a string — even for `/` it returns `""`.
 
@@ -254,7 +254,7 @@ The TSPEC says `project.name` is "auto-detected from the current directory name 
 
 ## 4. Overlap with PM Review
 
-Several questions overlap with the [PM Review](./REVIEW-TSPEC-maes-init.md). The following maps test engineer questions to PM questions and notes where the test perspective adds new concerns:
+Several questions overlap with the [PM Review](./REVIEW-TSPEC-ptah-init.md). The following maps test engineer questions to PM questions and notes where the test perspective adds new concerns:
 
 | TE Question | PM Question | Additional test concern |
 |-------------|-------------|------------------------|
@@ -286,7 +286,7 @@ Several questions overlap with the [PM Review](./REVIEW-TSPEC-maes-init.md). The
 
 ### Top Priority Items
 
-1. **Q3 — Empty directories + Git** is the highest-risk item. It will cause a silent behavioral bug where `maes/templates/` and the `docs/architecture/` subdirectories don't survive a `git clone`, violating REQ-IN-01 and REQ-IN-07 acceptance criteria. Critically, the in-memory `FakeFileSystem` test doubles will **not** catch this — they track directories independently of Git. Only real Git integration testing would reveal the failure. A design decision (`.gitkeep` or equivalent) is needed before proceeding.
+1. **Q3 — Empty directories + Git** is the highest-risk item. It will cause a silent behavioral bug where `ptah/templates/` and the `docs/architecture/` subdirectories don't survive a `git clone`, violating REQ-IN-01 and REQ-IN-07 acceptance criteria. Critically, the in-memory `FakeFileSystem` test doubles will **not** catch this — they track directories independently of Git. Only real Git integration testing would reveal the failure. A design decision (`.gitkeep` or equivalent) is needed before proceeding.
 
 2. **Q1 — File count** is a documentation error that should be corrected to prevent incorrect test assertions.
 
@@ -296,7 +296,7 @@ Several questions overlap with the [PM Review](./REVIEW-TSPEC-maes-init.md). The
 
 Once the questions above are resolved, the Test Engineer will proceed to:
 
-1. **Phase 2: Property Documentation** — Catalog all testable properties derived from requirements and this specification, saved to `docs/testing/in_review/PROPERTIES-maes-init.md`.
+1. **Phase 2: Property Documentation** — Catalog all testable properties derived from requirements and this specification, saved to `docs/testing/in_review/PROPERTIES-ptah-init.md`.
 2. **Phase 3: Plan Augmentation** — Enrich the execution plan (once created) with concrete test scripts per task.
 
 ---

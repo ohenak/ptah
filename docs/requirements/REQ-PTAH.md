@@ -1,11 +1,11 @@
 # Requirements Document
 
-## Multi-Agent Engineering System (MAES) v4.0
+## Ptah v4.0
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | REQ-MAES |
-| **Parent Document** | [MAES PRD v4.0](../MAES_PRD_v4.0.docx) |
+| **Document ID** | REQ-PTAH |
+| **Parent Document** | [PTAH_PRD v4.0](../PTAH_PRD_v4.0.docx) |
 | **Version** | 1.3 |
 | **Date** | March 8, 2026 |
 | **Author** | Product Manager |
@@ -16,9 +16,9 @@
 
 ## 1. Purpose
 
-This requirements document formalizes the Multi-Agent Engineering System (MAES) v4.0 — a deployable framework that installs into any Git repository and coordinates three specialized Claude agents (PM Agent, Dev Agent, Test Agent) to collaboratively build software engineering projects.
+This requirements document formalizes the Ptah v4.0 — a deployable framework that installs into any Git repository and coordinates three specialized Claude agents (PM Agent, Dev Agent, Test Agent) to collaboratively build software engineering projects.
 
-MAES v4.0 replaces the file-based thread protocol from v3.0 with Discord threads as the coordination layer. The repository reverts to its natural role as a versioned artifact store. The Orchestrator is the Discord bot itself — one process, one deployment, started via `maes start`.
+Ptah v4.0 replaces the file-based thread protocol from v3.0 with Discord threads as the coordination layer. The repository reverts to its natural role as a versioned artifact store. The Orchestrator is the Discord bot itself — one process, one deployment, started via `ptah start`.
 
 **Core principle:** Discord threads provide state, turn attribution, append-only history, and human participation for free. The repo provides durability, version control, and auditability of outputs. Each layer does what it is best at.
 
@@ -28,12 +28,12 @@ MAES v4.0 replaces the file-based thread protocol from v3.0 with Discord threads
 
 Each user story describes a real-world situation that the product must support. Requirements in Section 6 trace back to these user stories.
 
-### US-01: Developer Bootstraps MAES in an Existing Repository
+### US-01: Developer Bootstraps Ptah in an Existing Repository
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A developer wants to add the MAES framework to an existing Git repository so that agents can begin collaborating on the project. They run `maes init` from the repo root. |
-| **Goals** | Scaffold the `/docs` folder structure, seed markdown templates, create `maes.config.json`, and make an initial Git commit — all in under 30 seconds. |
+| **Description** | A developer wants to add the Ptah framework to an existing Git repository so that agents can begin collaborating on the project. They run `ptah init` from the repo root. |
+| **Goals** | Scaffold the `/docs` folder structure, seed markdown templates, create `ptah.config.json`, and make an initial Git commit — all in under 30 seconds. |
 | **Pain points** | Manually creating folder structures and config files is error-prone and tedious. Without a standard structure, agents have no convention to follow. |
 | **Key needs** | One-command setup that is safe to run on existing repos (no overwrites), produces a valid config, and commits the scaffolding. |
 
@@ -68,7 +68,7 @@ Each user story describes a real-world situation that the product must support. 
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A developer runs `maes start` to launch the Orchestrator as a long-running Discord bot process. They monitor its console output to observe agent activity, message routing, and artifact commits. |
+| **Description** | A developer runs `ptah start` to launch the Orchestrator as a long-running Discord bot process. They monitor its console output to observe agent activity, message routing, and artifact commits. |
 | **Goals** | Start the Orchestrator with one command, see real-time activity logs, and shut down gracefully without losing in-flight work. |
 | **Pain points** | Complex deployment setups with multiple processes or services. No visibility into what agents are doing. Ungraceful shutdowns corrupting state. |
 | **Key needs** | Single-command startup, real-time console output, graceful SIGINT/SIGTERM handling, connection status feedback. |
@@ -80,7 +80,7 @@ Each user story describes a real-world situation that the product must support. 
 | **Description** | A Skill invocation produces or updates a `/docs` artifact file (e.g., `requirements.md`, `specifications.md`). The Orchestrator commits the change to Git with full attribution and appends an entry to the agent's log. |
 | **Goals** | Every artifact change is version-controlled, attributed to the correct agent, and logged for auditability. Zero artifact changes without a corresponding Git commit. |
 | **Pain points** | Manual commits are forgotten. Without attribution, it is unclear which agent changed what. Without logs, debugging agent behavior requires reading Git history. |
-| **Key needs** | Automatic Git commit with `[MAES]` prefix and agent attribution, append-only agent logs, idempotent message processing. |
+| **Key needs** | Automatic Git commit with `[ptah]` prefix and agent attribution, append-only agent logs, idempotent message processing. |
 
 ### US-07: System Handles Failures Gracefully
 
@@ -95,7 +95,7 @@ Each user story describes a real-world situation that the product must support. 
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A developer wants to extend MAES with a fourth agent (e.g., a Security Agent). They create a new Skill definition, add a log file, and update `maes.config.json`. |
+| **Description** | A developer wants to extend Ptah with a fourth agent (e.g., a Security Agent). They create a new Skill definition, add a log file, and update `ptah.config.json`. |
 | **Goals** | Add a new agent to the system with minimal configuration changes and no code modifications to the Orchestrator. |
 | **Pain points** | Tightly coupled architectures require code changes to add new agents. Without a standard extension pattern, each addition is ad-hoc. |
 | **Key needs** | Configuration-driven agent registration, standardized Skill interface, automatic log file creation. |
@@ -106,7 +106,7 @@ Each user story describes a real-world situation that the product must support. 
 
 ### 3.1 In Scope
 
-- CLI commands: `maes init` (scaffolding) and `maes start` (Orchestrator)
+- CLI commands: `ptah init` (scaffolding) and `ptah start` (Orchestrator)
 - Discord-based coordination: threads, embeds, @mentions via Discord MCP
 - Three agent Skills: PM Agent, Dev Agent, Test Agent — all stateless
 - Context Bundle assembly with three-layer model and token budget enforcement
@@ -140,9 +140,9 @@ See Section 4.1 for detailed assumptions with impact analysis.
 
 | ID | Assumption | Impact if Wrong |
 |----|-----------|-----------------|
-| A-01 | A Discord server with the required channels exists before `maes start` is run | The Orchestrator will fail to connect; `maes init` does not create the Discord server |
+| A-01 | A Discord server with the required channels exists before `ptah start` is run | The Orchestrator will fail to connect; `ptah init` does not create the Discord server |
 | A-02 | `DISCORD_BOT_TOKEN` and `ANTHROPIC_API_KEY` are set as environment variables | The Orchestrator will not start; secrets are never stored in config files |
-| A-03 | The repository has Git initialized before `maes init` is run | Initial commit will fail if Git is not initialized |
+| A-03 | The repository has Git initialized before `ptah init` is run | Initial commit will fail if Git is not initialized |
 | A-04 | Discord thread history is sufficient for coordination state — no database is required | If Discord has outages or rate limits, coordination is blocked |
 | A-05 | Four turns (two iterations) are sufficient for any review loop between agents | If agents consistently need more rounds, the escalation-to-user path becomes the norm rather than the exception |
 | A-06 | The three existing Claude Skills (PM, Dev, Test) serve as the baseline agent definitions | New Skills must conform to the same stateless, Context Bundle-only interface |
@@ -155,12 +155,12 @@ See Section 4.1 for detailed assumptions with impact analysis.
 | C-01 | Skills must be stateless — no session state between invocations | Architecture (Section 4.2 of PRD) |
 | C-02 | Skills must not use Discord MCP — all Discord I/O is owned by the Orchestrator | Architecture (Section 4.2 of PRD); prevents context bloat and cold restart costs |
 | C-03 | Discord only — no multi-platform messaging support in v4.0 | Non-goal (Section 3.2 of PRD) |
-| C-04 | Two CLI commands only (`maes init`, `maes start`) — all other commands deferred | Non-goal (Section 3.2 of PRD) |
+| C-04 | Two CLI commands only (`ptah init`, `ptah start`) — all other commands deferred | Non-goal (Section 3.2 of PRD) |
 | C-05 | No autonomous production deployments without human approval | Non-goal (Section 3.2 of PRD) |
 | C-06 | Single-repo support only — one Orchestrator instance per repository | Non-goal (Section 3.2 of PRD) |
 | C-07 | No `/docs/threads/` directory — Discord threads fully replace the file-based protocol | v4.0 migration (Section 7 of PRD) |
 | C-08 | No Discord message IDs or thread links in any `/docs` file — repo content must be platform-agnostic | NFR: Portability (Section 10 of PRD) |
-| C-09 | One Discord server per project — each MAES Orchestrator instance connects to exactly one Discord server for one repository | OQ-001 resolution |
+| C-09 | One Discord server per project — each Ptah Orchestrator instance connects to exactly one Discord server for one repository | OQ-001 resolution |
 
 ---
 
@@ -168,7 +168,7 @@ See Section 4.1 for detailed assumptions with impact analysis.
 
 | Feature | Metric | How to Measure | Baseline | Target |
 |---------|--------|----------------|----------|--------|
-| `maes init` | Time from command to committed doc structure | CLI timer from invocation to commit confirmation | TBD | < 30 seconds |
+| `ptah init` | Time from command to committed doc structure | CLI timer from invocation to commit confirmation | TBD | < 30 seconds |
 | Orchestrator response | Time from Discord message to Skill response posted in thread | Timestamp delta between incoming message and posted embed | TBD | < 90 seconds |
 | Review loop efficiency | Threads exceeding max-turns guardrail | Count of threads hitting turn limit vs. total threads | TBD | < 5% of threads |
 | Skill reliability | Skill invocation failures not recovered by retry | Failed invocations / total invocations | TBD | < 1% of invocations |
@@ -201,8 +201,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-01 |
 | **Title** | Create /docs folder structure |
-| **Description** | `maes init` shall create the `/docs` folder structure as defined in PRD Section 7: `docs/initial_project/`, `docs/architecture/` (with `decisions/` and `diagrams/` subdirs), `docs/open-questions/`, `docs/agent-logs/`, and `docs/overview.md`. The `/docs/threads/` directory is explicitly excluded. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have a Git repository without MAES scaffolding WHEN: I run `maes init` THEN: The `/docs` folder structure is created with all required subdirectories and no `docs/threads/` directory exists |
+| **Description** | `ptah init` shall create the `/docs` folder structure as defined in PRD Section 7: `docs/initial_project/`, `docs/architecture/` (with `decisions/` and `diagrams/` subdirs), `docs/open-questions/`, `docs/agent-logs/`, and `docs/overview.md`. The `/docs/threads/` directory is explicitly excluded. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have a Git repository without Ptah scaffolding WHEN: I run `ptah init` THEN: The `/docs` folder structure is created with all required subdirectories and no `docs/threads/` directory exists |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -214,8 +214,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-02 |
 | **Title** | Seed feature folders with blank markdown templates |
-| **Description** | `maes init` shall populate each feature folder (starting with `initial_project/`) with 4 blank markdown templates: `requirements.md`, `specifications.md`, `plans.md`, and `properties.md`. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I inspect `docs/initial_project/` THEN: Four blank template files exist: `requirements.md`, `specifications.md`, `plans.md`, `properties.md` |
+| **Description** | `ptah init` shall populate each feature folder (starting with `initial_project/`) with 4 blank markdown templates: `requirements.md`, `specifications.md`, `plans.md`, and `properties.md`. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect `docs/initial_project/` THEN: Four blank template files exist: `requirements.md`, `specifications.md`, `plans.md`, `properties.md` |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -227,21 +227,21 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-03 |
 | **Title** | Create project overview template |
-| **Description** | `maes init` shall create `docs/overview.md` with a blank project overview template that serves as cold-start context for all agent invocations. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I open `docs/overview.md` THEN: A blank project overview template exists with sections for project goals, stakeholders, scope, and technical context |
+| **Description** | `ptah init` shall create `docs/overview.md` with a blank project overview template that serves as cold-start context for all agent invocations. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I open `docs/overview.md` THEN: A blank project overview template exists with sections for project goals, stakeholders, scope, and technical context |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
 | **Dependencies** | [REQ-IN-01] |
 
-#### REQ-IN-04: Create maes.config.json
+#### REQ-IN-04: Create ptah.config.json
 
 | Field | Detail |
 |-------|--------|
 | **ID** | REQ-IN-04 |
 | **Title** | Generate configuration file with defaults |
-| **Description** | `maes init` shall create `maes.config.json` at the repo root with all defaults populated: project name/version, active agents, Skill paths, Discord server settings (requiring user edit), Orchestrator settings (max turns, poll interval, retry attempts), Git commit settings, and docs paths. The config file is committed to the repo (OQ-004 resolved: yes). It contains no secrets — `DISCORD_BOT_TOKEN` and `ANTHROPIC_API_KEY` are env-only. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I open `maes.config.json` THEN: A valid JSON config file exists with all default fields populated as defined in PRD Section 8.1 |
+| **Description** | `ptah init` shall create `ptah.config.json` at the repo root with all defaults populated: project name/version, active agents, Skill paths, Discord server settings (requiring user edit), Orchestrator settings (max turns, poll interval, retry attempts), Git commit settings, and docs paths. The config file is committed to the repo (OQ-004 resolved: yes). It contains no secrets — `DISCORD_BOT_TOKEN` and `ANTHROPIC_API_KEY` are env-only. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I open `ptah.config.json` THEN: A valid JSON config file exists with all default fields populated as defined in PRD Section 8.1 |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -253,8 +253,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-05 |
 | **Title** | Detect and skip existing files |
-| **Description** | `maes init` shall detect existing `/docs` content and `maes.config.json`. If files already exist, init shall report them and skip — not overwrite — any files already present. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have an existing `/docs` folder or `maes.config.json` in my repo WHEN: I run `maes init` THEN: Existing files are reported as skipped and their contents are preserved unchanged |
+| **Description** | `ptah init` shall detect existing `/docs` content and `ptah.config.json`. If files already exist, init shall report them and skip — not overwrite — any files already present. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have an existing `/docs` folder or `ptah.config.json` in my repo WHEN: I run `ptah init` THEN: Existing files are reported as skipped and their contents are preserved unchanged |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -266,21 +266,21 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-06 |
 | **Title** | Commit scaffolded structure |
-| **Description** | `maes init` shall create an initial Git commit with the message: `[MAES] init: scaffolded docs structure`. If no new files were created (all files already exist and were skipped per [REQ-IN-05]), the commit shall be skipped — no empty commits. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` and new files were created WHEN: I check `git log` THEN: The most recent commit has the message `[MAES] init: scaffolded docs structure` and contains all scaffolded files. If no new files were created (all skipped), no commit is made. |
+| **Description** | `ptah init` shall create an initial Git commit with the message: `[ptah] init: scaffolded docs structure`. If no new files were created (all files already exist and were skipped per [REQ-IN-05]), the commit shall be skipped — no empty commits. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` and new files were created WHEN: I check `git log` THEN: The most recent commit has the message `[ptah] init: scaffolded docs structure` and contains all scaffolded files. If no new files were created (all skipped), no commit is made. |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
 | **Dependencies** | [REQ-IN-01], [REQ-IN-02], [REQ-IN-03], [REQ-IN-04] |
 
-#### REQ-IN-07: Scaffold maes/ Runtime Directory
+#### REQ-IN-07: Scaffold ptah/ Runtime Directory
 
 | Field | Detail |
 |-------|--------|
 | **ID** | REQ-IN-07 |
-| **Title** | Create maes/ runtime directory with placeholder Skill definitions |
-| **Description** | `maes init` shall create the `maes/skills/` directory with placeholder Skill definition files for each active agent (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and an empty `maes/templates/` directory. These paths are referenced by `maes.config.json` (`agents.skills` and `docs.templates`). Placeholder Skill files contain a header and a TODO note — actual Skill system prompts are written during Phase 2. The `maes/` directory is separate from `.claude/skills/` (which is the developer's Claude Code workflow). |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I inspect the repo THEN: `maes/skills/pm-agent.md`, `maes/skills/dev-agent.md`, `maes/skills/test-agent.md` exist as placeholder files, `maes/templates/` exists as an empty directory, and all paths referenced in `maes.config.json` are valid |
+| **Title** | Create ptah/ runtime directory with placeholder Skill definitions |
+| **Description** | `ptah init` shall create the `ptah/skills/` directory with placeholder Skill definition files for each active agent (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and an empty `ptah/templates/` directory. These paths are referenced by `ptah.config.json` (`agents.skills` and `docs.templates`). Placeholder Skill files contain a header and a TODO note — actual Skill system prompts are written during Phase 2. The `ptah/` directory is separate from `.claude/skills/` (which is the developer's Claude Code workflow). |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect the repo THEN: `ptah/skills/pm-agent.md`, `ptah/skills/dev-agent.md`, `ptah/skills/test-agent.md` exist as placeholder files, `ptah/templates/` exists as an empty directory, and all paths referenced in `ptah.config.json` are valid |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -292,8 +292,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-IN-08 |
 | **Title** | Pre-create agent log files and open-questions files |
-| **Description** | `maes init` shall pre-create the following operational files with header stubs: (1) `docs/agent-logs/pm-agent.md`, `docs/agent-logs/dev-agent.md`, `docs/agent-logs/test-agent.md` — one per active agent, matching agent IDs in `maes.config.json`. (2) `docs/open-questions/pending.md` and `docs/open-questions/resolved.md` — used by the Orchestrator in Phase 5 for user question routing. File names for agent logs must match the agent IDs in the config. |
-| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `maes init` WHEN: I inspect `docs/agent-logs/` and `docs/open-questions/` THEN: Three agent log files exist (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and two open-questions files exist (`pending.md`, `resolved.md`), each with a header stub |
+| **Description** | `ptah init` shall pre-create the following operational files with header stubs: (1) `docs/agent-logs/pm-agent.md`, `docs/agent-logs/dev-agent.md`, `docs/agent-logs/test-agent.md` — one per active agent, matching agent IDs in `ptah.config.json`. (2) `docs/open-questions/pending.md` and `docs/open-questions/resolved.md` — used by the Orchestrator in Phase 5 for user question routing. File names for agent logs must match the agent IDs in the config. |
+| **Acceptance Criteria** | WHO: As a developer GIVEN: I have run `ptah init` WHEN: I inspect `docs/agent-logs/` and `docs/open-questions/` THEN: Three agent log files exist (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and two open-questions files exist (`pending.md`, `resolved.md`), each with a header stub |
 | **Priority** | P0 |
 | **Phase** | Phase 1 |
 | **Source User Stories** | [US-01] |
@@ -692,8 +692,8 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 |-------|--------|
 | **ID** | REQ-SI-05 |
 | **Title** | Commit /docs changes with agent attribution |
-| **Description** | The Orchestrator shall commit any `/docs` file changes produced by a Skill with the format: `[MAES] {Agent}: {description}`. |
-| **Acceptance Criteria** | WHO: As the Orchestrator GIVEN: A Skill has updated a `/docs` artifact file WHEN: I process the Skill output THEN: I commit the changes with a message following the `[MAES] {Agent}: {description}` format |
+| **Description** | The Orchestrator shall commit any `/docs` file changes produced by a Skill with the format: `[ptah] {Agent}: {description}`. |
+| **Acceptance Criteria** | WHO: As the Orchestrator GIVEN: A Skill has updated a `/docs` artifact file WHEN: I process the Skill output THEN: I commit the changes with a message following the `[ptah] {Agent}: {description}` format |
 | **Priority** | P0 |
 | **Phase** | Phase 4 |
 | **Source User Stories** | [US-06] |
@@ -814,7 +814,7 @@ Requirements are grouped by functional domain. Each domain uses a unique prefix 
 | REQ-NF-03 | Idempotency | The Orchestrator shall not re-invoke a Skill for a Discord message it has already processed (tracked by message ID) | Duplicate message IDs produce zero additional Skill invocations | P0 | Phase 4 |
 | REQ-NF-04 | Token efficiency | Each Skill invocation loads only the relevant feature folder docs — never the entire /docs tree | Context Bundle Layer 2 contains only current-feature files | P0 | Phase 3 |
 | REQ-NF-05 | Auditability | Every artifact change produces a Git commit; agent-logs record every Skill invocation | Zero artifact changes without a corresponding commit; agent-logs contain entry for every invocation | P0 | Phase 4 |
-| REQ-NF-06 | Security | `DISCORD_BOT_TOKEN` and `ANTHROPIC_API_KEY` are loaded from environment only — never in config files or /docs | No secrets appear in `maes.config.json`, any `/docs` file, or Git history | P0 | Phase 1 |
+| REQ-NF-06 | Security | `DISCORD_BOT_TOKEN` and `ANTHROPIC_API_KEY` are loaded from environment only — never in config files or /docs | No secrets appear in `ptah.config.json`, any `/docs` file, or Git history | P0 | Phase 1 |
 | REQ-NF-07 | Portability | /docs content is platform-agnostic — no Discord message IDs or thread links in repo files | Grep of `/docs` for Discord-specific identifiers returns zero matches | P0 | Phase 3 |
 | REQ-NF-08 | Extensibility | Adding a new agent requires only: a new Skill definition, a new `agent-logs/*.md` file, and a config entry | A fourth agent can be added with zero code changes to the Orchestrator | P1 | Phase 7 |
 
@@ -868,7 +868,7 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 | OQ-001 | Should the Orchestrator support one Discord server per project or one server with channels per project? | **One Discord server per project.** Clean isolation per project; simplifies permissions and routing. | Resolved | [C-09] added |
 | OQ-002 | How should the Orchestrator identify which agent to invoke when there is no @mention in a thread message — by thread ownership or last-sender logic? | **Routing signal (Option C).** Every Skill response must include a structured routing signal ([REQ-SI-04]). The Orchestrator uses this as the sole mechanism for determining the next agent. No fallback to thread ownership or last-sender logic. | Resolved | [REQ-DI-09] added, [REQ-SI-04] updated |
 | OQ-003 | Should the user's Discord reply in #open-questions also be written back to pending.md automatically, or does pending.md remain the canonical record? | **Discord reply writes to pending.md (Option B).** The Orchestrator listens for user replies in `#open-questions` and writes the answer to `pending.md` automatically. Better UX — user never has to edit a file. | Resolved | [REQ-PQ-05] added |
-| OQ-004 | Should maes.config.json be committed to the repo? | **Yes, commit it.** The config contains no secrets (bot token is env-only). Committing ensures reproducible setup for any team member who clones the repo. | Resolved | [REQ-IN-04] confirmed, [REQ-IN-06] confirmed |
+| OQ-004 | Should ptah.config.json be committed to the repo? | **Yes, commit it.** The config contains no secrets (bot token is env-only). Committing ensures reproducible setup for any team member who clones the repo. | Resolved | [REQ-IN-04] confirmed, [REQ-IN-06] confirmed |
 | OQ-005 | Should the Orchestrator support concurrent Skill invocations for independent threads, or strictly sequential? | **Concurrent, with per-agent worktrees.** Each agent gets its own local copy (Git worktree) of the repository so they can edit `/docs` files in parallel without conflicts. The Orchestrator merges worktree changes back to the main branch after each Skill invocation completes. | Resolved | [REQ-SI-11], [REQ-SI-12], [REQ-SI-13] added; [R-08] added |
 
 ---
@@ -885,10 +885,10 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0 | March 8, 2026 | Product Manager | Initial requirements document derived from MAES PRD v4.0 |
+| 1.0 | March 8, 2026 | Product Manager | Initial requirements document derived from PTAH_PRD v4.0 |
 | 1.1 | March 8, 2026 | Product Manager | Resolved all 5 open questions (OQ-001 through OQ-005). Added REQ-DI-09, REQ-PQ-05, REQ-SI-11, REQ-SI-12, REQ-SI-13. Added constraint C-09. Added risk R-08. Updated REQ-SI-04 and REQ-IN-04 with OQ decision details. |
 | 1.2 | March 8, 2026 | Product Manager | Added Section 3 (Scope Boundaries) with explicit In Scope, Out of Scope, and Assumptions. Fixed P0 count from 38 to 49. Fixed Phase 3 count from 20 to 21. Renumbered sections 3-10 to 4-11 to accommodate new scope section. |
-| 1.3 | March 8, 2026 | Product Manager | Added REQ-IN-07 (scaffold maes/ runtime directory with placeholder Skills) and REQ-IN-08 (pre-create agent log files and open-questions files). Updated REQ-IN-06 to clarify no-op commit behavior when all files are skipped. P0 count updated from 49 to 51. Phase 1 count updated from 7 to 9. |
+| 1.3 | March 8, 2026 | Product Manager | Added REQ-IN-07 (scaffold ptah/ runtime directory with placeholder Skills) and REQ-IN-08 (pre-create agent log files and open-questions files). Updated REQ-IN-06 to clarify no-op commit behavior when all files are skipped. P0 count updated from 49 to 51. Phase 1 count updated from 7 to 9. |
 
 ---
 

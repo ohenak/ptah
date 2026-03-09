@@ -1,9 +1,9 @@
-# TE Review: PLAN-TSPEC-maes-init.md
+# TE Review: PLAN-TSPEC-ptah-init.md
 
 | Field | Detail |
 |-------|--------|
-| **Reviewed Document** | [PLAN-TSPEC-maes-init.md](./PLAN-TSPEC-maes-init.md) |
-| **Cross-referenced** | [PROPERTIES-maes-init.md v1.2](../testing/in_review/PROPERTIES-maes-init.md), [TSPEC-maes-init.md](../specifications/TSPEC-maes-init.md), [REQ-MAES.md](../requirements/REQ-MAES.md) |
+| **Reviewed Document** | [PLAN-TSPEC-ptah-init.md](./PLAN-TSPEC-ptah-init.md) |
+| **Cross-referenced** | [PROPERTIES-ptah-init.md v1.2](../testing/in_review/PROPERTIES-ptah-init.md), [TSPEC-ptah-init.md](../specifications/TSPEC-ptah-init.md), [REQ-PTAH.md](../requirements/REQ-PTAH.md) |
 | **Date** | March 8, 2026 |
 | **Reviewer** | Test Engineer |
 | **Status** | Approved |
@@ -14,7 +14,7 @@
 
 The plan is well-structured with clean phase dependencies and a solid TDD approach. Task decomposition follows the TSPEC module architecture faithfully. The dependency graph (Phase A → B → C/E → D → F) is correct and enables parallel development of InitCommand tests (Phase D) and Node service implementations (Phase E).
 
-However, when mapped against PROPERTIES-maes-init.md v1.1 (44 properties), there are coverage gaps, misclassifications, and structural issues that need resolution before proceeding to implementation.
+However, when mapped against PROPERTIES-ptah-init.md v1.1 (44 properties), there are coverage gaps, misclassifications, and structural issues that need resolution before proceeding to implementation.
 
 ---
 
@@ -81,13 +81,13 @@ Task 18 covers *skipping* existing files on a single run, and Task 22 covers the
 
 **Section:** Phase C (Tasks 9-12) and Phase D (Tasks 13-25)
 
-PROP-IN-44 states: *"`maes.config.json` `agents.skills` paths must match the actual scaffolded skill file paths."*
+PROP-IN-44 states: *"`ptah.config.json` `agents.skills` paths must match the actual scaffolded skill file paths."*
 
-No task verifies that the paths in `buildConfig()` output (`agents.skills` entries like `"./maes/skills/pm-agent.md"`) correspond to entries in `FILE_MANIFEST`. This is a data consistency property — if someone edits the config template or the manifest independently, the paths could diverge.
+No task verifies that the paths in `buildConfig()` output (`agents.skills` entries like `"./ptah/skills/pm-agent.md"`) correspond to entries in `FILE_MANIFEST`. This is a data consistency property — if someone edits the config template or the manifest independently, the paths could diverge.
 
 **Question:** Should this be added as a test in Task 10 (FILE_MANIFEST) or Task 11 (buildConfig)? It naturally fits Task 11 since that's where the config is generated, but it requires access to the manifest to cross-reference. A separate task (e.g., Task 12b: "Config agents.skills paths match FILE_MANIFEST entries") may be cleaner.
 
-> **Resolution (Backend Engineer):** Agreed — this is a data consistency gap. Added **Task 12b** as a dedicated cross-referencing task in Phase C: *"Config agents.skills paths match FILE_MANIFEST — every path in `buildConfig().agents.skills` values (e.g., `./maes/skills/pm-agent.md`) must correspond to an entry in FILE_MANIFEST."* This is cleaner as a separate task because it crosses two data structures (`buildConfig()` output and `FILE_MANIFEST`). Placing it in Phase C after Task 12 keeps all manifest/config validation together. The test imports both `buildConfig` and `FILE_MANIFEST` from `config/defaults.ts` and asserts that every `agents.skills` path resolves to a FILE_MANIFEST key. This directly covers PROP-IN-44. Plan updated.
+> **Resolution (Backend Engineer):** Agreed — this is a data consistency gap. Added **Task 12b** as a dedicated cross-referencing task in Phase C: *"Config agents.skills paths match FILE_MANIFEST — every path in `buildConfig().agents.skills` values (e.g., `./ptah/skills/pm-agent.md`) must correspond to an entry in FILE_MANIFEST."* This is cleaner as a separate task because it crosses two data structures (`buildConfig()` output and `FILE_MANIFEST`). Placing it in Phase C after Task 12 keeps all manifest/config validation together. The test imports both `buildConfig` and `FILE_MANIFEST` from `config/defaults.ts` and asserts that every `agents.skills` path resolves to a FILE_MANIFEST key. This directly covers PROP-IN-44. Plan updated.
 
 ---
 
@@ -95,7 +95,7 @@ No task verifies that the paths in `buildConfig()` output (`agents.skills` entri
 
 **Section:** Phase D, Task 25
 
-Task 25 places the performance guard in `maes/tests/unit/commands/init.test.ts`. PROP-IN-45 is classified as Integration level in the properties document. The rationale (from the PM review resolution) is that unit tests with in-memory fakes complete in sub-milliseconds and won't meaningfully exercise the 30-second bound — the property is meaningful only against real filesystem and Git.
+Task 25 places the performance guard in `ptah/tests/unit/commands/init.test.ts`. PROP-IN-45 is classified as Integration level in the properties document. The rationale (from the PM review resolution) is that unit tests with in-memory fakes complete in sub-milliseconds and won't meaningfully exercise the 30-second bound — the property is meaningful only against real filesystem and Git.
 
 **Question:** Should Task 25 be moved to Phase F (integration) or kept in Phase D with a note that it uses in-memory fakes as a sanity check? If kept as a unit test, the test is effectively asserting "does not time out" rather than "completes within 30 seconds" — which is still useful as a regression guard but should be acknowledged.
 
@@ -107,15 +107,15 @@ Task 25 places the performance guard in `maes/tests/unit/commands/init.test.ts`.
 
 **Section:** Phase F, Task 36
 
-Task 36 tests CLI exit codes (exit 0 on success, exit 1 on error). No property in PROPERTIES-maes-init.md v1.1 covers exit codes. The properties document's Gap #1 acknowledges the CLI entry point is not covered, but exit code behavior is specified in TSPEC §8 (every error scenario has "Exit Code: 1").
+Task 36 tests CLI exit codes (exit 0 on success, exit 1 on error). No property in PROPERTIES-ptah-init.md v1.1 covers exit codes. The properties document's Gap #1 acknowledges the CLI entry point is not covered, but exit code behavior is specified in TSPEC §8 (every error scenario has "Exit Code: 1").
 
 This is a two-way gap:
 - The plan has a task without a property (test without a traceable requirement)
 - TSPEC §8 specifies exit codes but no property captures them
 
-**Question:** Should the plan defer to the properties document (remove Task 36 until a property exists), or should this review recommend adding an exit code property to PROPERTIES-maes-init.md? My recommendation is the latter — exit codes are a testable contract. Suggested property: *"PROP-IN-46: CLI must exit with code 0 on success and code 1 on any error (not a git repo, staged changes, permission denied, git failure)."*
+**Question:** Should the plan defer to the properties document (remove Task 36 until a property exists), or should this review recommend adding an exit code property to PROPERTIES-ptah-init.md? My recommendation is the latter — exit codes are a testable contract. Suggested property: *"PROP-IN-46: CLI must exit with code 0 on success and code 1 on any error (not a git repo, staged changes, permission denied, git failure)."*
 
-> **Resolution (Backend Engineer):** Agreed — exit codes are a testable contract specified in TSPEC §8 and should have a corresponding property. Recommending to the Test Engineer: add **PROP-IN-46** to PROPERTIES-maes-init.md as suggested: *"CLI must exit with code 0 on success and code 1 on any error (not a git repo, staged changes, permission denied, git failure)."* Source: TSPEC §8. Test Level: Integration. This closes the two-way traceability gap — Task 36 now maps to PROP-IN-46, and TSPEC §8 exit code behavior is captured in a property. Properties document updated with PROP-IN-46.
+> **Resolution (Backend Engineer):** Agreed — exit codes are a testable contract specified in TSPEC §8 and should have a corresponding property. Recommending to the Test Engineer: add **PROP-IN-46** to PROPERTIES-ptah-init.md as suggested: *"CLI must exit with code 0 on success and code 1 on any error (not a git repo, staged changes, permission denied, git failure)."* Source: TSPEC §8. Test Level: Integration. This closes the two-way traceability gap — Task 36 now maps to PROP-IN-46, and TSPEC §8 exit code behavior is captured in a property. Properties document updated with PROP-IN-46.
 
 ---
 
@@ -123,15 +123,15 @@ This is a two-way gap:
 
 **Section:** Phase C (Task 11) vs. Phase D (Task 17)
 
-Task 11 (Phase C): *"Implement `buildConfig(projectName)` — generates `maes.config.json` content with auto-detected project name; empty basename falls back to `"my-app"`"*
+Task 11 (Phase C): *"Implement `buildConfig(projectName)` — generates `ptah.config.json` content with auto-detected project name; empty basename falls back to `"my-app"`"*
 
-Task 17 (Phase D): *"`maes.config.json` uses auto-detected project name from `fs.cwd()` basename"*
+Task 17 (Phase D): *"`ptah.config.json` uses auto-detected project name from `fs.cwd()` basename"*
 
 Both test the same behavior (PROP-IN-04). Task 11 tests `buildConfig()` in isolation. Task 17 tests it via `InitCommand.execute()`. The distinction is valid (unit vs. integration-style), but the plan doesn't make this clear — both point to the same property and the descriptions overlap.
 
 **Question:** Should Task 17 be clarified to focus on the *integration* aspect — that `InitCommand` correctly passes `fs.basename(fs.cwd())` to `buildConfig()`? As written, it reads like a duplicate. Suggested clarification: *"InitCommand passes `fs.basename(fs.cwd())` to `buildConfig()` — verify generated config in fake fs uses the cwd-derived project name."*
 
-> **Resolution (Backend Engineer):** Agreed — Task 17 description was ambiguous. Updated to: *"InitCommand passes `fs.basename(fs.cwd())` to `buildConfig()` — verify the `maes.config.json` written to fake fs contains the cwd-derived project name (not hardcoded)."* This clarifies that Task 11 tests `buildConfig()` in isolation (given a project name string, returns correct JSON), while Task 17 tests the wiring inside `InitCommand.execute()` (that it reads the cwd, extracts the basename, passes it to `buildConfig()`, and writes the result). The distinction is unit-of-buildConfig vs. unit-of-InitCommand. Plan updated.
+> **Resolution (Backend Engineer):** Agreed — Task 17 description was ambiguous. Updated to: *"InitCommand passes `fs.basename(fs.cwd())` to `buildConfig()` — verify the `ptah.config.json` written to fake fs contains the cwd-derived project name (not hardcoded)."* This clarifies that Task 11 tests `buildConfig()` in isolation (given a project name string, returns correct JSON), while Task 17 tests the wiring inside `InitCommand.execute()` (that it reads the cwd, extracts the basename, passes it to `buildConfig()`, and writes the result). The distinction is unit-of-buildConfig vs. unit-of-InitCommand. Plan updated.
 
 ---
 
@@ -139,7 +139,7 @@ Both test the same behavior (PROP-IN-04). Task 11 tests `buildConfig()` in isola
 
 **Section:** Phase E (Tasks 26-33)
 
-All Phase E tasks are filed under `maes/tests/unit/services/`. However, `NodeFileSystem` wraps `node:fs/promises` and `NodeGitClient` wraps `child_process.execFile`. Testing these correctly requires either:
+All Phase E tasks are filed under `ptah/tests/unit/services/`. However, `NodeFileSystem` wraps `node:fs/promises` and `NodeGitClient` wraps `child_process.execFile`. Testing these correctly requires either:
 
 (a) **Mocking the Node.js built-ins** (`vi.mock('node:fs/promises')`) — makes them true unit tests but adds mock complexity.
 
@@ -147,11 +147,11 @@ All Phase E tasks are filed under `maes/tests/unit/services/`. However, `NodeFil
 
 The plan doesn't specify which approach. PROP-IN-30 and PROP-IN-31 (Integration level) expect real `git` invocations, which contradicts the `unit/` test file location.
 
-**Question:** Should the plan clarify the testing strategy for Phase E? If approach (b) is used, the test files should be at `maes/tests/integration/services/` to match the properties document's classification. If approach (a), the tests should mock `fs` and `child_process` and verify the correct Node.js APIs are called with expected arguments — but this makes PROP-IN-30/31 unit tests, contradicting their Integration classification.
+**Question:** Should the plan clarify the testing strategy for Phase E? If approach (b) is used, the test files should be at `ptah/tests/integration/services/` to match the properties document's classification. If approach (a), the tests should mock `fs` and `child_process` and verify the correct Node.js APIs are called with expected arguments — but this makes PROP-IN-30/31 unit tests, contradicting their Integration classification.
 
-My recommendation: Use approach (b) — real filesystem in a temp directory and real `git` in a temp repo — and move the test files to `maes/tests/integration/services/`. This aligns with the properties document and provides stronger coverage.
+My recommendation: Use approach (b) — real filesystem in a temp directory and real `git` in a temp repo — and move the test files to `ptah/tests/integration/services/`. This aligns with the properties document and provides stronger coverage.
 
-> **Resolution (Backend Engineer):** Agreed with approach (b). Phase E tasks (26-33) are reclassified as integration tests using real filesystem in a temp directory and real `git` in a temp repo. Test files moved from `maes/tests/unit/services/` to `maes/tests/integration/services/`. Rationale: (1) `NodeFileSystem` wraps `node:fs/promises` — mocking the thing you're wrapping defeats the purpose of testing the wrapper. (2) `NodeGitClient` wraps `child_process.execFile` for `git` — PROP-IN-30 and PROP-IN-31 explicitly expect real `git` invocations at Integration level. (3) Using real filesystem + git in temp directories provides stronger guarantees and aligns with the properties document classification. Each test will use `fs.mkdtemp()` for an isolated temp directory and `git init` for a fresh repo, cleaned up in `afterEach`. Plan updated with new file paths. Project structure in TSPEC §3 should be updated in a follow-up to add `tests/integration/services/` to the directory tree.
+> **Resolution (Backend Engineer):** Agreed with approach (b). Phase E tasks (26-33) are reclassified as integration tests using real filesystem in a temp directory and real `git` in a temp repo. Test files moved from `ptah/tests/unit/services/` to `ptah/tests/integration/services/`. Rationale: (1) `NodeFileSystem` wraps `node:fs/promises` — mocking the thing you're wrapping defeats the purpose of testing the wrapper. (2) `NodeGitClient` wraps `child_process.execFile` for `git` — PROP-IN-30 and PROP-IN-31 explicitly expect real `git` invocations at Integration level. (3) Using real filesystem + git in temp directories provides stronger guarantees and aligns with the properties document classification. Each test will use `fs.mkdtemp()` for an isolated temp directory and `git init` for a fresh repo, cleaned up in `afterEach`. Plan updated with new file paths. Project structure in TSPEC §3 should be updated in a follow-up to add `tests/integration/services/` to the directory tree.
 
 ---
 
@@ -179,7 +179,7 @@ Phase 3 of the test engineer workflow (Plan Augmentation) adds an explicit Integ
 
 4. **No `"basename returns empty string"` test in Phase D.** Task 11 covers the fallback in `buildConfig()`, but no Phase D task verifies that `InitCommand` handles the edge case where `fs.basename(fs.cwd())` returns `""`. This is covered by PROP-IN-05 but may warrant a dedicated InitCommand-level test (or clarification that Task 17 covers it).
 
-5. **Plan doesn't reference the properties document.** The metadata table links to TSPEC and REQ-MAES but not to PROPERTIES-maes-init.md. Adding this cross-reference would close the traceability loop.
+5. **Plan doesn't reference the properties document.** The metadata table links to TSPEC and REQ-PTAH but not to PROPERTIES-ptah-init.md. Adding this cross-reference would close the traceability loop.
 
 ---
 
@@ -223,7 +223,7 @@ All 7 questions have been resolved. Summary of changes made:
 - Phase G (new): Integration Tests — Tasks 37 (performance guard), 38 (composition root wiring), 39 (CLI exit codes)
 - Total tasks: 36 → 39
 - Properties document: Added PROP-IN-46 (CLI exit codes), total properties: 44 → 45
-- Cross-reference to PROPERTIES-maes-init.md added to plan metadata
+- Cross-reference to PROPERTIES-ptah-init.md added to plan metadata
 
 ---
 
@@ -235,7 +235,7 @@ All 7 questions have been resolved. Summary of changes made:
 
 ### Verification of Engineer Resolutions
 
-All 7 resolutions verified against PLAN-TSPEC-maes-init.md (Rev 2) and PROPERTIES-maes-init.md (v1.2).
+All 7 resolutions verified against PLAN-TSPEC-ptah-init.md (Rev 2) and PROPERTIES-ptah-init.md (v1.2).
 
 | Q# | Resolution | Verified in Plan? | Verified in Properties? |
 |----|-----------|-------------------|------------------------|
@@ -249,7 +249,7 @@ All 7 resolutions verified against PLAN-TSPEC-maes-init.md (Rev 2) and PROPERTIE
 
 ### Full Property Coverage Verification
 
-All 45 properties in PROPERTIES-maes-init.md v1.2 now map to at least one task in the plan. Updated task → property mapping including new tasks:
+All 45 properties in PROPERTIES-ptah-init.md v1.2 now map to at least one task in the plan. Updated task → property mapping including new tasks:
 
 | Task | Properties Covered |
 |------|--------------------|
@@ -285,7 +285,7 @@ All 45 properties in PROPERTIES-maes-init.md v1.2 now map to at least one task i
 
 ### Structural Verification
 
-- **Plan metadata:** Now cross-references PROPERTIES-maes-init.md v1.2. Traceability loop closed.
+- **Plan metadata:** Now cross-references PROPERTIES-ptah-init.md v1.2. Traceability loop closed.
 - **Phase dependencies:** Updated dependency graph (`Phase A → B → C/E → D → F → G`) is correct. Phase G correctly depends on all prior phases.
 - **Task count:** 39 tasks across 7 phases (A: 4, B: 4, C: 5, D: 13, E: 8, F: 2, G: 3).
 - **Test level alignment:** Unit tests in `tests/unit/`, integration tests in `tests/integration/`. Phase E correctly at `tests/integration/services/`. Phase G integration tests at `tests/integration/commands/` and `tests/integration/cli/`.
@@ -294,7 +294,7 @@ All 45 properties in PROPERTIES-maes-init.md v1.2 now map to at least one task i
 
 ### Verdict
 
-**Approved.** The PLAN-TSPEC-maes-init.md (Rev 2) is approved for TDD implementation.
+**Approved.** The PLAN-TSPEC-ptah-init.md (Rev 2) is approved for TDD implementation.
 
 All 7 review questions have been resolved with appropriate plan and properties document changes. The plan achieves:
 

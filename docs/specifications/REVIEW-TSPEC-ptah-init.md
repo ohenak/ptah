@@ -1,9 +1,9 @@
-# PM Review: TSPEC-maes-init.md
+# PM Review: TSPEC-ptah-init.md
 
 | Field | Detail |
 |-------|--------|
-| **Reviewed Document** | [TSPEC-maes-init.md](./TSPEC-maes-init.md) |
-| **Cross-referenced** | [REQ-MAES.md](../requirements/REQ-MAES.md), [ANALYSIS-maes-init.md](./ANALYSIS-maes-init.md), [Traceability Matrix](../requirements/traceability-matrix.md) |
+| **Reviewed Document** | [TSPEC-ptah-init.md](./TSPEC-ptah-init.md) |
+| **Cross-referenced** | [REQ-PTAH.md](../requirements/REQ-PTAH.md), [ANALYSIS-ptah-init.md](./ANALYSIS-ptah-init.md), [Traceability Matrix](../requirements/traceability-matrix.md) |
 | **Date** | March 8, 2026 |
 | **Reviewer** | Product Manager |
 | **Status** | All questions resolved |
@@ -36,10 +36,10 @@ The test table states "All 15 files created with correct content," but counting 
 | 8 | `docs/agent-logs/test-agent.md` |
 | 9 | `docs/open-questions/pending.md` |
 | 10 | `docs/open-questions/resolved.md` |
-| 11 | `maes/skills/pm-agent.md` |
-| 12 | `maes/skills/dev-agent.md` |
-| 13 | `maes/skills/test-agent.md` |
-| 14 | `maes.config.json` |
+| 11 | `ptah/skills/pm-agent.md` |
+| 12 | `ptah/skills/dev-agent.md` |
+| 13 | `ptah/skills/test-agent.md` |
+| 14 | `ptah.config.json` |
 
 **Question:** Is the count of 15 a typo, or is there a file I'm not seeing?
 
@@ -47,15 +47,15 @@ The test table states "All 15 files created with correct content," but counting 
 
 ---
 
-### Q2: Empty `maes/templates/` directory cannot be tracked by Git
+### Q2: Empty `ptah/templates/` directory cannot be tracked by Git
 
 **Section:** 5.1 (Directories)
 
-The TSPEC creates `maes/templates/` as an empty directory. Git does not track empty directories — only files. After the `git add` + `git commit` step, this directory would not appear in the commit. On a fresh `git clone`, the directory would be missing.
+The TSPEC creates `ptah/templates/` as an empty directory. Git does not track empty directories — only files. After the `git add` + `git commit` step, this directory would not appear in the commit. On a fresh `git clone`, the directory would be missing.
 
-**Question:** Should a `.gitkeep` placeholder file be added to `maes/templates/`? If so, this would bring the file count to 15 (resolving Q1 as well). Similarly, do any other empty directories in the manifest (e.g., `docs/architecture/decisions/`, `docs/architecture/diagrams/`) need `.gitkeep` files?
+**Question:** Should a `.gitkeep` placeholder file be added to `ptah/templates/`? If so, this would bring the file count to 15 (resolving Q1 as well). Similarly, do any other empty directories in the manifest (e.g., `docs/architecture/decisions/`, `docs/architecture/diagrams/`) need `.gitkeep` files?
 
-> **Resolution (Backend Engineer):** Fixed. Added `.gitkeep` files to all three empty directories: `docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, and `maes/templates/.gitkeep`. Section 5.1 updated with explicit empty directory handling note. File count corrected to 17 (resolves Q1).
+> **Resolution (Backend Engineer):** Fixed. Added `.gitkeep` files to all three empty directories: `docs/architecture/decisions/.gitkeep`, `docs/architecture/diagrams/.gitkeep`, and `ptah/templates/.gitkeep`. Section 5.1 updated with explicit empty directory handling note. File count corrected to 17 (resolves Q1).
 
 ---
 
@@ -87,11 +87,11 @@ The `GitClient` interface defines `hasChanges(): Promise<boolean>` but the init 
 
 **Section:** 6 (Init Command Algorithm)
 
-The algorithm checks `git.isRepo()` but does not check for pre-existing staged changes. If the user has already staged files before running `maes init`, the `git.add(created)` + `git.commit(...)` step would commit the MAES scaffolding **plus** the user's unrelated staged changes under the `[MAES] init` commit message.
+The algorithm checks `git.isRepo()` but does not check for pre-existing staged changes. If the user has already staged files before running `ptah init`, the `git.add(created)` + `git.commit(...)` step would commit the Ptah scaffolding **plus** the user's unrelated staged changes under the `[ptah] init` commit message.
 
 **Question:** Should the algorithm check for pre-existing staged changes and either (a) warn the user, (b) stash them, or (c) document this as a known limitation? This seems like it could cause confusion and pollute the init commit.
 
-> **Resolution (Backend Engineer):** Fixed. Added Algorithm step 2: check `git.hasStagedChanges()` before any file operations. If staged changes are detected, the command exits with error: "Staged changes detected. Please commit or stash them before running 'maes init'." This is option (a) — warn and exit. We chose hard exit over stash because stashing is a destructive side effect that users may not expect from an init command.
+> **Resolution (Backend Engineer):** Fixed. Added Algorithm step 2: check `git.hasStagedChanges()` before any file operations. If staged changes are detected, the command exits with error: "Staged changes detected. Please commit or stash them before running 'ptah init'." This is option (a) — warn and exit. We chose hard exit over stash because stashing is a destructive side effect that users may not expect from an init command.
 
 ---
 
@@ -99,17 +99,17 @@ The algorithm checks `git.isRepo()` but does not check for pre-existing staged c
 
 **Section:** N/A (cross-document concern)
 
-The [traceability matrix](../requirements/traceability-matrix.md) still shows "Pending Spec" for all REQ-IN-* and REQ-NF-06 entries. Now that TSPEC-maes-init.md exists, the matrix should be updated to reference it.
+The [traceability matrix](../requirements/traceability-matrix.md) still shows "Pending Spec" for all REQ-IN-* and REQ-NF-06 entries. Now that TSPEC-ptah-init.md exists, the matrix should be updated to reference it.
 
-**Action required:** Update the Specification column for REQ-IN-01 through REQ-IN-08 and REQ-NF-06 to reference `TSPEC-maes-init`.
+**Action required:** Update the Specification column for REQ-IN-01 through REQ-IN-08 and REQ-NF-06 to reference `TSPEC-ptah-init`.
 
-> **Resolution (Backend Engineer):** Done. Updated [traceability-matrix.md](../requirements/traceability-matrix.md) v1.3: all 9 Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) now reference TSPEC-maes-init. Coverage counts updated: US-01 fully specified (9/9), 45 of 54 requirements remain pending (Phases 2-7).
+> **Resolution (Backend Engineer):** Done. Updated [traceability-matrix.md](../requirements/traceability-matrix.md) v1.3: all 9 Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) now reference TSPEC-ptah-init. Coverage counts updated: US-01 fully specified (9/9), 45 of 54 requirements remain pending (Phases 2-7).
 
 ---
 
 ### Q7: Config model version may be outdated
 
-**Section:** 5.2 (`maes.config.json` content)
+**Section:** 5.2 (`ptah.config.json` content)
 
 The config defaults to `"model": "claude-sonnet-4-20250514"`. The latest Claude Sonnet model is `claude-sonnet-4-6` (4.6). While the model field is user-editable, shipping a default that references an older model could confuse users or result in suboptimal performance out of the box.
 
@@ -123,16 +123,16 @@ The config defaults to `"model": "claude-sonnet-4-20250514"`. The latest Claude 
 
 **Section:** 3 (Project Structure)
 
-The TSPEC acknowledges that the MAES source code package (`maes/` at repo root) and the scaffolded `maes/` runtime directory (created by `maes init` inside target repos) share the same name. It states "this is acceptable" because the scaffolded files don't conflict with source code.
+The TSPEC acknowledges that the Ptah source code package (`ptah/` at repo root) and the scaffolded `ptah/` runtime directory (created by `ptah init` inside target repos) share the same name. It states "this is acceptable" because the scaffolded files don't conflict with source code.
 
-**Concern:** When a developer runs `maes init` inside the MAES source repo itself (e.g., for local testing), the scaffolded `maes/skills/` and `maes/templates/` directories would be created alongside `maes/src/`, `maes/bin/`, etc. This is technically non-conflicting but could be confusing. More importantly:
+**Concern:** When a developer runs `ptah init` inside the Ptah source repo itself (e.g., for local testing), the scaffolded `ptah/skills/` and `ptah/templates/` directories would be created alongside `ptah/src/`, `ptah/bin/`, etc. This is technically non-conflicting but could be confusing. More importantly:
 
-- Will the MAES repo's own `.gitignore` need to exclude the scaffolded files?
-- Could a contributor accidentally commit scaffolded test artifacts into the MAES source repo?
+- Will the Ptah repo's own `.gitignore` need to exclude the scaffolded files?
+- Could a contributor accidentally commit scaffolded test artifacts into the Ptah source repo?
 
-**Question:** Is this worth addressing now (e.g., by using a different directory name for the scaffolded runtime like `.maes/` or `_maes/`), or is the documented acknowledgment sufficient?
+**Question:** Is this worth addressing now (e.g., by using a different directory name for the scaffolded runtime like `.ptah/` or `_ptah/`), or is the documented acknowledgment sufficient?
 
-> **Resolution (Backend Engineer):** The documented acknowledgment is sufficient for Phase 1. Rationale: (1) The naming collision only affects MAES developers running `maes init` inside the MAES source repo — not end users. (2) The scaffolded files (`maes/skills/*.md`, `maes/templates/.gitkeep`) do not conflict with source files (`maes/src/`, `maes/bin/`). (3) Renaming to `.maes/` or `_maes/` would break the convention established in the PRD config paths and require cascading changes. (4) For MAES repo development, the test suite uses in-memory fakes — `maes init` is never actually run inside the source repo. If this becomes a practical issue during development, the MAES repo's `.gitignore` can exclude `maes/skills/` and `maes/templates/` — but this is a dev workflow concern, not a product design issue.
+> **Resolution (Backend Engineer):** The documented acknowledgment is sufficient for Phase 1. Rationale: (1) The naming collision only affects Ptah developers running `ptah init` inside the Ptah source repo — not end users. (2) The scaffolded files (`ptah/skills/*.md`, `ptah/templates/.gitkeep`) do not conflict with source files (`ptah/src/`, `ptah/bin/`). (3) Renaming to `.ptah/` or `_ptah/` would break the convention established in the PRD config paths and require cascading changes. (4) For Ptah repo development, the test suite uses in-memory fakes — `ptah init` is never actually run inside the source repo. If this becomes a practical issue during development, the Ptah repo's `.gitignore` can exclude `ptah/skills/` and `ptah/templates/` — but this is a dev workflow concern, not a product design issue.
 
 ---
 
@@ -142,9 +142,9 @@ The TSPEC acknowledges that the MAES source code package (`maes/` at repo root) 
 
 The init command scaffolds project structure but does not create a `.gitignore` file. When Phase 2+ adds `node_modules/`, `.env` files, and other build artifacts to the target repo, there will be no `.gitignore` to protect against accidental commits.
 
-**Question:** Should `maes init` scaffold a basic `.gitignore` (covering `node_modules/`, `.env`, `dist/`, etc.)? Or is this considered the user's responsibility since `maes init` targets existing repos that may already have their own `.gitignore`?
+**Question:** Should `ptah init` scaffold a basic `.gitignore` (covering `node_modules/`, `.env`, `dist/`, etc.)? Or is this considered the user's responsibility since `ptah init` targets existing repos that may already have their own `.gitignore`?
 
-> **Resolution (Backend Engineer):** No `.gitignore` scaffolding in Phase 1. Rationale: (1) `maes init` targets **existing repos** that typically already have their own `.gitignore`. Adding one could conflict with or duplicate the user's existing file. (2) The skip-existing-files logic (REQ-IN-05) would prevent overwriting an existing `.gitignore`, but appending to it is out of scope. (3) Phase 1 creates only markdown files and JSON — no `node_modules/`, `.env`, or build artifacts. The `.gitignore` need arises in Phase 2 when the MAES Orchestrator is installed as an npm dependency in the target repo. (4) Phase 2 planning should address this — likely as part of the `maes start` setup or documented in a getting-started guide.
+> **Resolution (Backend Engineer):** No `.gitignore` scaffolding in Phase 1. Rationale: (1) `ptah init` targets **existing repos** that typically already have their own `.gitignore`. Adding one could conflict with or duplicate the user's existing file. (2) The skip-existing-files logic (REQ-IN-05) would prevent overwriting an existing `.gitignore`, but appending to it is out of scope. (3) Phase 1 creates only markdown files and JSON — no `node_modules/`, `.env`, or build artifacts. The `.gitignore` need arises in Phase 2 when the Ptah Orchestrator is installed as an npm dependency in the target repo. (4) Phase 2 planning should address this — likely as part of the `ptah start` setup or documented in a getting-started guide.
 
 ---
 
@@ -152,7 +152,7 @@ The init command scaffolds project structure but does not create a `.gitignore` 
 
 **Section:** Analysis Q1 resolution
 
-The Analysis document resolved that Phase 1 (`maes init`) can skip the Functional Specification (FSPEC) phase and go directly from requirements to technical specification. The rationale is sound — `maes init` is a straightforward CLI scaffolding command with well-defined acceptance criteria.
+The Analysis document resolved that Phase 1 (`ptah init`) can skip the Functional Specification (FSPEC) phase and go directly from requirements to technical specification. The rationale is sound — `ptah init` is a straightforward CLI scaffolding command with well-defined acceptance criteria.
 
 **Confirmation needed:** I agree with this decision for Phase 1 scope. However, I want to confirm that Phase 2+ features (Orchestrator, Discord coordination, context assembly) **will** go through the full PDLC including FSPEC. These features involve complex user workflows and agent interactions that require functional specification before technical design.
 
@@ -168,7 +168,7 @@ These are not blockers but worth noting:
 
 2. **No CI/CD specification.** The TSPEC doesn't mention CI pipeline setup (e.g., running `vitest` on PR). This is likely out of scope for Phase 1 but should be considered early in Phase 2.
 
-3. **`tsx` for dev, `tsc` for production.** The dev/prod split is standard but the TSPEC doesn't specify how users will install and run `maes` — `npx`, global install, or something else. This may belong in Phase 2 planning.
+3. **`tsx` for dev, `tsc` for production.** The dev/prod split is standard but the TSPEC doesn't specify how users will install and run `ptah` — `npx`, global install, or something else. This may belong in Phase 2 planning.
 
 ---
 
@@ -197,16 +197,16 @@ All 10 questions have been resolved. Summary of changes made:
 |----------|-----------|----------------|--------------------------|
 | Q1 | File count corrected to 17 (14 content + 3 `.gitkeep`) | Yes (Section 9.3) | — |
 | Q2 | Added `.gitkeep` to 3 empty directories | Yes (Section 5.1, 5.2) | — |
-| Q3 | Recommend PM update REQ-IN-03 to include "technical context" | No (TSPEC already includes it) | **PM action needed:** REQ-MAES.md |
+| Q3 | Recommend PM update REQ-IN-03 to include "technical context" | No (TSPEC already includes it) | **PM action needed:** REQ-PTAH.md |
 | Q4 | `hasChanges()` → `hasStagedChanges()`, integrated into algorithm | Yes (Section 4.2, 6, 7.2) | — |
 | Q5 | Added staged changes pre-flight check (exit with error) | Yes (Section 6, step 2) | — |
-| Q6 | Traceability matrix updated with TSPEC-maes-init references | No | traceability-matrix.md v1.3 |
+| Q6 | Traceability matrix updated with TSPEC-ptah-init references | No | traceability-matrix.md v1.3 |
 | Q7 | Default model updated to `claude-sonnet-4-6` | Yes (Section 5.2) | — |
 | Q8 | Documented acknowledgment sufficient; no rename needed | No | — |
 | Q9 | No `.gitignore` in Phase 1; deferred to Phase 2 | No | — |
 | Q10 | Confirmed: Phase 2+ will use full PDLC with FSPEC | No | — |
 
-**Remaining PM action item:** ~~Update REQ-IN-03 acceptance criteria to include "technical context" (Q3).~~ **Done** — REQ-IN-03 updated in REQ-MAES.md v1.4.
+**Remaining PM action item:** ~~Update REQ-IN-03 acceptance criteria to include "technical context" (Q3).~~ **Done** — REQ-IN-03 updated in REQ-PTAH.md v1.4.
 
 **TSPEC status:** Rev 3 — all blocking questions (Q1-Q5) resolved. Ready for final approval pending Q3 requirement update.
 
@@ -227,10 +227,10 @@ All 10 questions have been resolved. Summary of changes made:
 | Q3 | Yes | REQ-IN-03 acceptance criteria updated by PM to include "technical context." TSPEC and requirement are now aligned |
 | Q4 | Yes | `hasChanges()` renamed to `hasStagedChanges()` in Sections 4.2, 6, 7.2, and 9.2. No dead code remains |
 | Q5 | Yes | Algorithm step 2 adds staged changes pre-flight check. Error handling table (Section 8) includes the new scenario. Test categories (Section 9.3) include "Staged changes guard" |
-| Q6 | Yes | Traceability matrix v1.3 updated — all 9 Phase 1 requirements reference TSPEC-maes-init. Coverage counts correct (US-01: 9/9 specified, 45/54 remaining) |
+| Q6 | Yes | Traceability matrix v1.3 updated — all 9 Phase 1 requirements reference TSPEC-ptah-init. Coverage counts correct (US-01: 9/9 specified, 45/54 remaining) |
 | Q7 | Yes | Default model updated to `claude-sonnet-4-6` in Section 5.2 config template |
 | Q8 | Yes | Accepted — documented acknowledgment is sufficient. No product design issue for end users |
-| Q9 | Yes | Accepted — deferred to Phase 2. Correct that `maes init` targets existing repos |
+| Q9 | Yes | Accepted — deferred to Phase 2. Correct that `ptah init` targets existing repos |
 | Q10 | Yes | Confirmed — Phase 2+ will follow full PDLC including FSPEC |
 
 ### Internal Consistency Check
@@ -244,7 +244,7 @@ All 10 questions have been resolved. Summary of changes made:
 
 ### Verdict
 
-**Approved.** The TSPEC-maes-init.md (Rev 3) is approved for engineering handoff.
+**Approved.** The TSPEC-ptah-init.md (Rev 3) is approved for engineering handoff.
 
 All 10 review questions have been resolved. The TSPEC is internally consistent, fully traceable to requirements, and addresses the key UX concern (Q5: dirty working tree). The remaining PM action item (Q3: REQ-IN-03 update) has been completed.
 

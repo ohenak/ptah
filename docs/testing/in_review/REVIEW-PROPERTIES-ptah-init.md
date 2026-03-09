@@ -1,9 +1,9 @@
-# PM Review: PROPERTIES-maes-init.md
+# PM Review: PROPERTIES-ptah-init.md
 
 | Field | Detail |
 |-------|--------|
-| **Reviewed Document** | [PROPERTIES-maes-init.md](./PROPERTIES-maes-init.md) |
-| **Cross-referenced** | [REQ-MAES.md](../../requirements/REQ-MAES.md), [TSPEC-maes-init.md](../../specifications/TSPEC-maes-init.md), [Traceability Matrix](../../requirements/traceability-matrix.md) |
+| **Reviewed Document** | [PROPERTIES-ptah-init.md](./PROPERTIES-ptah-init.md) |
+| **Cross-referenced** | [REQ-PTAH.md](../../requirements/REQ-PTAH.md), [TSPEC-ptah-init.md](../../specifications/TSPEC-ptah-init.md), [Traceability Matrix](../../requirements/traceability-matrix.md) |
 | **Date** | March 8, 2026 |
 | **Reviewer** | Product Manager |
 | **Status** | All questions resolved |
@@ -47,19 +47,19 @@ Idempotency (24-27) is placed as section 3.7 but its IDs fall between Data Integ
 
 **Section:** 3.6 (Security Properties)
 
-PROP-IN-32 states: *"`maes.config.json` must contain only env var names (`DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`), never actual secret values."*
+PROP-IN-32 states: *"`ptah.config.json` must contain only env var names (`DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`), never actual secret values."*
 
 This is inaccurate. Per TSPEC §5.2: *"`ANTHROPIC_API_KEY` is consumed by the Claude Agent SDK from the environment directly — it does not appear in the config file."*
 
-Only `DISCORD_BOT_TOKEN` appears in the config (as the value of `discord.bot_token_env`). `ANTHROPIC_API_KEY` is not referenced anywhere in `maes.config.json`.
+Only `DISCORD_BOT_TOKEN` appears in the config (as the value of `discord.bot_token_env`). `ANTHROPIC_API_KEY` is not referenced anywhere in `ptah.config.json`.
 
-**Question:** Should PROP-IN-32 be corrected to: *"`maes.config.json` must reference `DISCORD_BOT_TOKEN` only as an env var name (via `bot_token_env` field), never as a literal secret value. `ANTHROPIC_API_KEY` must not appear in the config at all."*?
+**Question:** Should PROP-IN-32 be corrected to: *"`ptah.config.json` must reference `DISCORD_BOT_TOKEN` only as an env var name (via `bot_token_env` field), never as a literal secret value. `ANTHROPIC_API_KEY` must not appear in the config at all."*?
 
 The companion negative property PROP-IN-39 has the same issue — it says the config must not contain `ANTHROPIC_API_KEY` as a literal value, but the stronger assertion is that `ANTHROPIC_API_KEY` must not appear in the config in any form.
 
 > **Resolution (Test Engineer):** Fixed. Both properties corrected:
-> - **PROP-IN-32** now states: `maes.config.json` must reference `DISCORD_BOT_TOKEN` only as an env var name (via `discord.bot_token_env` field), never as a literal secret value. `ANTHROPIC_API_KEY` must not appear in the config file in any form — it is consumed by the Claude Agent SDK from the environment directly.
-> - **PROP-IN-39** now states: `maes.config.json` must not contain any literal secret values; `ANTHROPIC_API_KEY` must not appear in the config file in any form (not as a key, value, or comment).
+> - **PROP-IN-32** now states: `ptah.config.json` must reference `DISCORD_BOT_TOKEN` only as an env var name (via `discord.bot_token_env` field), never as a literal secret value. `ANTHROPIC_API_KEY` must not appear in the config file in any form — it is consumed by the Claude Agent SDK from the environment directly.
+> - **PROP-IN-39** now states: `ptah.config.json` must not contain any literal secret values; `ANTHROPIC_API_KEY` must not appear in the config file in any form (not as a key, value, or comment).
 >
 > This accurately reflects TSPEC §5.2: only `bot_token_env` references `DISCORD_BOT_TOKEN` by env var name; `ANTHROPIC_API_KEY` is entirely absent from the config.
 
@@ -72,7 +72,7 @@ The companion negative property PROP-IN-39 has the same issue — it says the co
 There are specific data integrity properties for:
 - `docs/overview.md` content (PROP-IN-18)
 - `docs/initial_project/` template files (PROP-IN-19)
-- `maes.config.json` fields (PROP-IN-20)
+- `ptah.config.json` fields (PROP-IN-20)
 - `.gitkeep` files (PROP-IN-21)
 - Agent log files content (PROP-IN-22)
 - Skill placeholder files content (PROP-IN-23)
@@ -89,24 +89,24 @@ PROP-IN-02 covers that these files are *created*, but no property verifies their
 
 ---
 
-### Q4: No property verifies specific `maes.config.json` field values
+### Q4: No property verifies specific `ptah.config.json` field values
 
 **Section:** 3.4 (Data Integrity Properties)
 
-PROP-IN-20 verifies that `maes.config.json` contains all required top-level sections (`project`, `agents`, `discord`, `orchestrator`, `git`, `docs`). However, no property verifies specific critical field values, such as:
+PROP-IN-20 verifies that `ptah.config.json` contains all required top-level sections (`project`, `agents`, `discord`, `orchestrator`, `git`, `docs`). However, no property verifies specific critical field values, such as:
 
 - `agents.model` is `"claude-sonnet-4-6"` (updated in TSPEC Rev 3 per Q7)
 - `agents.active` contains exactly `["pm-agent", "dev-agent", "test-agent"]`
 - `orchestrator.max_turns_per_thread` is `10`
 - `orchestrator.retry_attempts` is `3`
-- `git.commit_prefix` is `"[MAES]"`
+- `git.commit_prefix` is `"[ptah]"`
 - `git.auto_commit` is `true`
 
 These values are specified exactly in the TSPEC and are important for Phase 2+ compatibility (TSPEC §11 integration point #2: "Schema must remain backward-compatible across phases").
 
 **Question:** Should PROP-IN-20 be expanded or supplemented with a property that verifies specific default values, not just structural completeness? Or is structural validation considered sufficient, with value correctness deferred to implementation review?
 
-> **Resolution (Test Engineer):** Fixed. Expanded **PROP-IN-20** to include specific default values inline: `agents.model` = `"claude-sonnet-4-6"`, `agents.active` = `["pm-agent", "dev-agent", "test-agent"]`, `orchestrator.max_turns_per_thread` = `10`, `orchestrator.retry_attempts` = `3`, `git.commit_prefix` = `"[MAES]"`, `git.auto_commit` = `true`. These are the values most critical for Phase 2+ backward compatibility (TSPEC §11 integration point #2). A single expanded property is cleaner than splitting structural and value verification into separate properties.
+> **Resolution (Test Engineer):** Fixed. Expanded **PROP-IN-20** to include specific default values inline: `agents.model` = `"claude-sonnet-4-6"`, `agents.active` = `["pm-agent", "dev-agent", "test-agent"]`, `orchestrator.max_turns_per_thread` = `10`, `orchestrator.retry_attempts` = `3`, `git.commit_prefix` = `"[ptah]"`, `git.auto_commit` = `true`. These are the values most critical for Phase 2+ backward compatibility (TSPEC §11 integration point #2). A single expanded property is cleaner than splitting structural and value verification into separate properties.
 
 ---
 
@@ -114,9 +114,9 @@ These values are specified exactly in the TSPEC and are important for Phase 2+ c
 
 **Section:** 3.5 (Integration Properties)
 
-PROP-IN-29 states: *"`maes.config.json` `agents.skills` paths must match the actual scaffolded skill file paths."*
+PROP-IN-29 states: *"`ptah.config.json` `agents.skills` paths must match the actual scaffolded skill file paths."*
 
-This property verifies that the config's `agents.skills` entries (e.g., `"./maes/skills/pm-agent.md"`) correspond to files that actually get created. With `FakeFileSystem`, this can be verified at the unit level — check that every path in the generated config exists in `FakeFileSystem.files` after `execute()`.
+This property verifies that the config's `agents.skills` entries (e.g., `"./ptah/skills/pm-agent.md"`) correspond to files that actually get created. With `FakeFileSystem`, this can be verified at the unit level — check that every path in the generated config exists in `FakeFileSystem.files` after `execute()`.
 
 **Question:** Should PROP-IN-29 be reclassified as Unit? The current classification as Integration implies it requires real filesystem verification, but the protocol-based test doubles can assert this without OS interaction. This would shift the distribution to 39 Unit / 3 Integration.
 
@@ -128,7 +128,7 @@ This property verifies that the config's `agents.skills` entries (e.g., `"./maes
 
 **Section:** 7 (Gaps and Recommendations)
 
-Gap #1 acknowledges that TSPEC §9.3 defines a "Performance guard" test category for the 30-second success metric (from REQ-MAES Section 5), but defers it because "in-memory fakes make this a sub-millisecond operation in unit tests."
+Gap #1 acknowledges that TSPEC §9.3 defines a "Performance guard" test category for the 30-second success metric (from REQ-PTAH Section 5), but defers it because "in-memory fakes make this a sub-millisecond operation in unit tests."
 
 The deferral rationale is sound for unit tests, but the properties document should still capture this as a property — properties define *what must be true*, not *how to test it*. The test execution plan can then decide the appropriate test implementation (e.g., a timeout guard on the integration test, or skipping it for unit tests).
 
@@ -160,7 +160,7 @@ This is correct but could be more precise. Per TSPEC §6, the staged changes che
 
 3. **The "out of scope" section correctly excludes Phase 2+ concerns.** This aligns with the TSPEC and requirements scope boundaries.
 
-4. **Gap #2 (CLI entry point routing) is appropriately deferred.** The `bin/maes.ts` composition root is thin enough that it doesn't warrant a property — an integration test in the execution plan will cover it.
+4. **Gap #2 (CLI entry point routing) is appropriately deferred.** The `bin/ptah.ts` composition root is thin enough that it doesn't warrant a property — an integration test in the execution plan will cover it.
 
 ---
 
@@ -210,7 +210,7 @@ All 7 questions have been resolved. Summary of changes made:
 
 ## PM Final Review (March 8, 2026)
 
-All 7 engineer resolutions have been verified against PROPERTIES-maes-init.md v1.1. Results:
+All 7 engineer resolutions have been verified against PROPERTIES-ptah-init.md v1.1. Results:
 
 | Question | Resolution Verified? | Notes |
 |----------|---------------------|-------|
@@ -235,15 +235,15 @@ All 7 engineer resolutions have been verified against PROPERTIES-maes-init.md v1
 
 ### Cross-Reference Check
 
-- **REQ-MAES.md:** All 9 Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) covered in the coverage matrix.
-- **TSPEC-maes-init.md (Rev 3):** Properties align with TSPEC changes — `.gitkeep` files (PROP-IN-21), `hasStagedChanges` (PROP-IN-13/41), 17-file count (PROP-IN-09), `claude-sonnet-4-6` model (PROP-IN-20).
+- **REQ-PTAH.md:** All 9 Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) covered in the coverage matrix.
+- **TSPEC-ptah-init.md (Rev 3):** Properties align with TSPEC changes — `.gitkeep` files (PROP-IN-21), `hasStagedChanges` (PROP-IN-13/41), 17-file count (PROP-IN-09), `claude-sonnet-4-6` model (PROP-IN-20).
 - **Traceability matrix:** No orphaned properties — every property traces to a requirement or TSPEC section.
 
 ### Decision
 
 **Status: Approved.**
 
-PROPERTIES-maes-init.md v1.1 is approved for use in test execution planning. All blocking issues (Q2 factual error, Q3 coverage gap, Q6 deferred property) and nice-to-have improvements (Q1, Q4, Q5, Q7) have been satisfactorily resolved. The document provides complete, accurate, and testable property coverage for all 9 Phase 1 `maes init` requirements.
+PROPERTIES-ptah-init.md v1.1 is approved for use in test execution planning. All blocking issues (Q2 factual error, Q3 coverage gap, Q6 deferred property) and nice-to-have improvements (Q1, Q4, Q5, Q7) have been satisfactorily resolved. The document provides complete, accurate, and testable property coverage for all 9 Phase 1 `ptah init` requirements.
 
 ---
 
