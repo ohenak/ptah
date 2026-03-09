@@ -6,6 +6,7 @@ export class FakeFileSystem implements FileSystem {
   private files = new Map<string, string>();
   private dirs = new Set<string>();
   private _cwd: string;
+  writeFileError: Error | null = null;
 
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
@@ -36,6 +37,7 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async writeFile(path: string, content: string): Promise<void> {
+    if (this.writeFileError) throw this.writeFileError;
     this.files.set(path, content);
   }
 
@@ -55,8 +57,10 @@ export class FakeGitClient implements GitClient {
   commits: string[] = [];
   addError: Error | null = null;
   commitError: Error | null = null;
+  isRepoError: Error | null = null;
 
   async isRepo(): Promise<boolean> {
+    if (this.isRepoError) throw this.isRepoError;
     return this.isRepoReturn;
   }
 

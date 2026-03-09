@@ -22,6 +22,12 @@ describe("InitCommand", () => {
         "Not a Git repository. Run 'git init' first."
       );
     });
+
+    // PROP-IN-14: Git not installed — isRepo() throws instead of returning false
+    it("propagates error when git.isRepo() throws (git not installed)", async () => {
+      git.isRepoError = new Error("spawn git ENOENT");
+      await expect(command.execute()).rejects.toThrow("spawn git ENOENT");
+    });
   });
 
   // Task 14: Error when pre-existing staged changes
@@ -33,7 +39,7 @@ describe("InitCommand", () => {
       );
     });
 
-    it("does not call fs.mkdir or fs.writeFile when staged changes exist", async () => {
+    it("does not call fs.mkdir, fs.writeFile, git.add, or git.commit when staged changes exist", async () => {
       git.hasStagedReturn = true;
       try {
         await command.execute();
@@ -44,6 +50,11 @@ describe("InitCommand", () => {
       for (const dir of DIRECTORY_MANIFEST) {
         expect(fs.hasDir(dir)).toBe(false);
       }
+      for (const [path] of Object.entries(FILE_MANIFEST)) {
+        expect(fs.getFile(path)).toBeUndefined();
+      }
+      expect(git.addedPaths).toHaveLength(0);
+      expect(git.commits).toHaveLength(0);
     });
   });
 
@@ -255,6 +266,12 @@ describe("InitCommand", () => {
     it("propagates git commit error", async () => {
       git.commitError = new Error("git commit failed");
       await expect(command.execute()).rejects.toThrow("git commit failed");
+    });
+
+    // PROP-IN-15: Permission denied on write propagates
+    it("propagates writeFile permission error", async () => {
+      fs.writeFileError = new Error("EACCES: permission denied");
+      await expect(command.execute()).rejects.toThrow("EACCES: permission denied");
     });
 
     it("files remain on disk after git add failure", async () => {

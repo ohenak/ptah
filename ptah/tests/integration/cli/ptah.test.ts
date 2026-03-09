@@ -64,6 +64,54 @@ describe("CLI integration", () => {
     });
   });
 
+  // Task 35: CLI output formatting (PROP-IN-33, 34, 35, 36)
+  describe("output formatting", () => {
+    async function initGitRepo(dir: string): Promise<void> {
+      await execFileAsync("git", ["init"], { cwd: dir });
+      await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: dir });
+      await execFileAsync("git", ["config", "user.name", "Test"], { cwd: dir });
+    }
+
+    // PROP-IN-33: stdout contains "✓  Created {path}" for each created item
+    it("prints exact '✓  Created {path}' format for created files", async () => {
+      await initGitRepo(tempDir);
+      const result = await runCli(tempDir, "init");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("✓  Created docs/overview.md");
+      expect(result.stdout).toContain("✓  Created ptah.config.json");
+    });
+
+    // PROP-IN-34: stdout contains "⊘  Skipped {path} (exists)" for each skipped item
+    it("prints exact '⊘  Skipped {path} (exists)' format for skipped files", async () => {
+      await initGitRepo(tempDir);
+      // Pre-create a file so it gets skipped
+      await nodeFs.mkdir(nodePath.join(tempDir, "docs"), { recursive: true });
+      await nodeFs.writeFile(nodePath.join(tempDir, "docs/overview.md"), "# Existing");
+      const result = await runCli(tempDir, "init");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("⊘  Skipped docs/overview.md (exists)");
+    });
+
+    // PROP-IN-35: stdout contains "ℹ  No new files created — skipping commit." when created[] is empty
+    it("prints no-new-files message when all files already exist", async () => {
+      await initGitRepo(tempDir);
+      // First run creates everything
+      await runCli(tempDir, "init");
+      // Second run — all files exist
+      const result = await runCli(tempDir, "init");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("ℹ  No new files created — skipping commit.");
+    });
+
+    // PROP-IN-36: stdout contains "✓  Committed: [ptah] init: scaffolded docs structure" after commit
+    it("prints exact committed message format after successful commit", async () => {
+      await initGitRepo(tempDir);
+      const result = await runCli(tempDir, "init");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("✓  Committed: [ptah] init: scaffolded docs structure");
+    });
+  });
+
   // Task 39: CLI exit codes
   describe("exit codes", () => {
     it("exits with 0 on success", async () => {
