@@ -5,6 +5,7 @@ export interface FileSystem {
   exists(path: string): Promise<boolean>;
   mkdir(path: string): Promise<void>;
   writeFile(path: string, content: string): Promise<void>;
+  readFile(path: string): Promise<string>;
   cwd(): string;
   basename(path: string): string;
 }
@@ -31,6 +32,10 @@ export class NodeFileSystem implements FileSystem {
 
   async writeFile(filePath: string, content: string): Promise<void> {
     await fs.writeFile(path.resolve(this._cwd, filePath), content, "utf-8");
+  }
+
+  async readFile(filePath: string): Promise<string> {
+    return fs.readFile(path.resolve(this._cwd, filePath), "utf-8");
   }
 
   cwd(): string {
