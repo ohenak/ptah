@@ -1,0 +1,23 @@
+{
+  "name": "ptah",
+  "version": "0.1.0",
+  "description": "Ptah CLI",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "ptah": "./dist/bin/ptah.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx bin/ptah.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}
