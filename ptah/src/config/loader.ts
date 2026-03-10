@@ -36,6 +36,7 @@ export class NodeConfigLoader implements ConfigLoader {
 
     this.validateStructure(parsed);
     this.validateValues(parsed as PtahConfig);
+    this.applyDefaults(parsed as Record<string, unknown>);
     return parsed as PtahConfig;
   }
 
@@ -69,6 +70,29 @@ export class NodeConfigLoader implements ConfigLoader {
     if (typeof discord.mention_user_id !== "string") {
       throw new Error('ptah.config.json is missing "discord.mention_user_id".');
     }
+
+    // Validate agents section
+    if (typeof cfg.agents !== "object" || cfg.agents === null) {
+      throw new Error('ptah.config.json is missing the "agents" section.');
+    }
+
+    const agents = cfg.agents as Record<string, unknown>;
+
+    if (!Array.isArray(agents.active) || agents.active.length === 0) {
+      throw new Error(
+        'ptah.config.json "agents.active" must be a non-empty array.',
+      );
+    }
+
+    if (
+      typeof agents.skills !== "object" ||
+      agents.skills === null ||
+      Object.keys(agents.skills as Record<string, unknown>).length === 0
+    ) {
+      throw new Error(
+        'ptah.config.json "agents.skills" must be a non-empty object.',
+      );
+    }
   }
 
   private validateValues(config: PtahConfig): void {
@@ -92,6 +116,32 @@ export class NodeConfigLoader implements ConfigLoader {
 
     if (config.discord.bot_token_env === "") {
       throw new Error("discord.bot_token_env is empty.");
+    }
+  }
+
+  private applyDefaults(config: Record<string, unknown>): void {
+    const agents = config.agents as Record<string, unknown>;
+
+    // Default agents.colours to empty object
+    if (agents.colours === undefined) {
+      agents.colours = {};
+    }
+
+    // Default agents.role_mentions to empty object
+    if (agents.role_mentions === undefined) {
+      agents.role_mentions = {};
+    }
+
+    // Default orchestrator.token_budget
+    const orchestrator = config.orchestrator as Record<string, unknown> | undefined;
+    if (orchestrator && orchestrator.token_budget === undefined) {
+      orchestrator.token_budget = {
+        layer1_pct: 0.15,
+        layer2_pct: 0.45,
+        layer3_pct: 0.10,
+        thread_pct: 0.15,
+        headroom_pct: 0.15,
+      };
     }
   }
 }
