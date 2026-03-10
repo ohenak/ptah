@@ -46,7 +46,7 @@ export class DefaultSkillInvoker implements SkillInvoker {
     const invocationId = randomBytes(4).toString("hex");
     const branch = `ptah/${bundle.agentId}/${bundle.threadId}/${invocationId}`;
     const worktreePath = join(tmpdir(), "ptah-worktrees", invocationId);
-    const timeoutMs = config.orchestrator.invocation_timeout_ms;
+    const timeoutMs = config.orchestrator.invocation_timeout_ms ?? 300_000;
 
     // Create worktree (not in try/finally — if this fails, nothing to clean up)
     await this.gitClient.createWorktree(branch, worktreePath);
