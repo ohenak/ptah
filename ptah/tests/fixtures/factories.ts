@@ -553,3 +553,31 @@ export class FakeTokenCounter implements TokenCounter {
     return Math.ceil(text.length / 4);
   }
 }
+
+// --- Thread message factory ---
+
+export interface ThreadMessageOptions {
+  id?: string;
+  threadId?: string;
+  threadName?: string;
+  parentChannelId?: string;
+  authorId?: string;
+  authorName?: string;
+  isBot?: boolean;
+  content?: string;
+  timestamp?: Date;
+}
+
+export function createThreadMessage(options: ThreadMessageOptions = {}): ThreadMessage {
+  return {
+    id: options.id ?? "msg-1",
+    threadId: options.threadId ?? "thread-1",
+    threadName: options.threadName ?? "test-thread",
+    parentChannelId: options.parentChannelId ?? "parent-1",
+    authorId: options.authorId ?? "user-1",
+    authorName: options.authorName ?? "TestUser",
+    isBot: options.isBot ?? false,
+    content: options.content ?? "test message",
+    timestamp: options.timestamp ?? new Date("2026-03-09T12:00:00Z"),
+  };
+}
