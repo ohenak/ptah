@@ -46,6 +46,7 @@ export interface PtahConfig {
     max_turns_per_thread: number;
     pending_poll_seconds: number;
     retry_attempts: number;
+    invocation_timeout_ms?: number;
     token_budget?: TokenBudgetConfig;
   };
   git: {

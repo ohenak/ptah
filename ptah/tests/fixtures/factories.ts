@@ -116,6 +116,7 @@ export class FakeGitClient implements GitClient {
   diffResult: string[] = [];
   removedWorktrees: string[] = [];
   deletedBranches: string[] = [];
+  prunedPrefixes: string[] = [];
 
   async isRepo(): Promise<boolean> {
     if (this.isRepoError) throw this.isRepoError;
@@ -155,6 +156,7 @@ export class FakeGitClient implements GitClient {
   }
 
   async pruneWorktrees(branchPrefix: string): Promise<void> {
+    this.prunedPrefixes.push(branchPrefix);
     const toRemove = this.worktrees.filter((wt) => wt.branch.startsWith(branchPrefix));
     for (const wt of toRemove) {
       await this.removeWorktree(wt.path);
@@ -284,6 +286,7 @@ export function defaultTestConfig(): PtahConfig {
       max_turns_per_thread: 10,
       pending_poll_seconds: 30,
       retry_attempts: 3,
+      invocation_timeout_ms: 90_000,
       token_budget: {
         layer1_pct: 0.15,
         layer2_pct: 0.45,
@@ -378,10 +381,14 @@ export class FakeSkillClient implements SkillClient {
   responses: SkillResponse[] = [];
   invokeError: Error | null = null;
   invocations: SkillRequest[] = [];
+  invokeDelay = 0;
   private callIndex = 0;
 
   async invoke(request: SkillRequest): Promise<SkillResponse> {
     this.invocations.push(request);
+    if (this.invokeDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.invokeDelay));
+    }
     if (this.invokeError) throw this.invokeError;
     if (this.callIndex >= this.responses.length) {
       throw new Error(
