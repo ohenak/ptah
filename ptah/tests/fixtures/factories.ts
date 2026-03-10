@@ -3,7 +3,7 @@ import type { GitClient } from "../../src/services/git.js";
 import type { DiscordClient } from "../../src/services/discord.js";
 import type { ConfigLoader } from "../../src/config/loader.js";
 import type { Logger } from "../../src/services/logger.js";
-import type { PtahConfig, ThreadMessage } from "../../src/types.js";
+import type { PtahConfig, ThreadMessage, EmbedOptions } from "../../src/types.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -99,12 +99,26 @@ export class FakeDiscordClient implements DiscordClient {
   disconnected = false;
   loginToken: string | null = null;
   connectError: Error | null = null;
+  postEmbedError: Error | null = null;
+  createThreadError: Error | null = null;
   registeredHandlers: Array<{
     parentChannelId: string;
     handler: (message: ThreadMessage) => Promise<void>;
   }> = [];
   threadHistory: Map<string, ThreadMessage[]> = new Map();
   channels: Map<string, string> = new Map();
+  postedEmbeds: EmbedOptions[] = [];
+  createdThreads: Array<{ channelId: string; name: string; initialMessage: EmbedOptions }> = [];
+  systemMessages: Array<{ threadId: string; content: string }> = [];
+  private nextMessageId = 1;
+  private nextThreadId = 1;
+  private postEmbedCallCount = 0;
+  private createThreadCallCount = 0;
+
+  /** Set to make postEmbed fail only on the Nth call (1-indexed). Resets after that call. */
+  postEmbedFailOnCall: number | null = null;
+  /** Set to make createThread fail only on the Nth call (1-indexed). Resets after that call. */
+  createThreadFailOnCall: number | null = null;
 
   async connect(token: string): Promise<void> {
     if (this.connectError) throw this.connectError;
@@ -132,6 +146,37 @@ export class FakeDiscordClient implements DiscordClient {
     return this.threadHistory.get(threadId) ?? [];
   }
 
+  async postEmbed(options: EmbedOptions): Promise<string> {
+    this.postEmbedCallCount++;
+    if (this.postEmbedFailOnCall !== null && this.postEmbedCallCount === this.postEmbedFailOnCall) {
+      const err = this.postEmbedError ?? new Error("postEmbed failed");
+      this.postEmbedFailOnCall = null;
+      this.postEmbedError = null;
+      throw err;
+    }
+    if (this.postEmbedError) throw this.postEmbedError;
+    this.postedEmbeds.push(options);
+    return `embed-msg-${this.nextMessageId++}`;
+  }
+
+  async createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string> {
+    this.createThreadCallCount++;
+    if (this.createThreadFailOnCall !== null && this.createThreadCallCount === this.createThreadFailOnCall) {
+      const err = this.createThreadError ?? new Error("createThread failed");
+      this.createThreadFailOnCall = null;
+      this.createThreadError = null;
+      throw err;
+    }
+    if (this.createThreadError) throw this.createThreadError;
+    this.createdThreads.push({ channelId, name, initialMessage });
+    const threadId = `fake-thread-${this.nextThreadId++}`;
+    return threadId;
+  }
+
+  async postSystemMessage(threadId: string, content: string): Promise<void> {
+    this.systemMessages.push({ threadId, content });
+  }
+
   async simulateMessage(message: ThreadMessage): Promise<void> {
     for (const { parentChannelId, handler } of this.registeredHandlers) {
       if (message.parentChannelId === parentChannelId) {
@@ -153,6 +198,12 @@ export function defaultTestConfig(): PtahConfig {
         "pm-agent": "./ptah/skills/pm-agent.md",
         "dev-agent": "./ptah/skills/dev-agent.md",
         "test-agent": "./ptah/skills/test-agent.md",
+      },
+      colours: {
+        "pm-agent": "#1F4E79",
+        "dev-agent": "#E65100",
+        "frontend-agent": "#6A1B9A",
+        "test-agent": "#1B5E20",
       },
       model: "claude-sonnet-4-6",
       max_tokens: 8192,

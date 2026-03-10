@@ -23,6 +23,7 @@ export interface PtahConfig {
   agents: {
     active: string[];
     skills: Record<string, string>;
+    colours: Record<string, string>;
     model: string;
     max_tokens: number;
   };
@@ -56,4 +57,18 @@ export interface ThreadMessage {
 
 export interface StartResult {
   cleanup: () => Promise<void>;
+}
+
+export interface EmbedOptions {
+  threadId: string;
+  title: string;
+  description: string;
+  colour: number;
+  footer?: string;
+}
+
+export interface PostResult {
+  messageId: string;
+  threadId: string;
+  newThreadCreated: boolean;
 }

@@ -115,6 +115,12 @@ export function buildConfig(projectName: string): string {
         "dev-agent": "./ptah/skills/dev-agent.md",
         "test-agent": "./ptah/skills/test-agent.md",
       },
+      colours: {
+        "pm-agent": "#1F4E79",
+        "dev-agent": "#E65100",
+        "frontend-agent": "#6A1B9A",
+        "test-agent": "#1B5E20",
+      },
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
     },

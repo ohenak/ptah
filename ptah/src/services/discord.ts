@@ -6,7 +6,7 @@ import {
   type Message,
   type ThreadChannel,
 } from "discord.js";
-import type { ThreadMessage } from "../types.js";
+import type { ThreadMessage, EmbedOptions } from "../types.js";
 import type { Logger } from "./logger.js";
 
 export interface DiscordClient {
@@ -18,6 +18,9 @@ export interface DiscordClient {
     handler: (message: ThreadMessage) => Promise<void>,
   ): void;
   readThreadHistory(threadId: string): Promise<ThreadMessage[]>;
+  postEmbed(options: EmbedOptions): Promise<string>;
+  createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string>;
+  postSystemMessage(threadId: string, content: string): Promise<void>;
 }
 
 function toThreadMessage(message: Message): ThreadMessage {
@@ -167,5 +170,21 @@ export class DiscordJsClient implements DiscordClient {
 
     // Convert to ThreadMessage[]
     return allMessages.map((msg) => toThreadMessage(msg));
+  }
+
+  // Phase 3: postEmbed, createThread, postSystemMessage
+  async postEmbed(options: EmbedOptions): Promise<string> {
+    // TODO: Implement with Discord.js EmbedBuilder in Phase 3
+    throw new Error("postEmbed not yet implemented");
+  }
+
+  async createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string> {
+    // TODO: Implement with Discord.js ThreadChannel in Phase 3
+    throw new Error("createThread not yet implemented");
+  }
+
+  async postSystemMessage(threadId: string, content: string): Promise<void> {
+    // TODO: Implement with Discord.js TextChannel.send in Phase 3
+    throw new Error("postSystemMessage not yet implemented");
   }
 }
