@@ -54,9 +54,9 @@ describe("DefaultSkillInvoker", () => {
       const bundle = createBundle();
       const result = await invoker.invoke(bundle, config);
 
-      // Worktree was created
-      expect(gitClient.worktrees).toHaveLength(1);
-      const worktree = gitClient.worktrees[0];
+      // Worktree was created (use createdWorktrees since cleanup removes from worktrees)
+      expect(gitClient.createdWorktrees).toHaveLength(1);
+      const worktree = gitClient.createdWorktrees[0];
       expect(worktree.path).toContain(`${os.tmpdir()}/ptah-worktrees/`);
 
       // SkillClient was invoked with correct request
@@ -93,7 +93,7 @@ describe("DefaultSkillInvoker", () => {
       const bundle = createBundle({ agentId: "pm-agent", threadId: "thread-99" });
       await invoker.invoke(bundle, config);
 
-      const branch = gitClient.worktrees[0].branch;
+      const branch = gitClient.createdWorktrees[0].branch;
       const parts = branch.split("/");
       expect(parts[0]).toBe("ptah");
       expect(parts[1]).toBe("pm-agent");
@@ -111,7 +111,7 @@ describe("DefaultSkillInvoker", () => {
       const bundle = createBundle();
       await invoker.invoke(bundle, config);
 
-      const worktree = gitClient.worktrees[0];
+      const worktree = gitClient.createdWorktrees[0];
       const tmpdir = os.tmpdir();
       expect(worktree.path).toMatch(
         new RegExp(`^${tmpdir.replace(/[/\\]/g, "[/\\\\]")}/ptah-worktrees/[0-9a-f]{8}$`)
@@ -316,7 +316,7 @@ describe("DefaultSkillInvoker", () => {
       // Warning was logged about cleanup failure
       const warnings = logger.messages.filter((m) => m.level === "warn");
       expect(
-        warnings.some((w) => w.message.includes("cleanup"))
+        warnings.some((w) => w.message.includes("Failed to cleanup worktree"))
       ).toBe(true);
     });
 
@@ -331,7 +331,7 @@ describe("DefaultSkillInvoker", () => {
 
       const warnings = logger.messages.filter((m) => m.level === "warn");
       expect(
-        warnings.some((w) => w.message.includes("cleanup") || w.message.includes("branch"))
+        warnings.some((w) => w.message.includes("Failed to cleanup branch"))
       ).toBe(true);
     });
   });

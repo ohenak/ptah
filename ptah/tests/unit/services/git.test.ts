@@ -74,7 +74,7 @@ describe("NodeGitClient — worktree operations (unit)", () => {
     it("runs git worktree add -b {branch} {path}", async () => {
       setupExecFileMock([{ stdout: "" }]);
 
-      await client.createWorktree("/tmp/wt-123", "feat/my-branch");
+      await client.createWorktree("feat/my-branch", "/tmp/wt-123");
 
       const mockFn = vi.mocked(execFile);
       expect(mockFn).toHaveBeenCalledTimes(1);
@@ -87,7 +87,7 @@ describe("NodeGitClient — worktree operations (unit)", () => {
     it("throws on failure", async () => {
       setupExecFileMock([{ error: new Error("worktree already exists") }]);
 
-      await expect(client.createWorktree("/tmp/wt-123", "feat/dup")).rejects.toThrow(
+      await expect(client.createWorktree("feat/dup", "/tmp/wt-123")).rejects.toThrow(
         "git worktree add failed",
       );
     });

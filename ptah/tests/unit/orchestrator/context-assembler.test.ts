@@ -793,7 +793,7 @@ describe("DefaultContextAssembler", () => {
 
       // Warning should be logged
       const warnings = logger.messages.filter((m) => m.level === "warn");
-      expect(warnings.some((w) => w.message.includes("fallback") || w.message.includes("char-based"))).toBe(true);
+      expect(warnings.some((w) => w.message.includes("falling back") || w.message.includes("char-based"))).toBe(true);
     });
   });
 });

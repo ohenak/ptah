@@ -521,19 +521,13 @@ describe("DiscordJsClient", () => {
       });
     });
 
-    // Task 122: splits content >4096 chars
-    it("splits content >4096 chars into numbered sequential embeds", async () => {
+    // Task 122: content >4096 chars — splitting is handled by DefaultResponsePoster, not DiscordJsClient
+    it("posts content >4096 chars as-is (splitting is ResponsePoster's responsibility)", async () => {
       const longContent = "x".repeat(5000);
-      const sentMessages: { id: string }[] = [];
-      let sendCount = 0;
+      const mockMessage = { id: "embed-msg-1" };
       const mockChannel = {
         id: "thread-1",
-        send: vi.fn().mockImplementation(() => {
-          sendCount++;
-          const msg = { id: `embed-msg-${sendCount}` };
-          sentMessages.push(msg);
-          return Promise.resolve(msg);
-        }),
+        send: vi.fn().mockResolvedValue(mockMessage),
       };
       (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
 
@@ -544,21 +538,12 @@ describe("DiscordJsClient", () => {
         colour: 0x0000FF,
       });
 
-      // Should split into 2 embeds (4096 + 904)
-      expect(mockChannel.send).toHaveBeenCalledTimes(2);
+      // DiscordJsClient.postEmbed does not split — it sends as-is
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+      expect(messageId).toBe("embed-msg-1");
 
-      // First embed should have numbered title
-      const firstCall = mockChannel.send.mock.calls[0][0];
-      expect(firstCall.embeds[0].title).toBe("Long Report (1/2)");
-      expect(firstCall.embeds[0].description).toHaveLength(4096);
-
-      // Second embed
-      const secondCall = mockChannel.send.mock.calls[1][0];
-      expect(secondCall.embeds[0].title).toBe("Long Report (2/2)");
-      expect(secondCall.embeds[0].description).toHaveLength(904);
-
-      // Returns last message ID
-      expect(messageId).toBe("embed-msg-2");
+      const sentEmbed = mockChannel.send.mock.calls[0][0];
+      expect(sentEmbed.embeds[0].description).toHaveLength(5000);
     });
   });
 
