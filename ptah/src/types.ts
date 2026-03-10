@@ -57,3 +57,28 @@ export interface ThreadMessage {
 export interface StartResult {
   cleanup: () => Promise<void>;
 }
+
+export interface SkillRequest {
+  systemPrompt: string;
+  userMessage: string;
+  worktreePath: string;
+  timeoutMs: number;
+  allowedTools?: string[];
+}
+
+export interface SkillResponse {
+  textContent: string;
+}
+
+export interface EmbedOptions {
+  threadId: string;
+  title: string;
+  description: string;
+  colour: number;
+  footer?: string;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+}

@@ -107,6 +107,54 @@ describe("NodeFileSystem", () => {
     });
   });
 
+  // Task 131: readDir()
+  describe("readDir", () => {
+    it("returns filenames in directory", async () => {
+      await nodeFs.writeFile(nodePath.join(tempDir, "alpha.txt"), "a");
+      await nodeFs.writeFile(nodePath.join(tempDir, "beta.txt"), "b");
+
+      const result = await nfs.readDir(".");
+      expect(result).toContain("alpha.txt");
+      expect(result).toContain("beta.txt");
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns empty array for non-existent directory", async () => {
+      const result = await nfs.readDir("nonexistent-dir");
+      expect(result).toEqual([]);
+    });
+
+    it("returns filenames in a subdirectory", async () => {
+      await nodeFs.mkdir(nodePath.join(tempDir, "sub"));
+      await nodeFs.writeFile(nodePath.join(tempDir, "sub", "file1.ts"), "");
+      await nodeFs.writeFile(nodePath.join(tempDir, "sub", "file2.ts"), "");
+
+      const result = await nfs.readDir("sub");
+      expect(result).toContain("file1.ts");
+      expect(result).toContain("file2.ts");
+      expect(result).toHaveLength(2);
+    });
+  });
+
+  // Task 132: joinPath()
+  describe("joinPath", () => {
+    it("joins path segments via node:path.join()", () => {
+      expect(nfs.joinPath("a", "b", "c")).toBe(nodePath.join("a", "b", "c"));
+    });
+
+    it("handles absolute paths", () => {
+      expect(nfs.joinPath("/root", "sub", "file.txt")).toBe("/root/sub/file.txt");
+    });
+
+    it("handles single segment", () => {
+      expect(nfs.joinPath("single")).toBe("single");
+    });
+
+    it("normalizes paths with ..", () => {
+      expect(nfs.joinPath("a", "b", "..", "c")).toBe(nodePath.join("a", "c"));
+    });
+  });
+
   // Task 29: cwd() and basename()
   describe("cwd and basename", () => {
     it("cwd returns the configured working directory", () => {

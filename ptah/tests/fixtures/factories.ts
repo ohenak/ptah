@@ -3,7 +3,7 @@ import type { GitClient } from "../../src/services/git.js";
 import type { DiscordClient } from "../../src/services/discord.js";
 import type { ConfigLoader } from "../../src/config/loader.js";
 import type { Logger } from "../../src/services/logger.js";
-import type { PtahConfig, ThreadMessage } from "../../src/types.js";
+import type { PtahConfig, ThreadMessage, EmbedOptions, WorktreeInfo } from "../../src/types.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -63,6 +63,14 @@ export class FakeFileSystem implements FileSystem {
   basename(path: string): string {
     return nodePath.basename(path);
   }
+
+  async readDir(_dirPath: string): Promise<string[]> {
+    return [];
+  }
+
+  joinPath(...segments: string[]): string {
+    return nodePath.join(...segments);
+  }
 }
 
 export class FakeGitClient implements GitClient {
@@ -92,6 +100,13 @@ export class FakeGitClient implements GitClient {
     if (this.commitError) throw this.commitError;
     this.commits.push(message);
   }
+
+  async createWorktree(_path: string, _branch: string): Promise<void> {}
+  async removeWorktree(_path: string): Promise<void> {}
+  async deleteBranch(_branch: string): Promise<void> {}
+  async listWorktrees(): Promise<WorktreeInfo[]> { return []; }
+  async pruneWorktrees(_branchPrefix: string): Promise<void> {}
+  async diffWorktree(_worktreePath: string): Promise<string[]> { return []; }
 }
 
 export class FakeDiscordClient implements DiscordClient {
@@ -139,6 +154,16 @@ export class FakeDiscordClient implements DiscordClient {
       }
     }
   }
+
+  async postEmbed(_options: EmbedOptions): Promise<string> {
+    return "fake-message-id";
+  }
+
+  async createThread(_channelId: string, _name: string, _initialMessage: EmbedOptions): Promise<string> {
+    return "fake-thread-id";
+  }
+
+  async postSystemMessage(_threadId: string, _content: string): Promise<void> {}
 }
 
 export function defaultTestConfig(): PtahConfig {
