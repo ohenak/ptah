@@ -6,6 +6,8 @@ export interface FileSystem {
   mkdir(path: string): Promise<void>;
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string>;
+  readDir(path: string): Promise<string[]>;
+  joinPath(...segments: string[]): string;
   cwd(): string;
   basename(path: string): string;
 }
@@ -40,6 +42,15 @@ export class NodeFileSystem implements FileSystem {
 
   cwd(): string {
     return this._cwd;
+  }
+
+  async readDir(dirPath: string): Promise<string[]> {
+    const entries = await fs.readdir(path.resolve(this._cwd, dirPath));
+    return entries;
+  }
+
+  joinPath(...segments: string[]): string {
+    return path.join(...segments);
   }
 
   basename(p: string): string {

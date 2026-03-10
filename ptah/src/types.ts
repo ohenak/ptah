@@ -15,22 +15,85 @@ export interface DiscordConfig {
   mention_user_id: string;
 }
 
+export interface TokenBudgetConfig {
+  layer1_pct: number;
+  layer2_pct: number;
+  layer3_pct: number;
+  thread_pct: number;
+  headroom_pct: number;
+}
+
+export type ResumePattern = "fresh" | "pattern_a" | "pattern_c";
+
+export interface ContextBundle {
+  systemPrompt: string;
+  userMessage: string;
+  agentId: string;
+  threadId: string;
+  featureName: string;
+  resumePattern: ResumePattern;
+  turnNumber: number;
+  tokenCounts: {
+    layer1: number;
+    layer2: number;
+    layer3: number;
+    total: number;
+  };
+}
+
+export interface PatternAContext {
+  taskReminder: string;
+  question: string;
+  answer: string;
+}
+
+export interface PatternCContext {
+  priorTurns: string[];
+  currentTurn: string;
+  turnNumber: number;
+  injectFinalReview: boolean;
+}
+
+export interface RoutingSignal {
+  type: RoutingSignalType;
+  agentId?: string;
+  question?: string;
+  threadAction?: ThreadAction;
+}
+
+export type RoutingSignalType = "handoff" | "question" | "done" | "error";
+
+export type ThreadAction = "continue" | "close";
+
+export interface EmbedOptions {
+  threadId: string;
+  title: string;
+  description: string;
+  colour: number;
+  footer?: string;
+}
+
+export interface AgentConfig {
+  active: string[];
+  skills: Record<string, string>;
+  model: string;
+  max_tokens: number;
+  colours?: Record<string, string>;
+  role_mentions?: Record<string, string>;
+}
+
 export interface PtahConfig {
   project: {
     name: string;
     version: string;
   };
-  agents: {
-    active: string[];
-    skills: Record<string, string>;
-    model: string;
-    max_tokens: number;
-  };
+  agents: AgentConfig;
   discord: DiscordConfig;
   orchestrator: {
     max_turns_per_thread: number;
     pending_poll_seconds: number;
     retry_attempts: number;
+    token_budget?: TokenBudgetConfig;
   };
   git: {
     commit_prefix: string;

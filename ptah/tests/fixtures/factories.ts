@@ -3,6 +3,7 @@ import type { GitClient } from "../../src/services/git.js";
 import type { DiscordClient } from "../../src/services/discord.js";
 import type { ConfigLoader } from "../../src/config/loader.js";
 import type { Logger } from "../../src/services/logger.js";
+import type { TokenCounter } from "../../src/orchestrator/token-counter.js";
 import type { PtahConfig, ThreadMessage } from "../../src/types.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
@@ -58,6 +59,30 @@ export class FakeFileSystem implements FileSystem {
 
   cwd(): string {
     return this._cwd;
+  }
+
+  async readDir(path: string): Promise<string[]> {
+    if (!this.dirs.has(path)) {
+      const error = new Error(`ENOENT: no such directory: ${path}`) as NodeJS.ErrnoException;
+      error.code = "ENOENT";
+      throw error;
+    }
+    const entries: string[] = [];
+    const prefix = path.endsWith("/") ? path : path + "/";
+    for (const filePath of this.files.keys()) {
+      if (filePath.startsWith(prefix)) {
+        const relative = filePath.slice(prefix.length);
+        // Only direct children (no nested path separators)
+        if (!relative.includes("/")) {
+          entries.push(relative);
+        }
+      }
+    }
+    return entries;
+  }
+
+  joinPath(...segments: string[]): string {
+    return nodePath.join(...segments);
   }
 
   basename(path: string): string {
@@ -171,6 +196,13 @@ export function defaultTestConfig(): PtahConfig {
       max_turns_per_thread: 10,
       pending_poll_seconds: 30,
       retry_attempts: 3,
+      token_budget: {
+        layer1_pct: 25,
+        layer2_pct: 35,
+        layer3_pct: 30,
+        thread_pct: 5,
+        headroom_pct: 5,
+      },
     },
     git: {
       commit_prefix: "[ptah]",
@@ -194,6 +226,17 @@ export class FakeConfigLoader implements ConfigLoader {
   async load(): Promise<PtahConfig> {
     if (this.loadError) throw this.loadError;
     return this.config;
+  }
+}
+
+export class FakeTokenCounter implements TokenCounter {
+  fixedCount: number | null = null;
+  shouldThrow = false;
+
+  count(text: string): number {
+    if (this.shouldThrow) throw new Error("Token counter error");
+    if (this.fixedCount !== null) return this.fixedCount;
+    return Math.ceil(text.length / 4);
   }
 }
 
@@ -245,4 +288,30 @@ export function createStubMessage(options: StubMessageOptions = {}): Message {
       isThread: () => options.isThread ?? true,
     },
   } as unknown as Message;
+}
+
+export interface ThreadMessageOptions {
+  id?: string;
+  threadId?: string;
+  threadName?: string;
+  parentChannelId?: string;
+  authorId?: string;
+  authorName?: string;
+  isBot?: boolean;
+  content?: string;
+  timestamp?: Date;
+}
+
+export function createThreadMessage(options: ThreadMessageOptions = {}): ThreadMessage {
+  return {
+    id: options.id ?? "msg-1",
+    threadId: options.threadId ?? "thread-1",
+    threadName: options.threadName ?? "test-thread",
+    parentChannelId: options.parentChannelId ?? "parent-1",
+    authorId: options.authorId ?? "user-1",
+    authorName: options.authorName ?? "TestUser",
+    isBot: options.isBot ?? false,
+    content: options.content ?? "test message",
+    timestamp: options.timestamp ?? new Date("2026-03-09T12:00:00Z"),
+  };
 }
