@@ -8,6 +8,11 @@ export interface GitClient {
   hasStagedChanges(): Promise<boolean>;
   add(paths: string[]): Promise<void>;
   commit(message: string): Promise<void>;
+  createWorktree(branch: string, path: string): Promise<void>;
+  removeWorktree(path: string): Promise<void>;
+  deleteBranch(branch: string): Promise<void>;
+  pruneWorktrees(branchPrefix: string): Promise<void>;
+  diffWorktree(worktreePath: string): Promise<string[]>;
 }
 
 export class NodeGitClient implements GitClient {
@@ -60,6 +65,91 @@ export class NodeGitClient implements GitClient {
     } catch (error: unknown) {
       throw new Error(
         `git commit failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async createWorktree(branch: string, path: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "add", "-b", branch, path], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree add failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async removeWorktree(path: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "remove", "--force", path], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree remove failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async deleteBranch(branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["branch", "-D", branch], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git branch delete failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async pruneWorktrees(branchPrefix: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "prune"], {
+        cwd: this.cwd,
+      });
+      // Also clean up branches matching the prefix
+      const { stdout } = await execFileAsync(
+        "git",
+        ["branch", "--list", `${branchPrefix}*`],
+        { cwd: this.cwd }
+      );
+      const branches = stdout
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
+      for (const branch of branches) {
+        try {
+          await execFileAsync("git", ["branch", "-D", branch], {
+            cwd: this.cwd,
+          });
+        } catch {
+          // Best effort cleanup
+        }
+      }
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree prune failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async diffWorktree(worktreePath: string): Promise<string[]> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["diff", "--name-only", "HEAD"],
+        { cwd: worktreePath }
+      );
+      return stdout
+        .split("\n")
+        .map((f) => f.trim())
+        .filter(Boolean);
+    } catch (error: unknown) {
+      throw new Error(
+        `git diff failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

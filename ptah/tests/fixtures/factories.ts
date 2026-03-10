@@ -3,7 +3,8 @@ import type { GitClient } from "../../src/services/git.js";
 import type { DiscordClient } from "../../src/services/discord.js";
 import type { ConfigLoader } from "../../src/config/loader.js";
 import type { Logger } from "../../src/services/logger.js";
-import type { PtahConfig, ThreadMessage } from "../../src/types.js";
+import type { PtahConfig, ThreadMessage, WorktreeInfo, SkillRequest, SkillResponse } from "../../src/types.js";
+import type { SkillClient } from "../../src/services/skill-client.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -74,6 +75,16 @@ export class FakeGitClient implements GitClient {
   commitError: Error | null = null;
   isRepoError: Error | null = null;
 
+  // Worktree support
+  worktrees: WorktreeInfo[] = [];
+  createWorktreeError: Error | null = null;
+  removeWorktreeError: Error | null = null;
+  deleteBranchError: Error | null = null;
+  diffResult: string[] = [];
+  removedWorktrees: string[] = [];
+  deletedBranches: string[] = [];
+  prunedPrefixes: string[] = [];
+
   async isRepo(): Promise<boolean> {
     if (this.isRepoError) throw this.isRepoError;
     return this.isRepoReturn;
@@ -91,6 +102,49 @@ export class FakeGitClient implements GitClient {
   async commit(message: string): Promise<void> {
     if (this.commitError) throw this.commitError;
     this.commits.push(message);
+  }
+
+  async createWorktree(branch: string, path: string): Promise<void> {
+    if (this.createWorktreeError) throw this.createWorktreeError;
+    this.worktrees.push({ path, branch });
+  }
+
+  async removeWorktree(path: string): Promise<void> {
+    if (this.removeWorktreeError) throw this.removeWorktreeError;
+    this.removedWorktrees.push(path);
+  }
+
+  async deleteBranch(branch: string): Promise<void> {
+    if (this.deleteBranchError) throw this.deleteBranchError;
+    this.deletedBranches.push(branch);
+  }
+
+  async pruneWorktrees(branchPrefix: string): Promise<void> {
+    this.prunedPrefixes.push(branchPrefix);
+  }
+
+  async diffWorktree(_worktreePath: string): Promise<string[]> {
+    return this.diffResult;
+  }
+}
+
+export class FakeSkillClient implements SkillClient {
+  responses: SkillResponse[] = [];
+  invokeError: Error | null = null;
+  invocations: SkillRequest[] = [];
+  invokeDelay = 0;
+
+  async invoke(request: SkillRequest): Promise<SkillResponse> {
+    this.invocations.push(request);
+    if (this.invokeDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.invokeDelay));
+    }
+    if (this.invokeError) throw this.invokeError;
+    const response = this.responses.shift();
+    if (!response) {
+      return { textContent: "default response" };
+    }
+    return response;
   }
 }
 
@@ -171,6 +225,7 @@ export function defaultTestConfig(): PtahConfig {
       max_turns_per_thread: 10,
       pending_poll_seconds: 30,
       retry_attempts: 3,
+      invocation_timeout_ms: 90_000,
     },
     git: {
       commit_prefix: "[ptah]",

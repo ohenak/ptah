@@ -31,6 +31,7 @@ export interface PtahConfig {
     max_turns_per_thread: number;
     pending_poll_seconds: number;
     retry_attempts: number;
+    invocation_timeout_ms: number;
   };
   git: {
     commit_prefix: string;
@@ -56,4 +57,43 @@ export interface ThreadMessage {
 
 export interface StartResult {
   cleanup: () => Promise<void>;
+}
+
+export type ResumePattern = "new" | "continue" | "revise";
+
+export interface ContextBundle {
+  systemPrompt: string;
+  userMessage: string;
+  agentId: string;
+  threadId: string;
+  featureName: string;
+  resumePattern: ResumePattern;
+  turnNumber: number;
+  tokenCounts: { layer1: number; layer2: number; layer3: number; total: number };
+}
+
+export interface SkillRequest {
+  systemPrompt: string;
+  userMessage: string;
+  worktreePath: string;
+  timeoutMs: number;
+  allowedTools?: string[];
+}
+
+export interface SkillResponse {
+  textContent: string;
+}
+
+export interface InvocationResult {
+  textResponse: string;
+  routingSignalRaw: string;
+  artifactChanges: string[];
+  worktreePath: string;
+  branch: string;
+  durationMs: number;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
 }
