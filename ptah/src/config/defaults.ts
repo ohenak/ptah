@@ -115,6 +115,13 @@ export function buildConfig(projectName: string): string {
         "dev-agent": "./ptah/skills/dev-agent.md",
         "test-agent": "./ptah/skills/test-agent.md",
       },
+      colours: {
+        "pm-agent": "#1F4E79",
+        "dev-agent": "#E65100",
+        "frontend-agent": "#6A1B9A",
+        "test-agent": "#1B5E20",
+      },
+      role_mentions: {},
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
     },
@@ -132,6 +139,13 @@ export function buildConfig(projectName: string): string {
       max_turns_per_thread: 10,
       pending_poll_seconds: 30,
       retry_attempts: 3,
+      token_budget: {
+        layer1_pct: 0.15,
+        layer2_pct: 0.45,
+        layer3_pct: 0.10,
+        thread_pct: 0.15,
+        headroom_pct: 0.15,
+      },
     },
     git: {
       commit_prefix: "[ptah]",

@@ -4,8 +4,15 @@ import {
   FakeConfigLoader,
   FakeDiscordClient,
   FakeLogger,
+  FakeRoutingEngine,
+  FakeContextAssembler,
+  FakeSkillInvoker,
+  FakeResponsePoster,
   defaultTestConfig,
+  createThreadMessage,
 } from "../../fixtures/factories.js";
+import { DefaultOrchestrator } from "../../../src/orchestrator/orchestrator.js";
+import { InMemoryThreadQueue } from "../../../src/orchestrator/thread-queue.js";
 import type { ThreadMessage } from "../../../src/types.js";
 
 describe("StartCommand", () => {
@@ -168,6 +175,130 @@ describe("StartCommand", () => {
         (m) => m.level === "info" && m.message === "Listening on #agent-updates"
       );
       expect(listeningLog).toBeDefined();
+    });
+  });
+
+  // Task 136: Orchestrator integration
+  describe("orchestrator integration", () => {
+    let orchestratorLogger: FakeLogger;
+    let skillInvoker: FakeSkillInvoker;
+    let routingEngine: FakeRoutingEngine;
+    let orchestrator: DefaultOrchestrator;
+
+    beforeEach(() => {
+      orchestratorLogger = new FakeLogger();
+      skillInvoker = new FakeSkillInvoker();
+      routingEngine = new FakeRoutingEngine();
+
+      orchestrator = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine,
+        contextAssembler: new FakeContextAssembler(),
+        skillInvoker,
+        responsePoster: new FakeResponsePoster(),
+        threadQueue: new InMemoryThreadQueue(),
+        logger: orchestratorLogger,
+        config: defaultTestConfig(),
+      });
+
+      command = new StartCommand(configLoader, discord, logger, {
+        orchestrator,
+        checkClaudeCode: async () => {}, // Skip check in tests
+      });
+
+      // Debug channel for orchestrator.startup()
+      discord.channels.set("agent-debug", "debug-channel-id");
+    });
+
+    it("calls orchestrator.startup() before accepting messages", async () => {
+      await command.execute();
+
+      // Verify pruneOrphanedWorktrees was called (via startup)
+      expect(skillInvoker.pruned).toBe(true);
+    });
+
+    it("uses orchestrator.handleMessage() as the thread message handler", async () => {
+      routingEngine.resolveHumanResult = "dev-agent";
+      routingEngine.parseResult = { type: "TASK_COMPLETE" };
+      routingEngine.decideResult = {
+        signal: { type: "TASK_COMPLETE" },
+        targetAgentId: null,
+        isTerminal: true,
+        isPaused: false,
+        createNewThread: false,
+      };
+      discord.threadHistory.set("thread-1", []);
+
+      await command.execute();
+
+      const message = createThreadMessage({
+        parentChannelId: "channel-123",
+        threadId: "thread-1",
+        content: "<@&111222333> implement feature",
+      });
+
+      await discord.simulateMessage(message);
+
+      // Wait briefly for async processing
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // The message should have been processed by orchestrator, not just logged
+      expect(routingEngine.resolveHumanCalls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // Task 137: Claude Code availability check
+  describe("claude code validation", () => {
+    it("throws with guidance when Claude Code SDK is not available", async () => {
+      const orchestrator = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine: new FakeRoutingEngine(),
+        contextAssembler: new FakeContextAssembler(),
+        skillInvoker: new FakeSkillInvoker(),
+        responsePoster: new FakeResponsePoster(),
+        threadQueue: new InMemoryThreadQueue(),
+        logger: new FakeLogger(),
+        config: defaultTestConfig(),
+      });
+
+      const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
+        orchestrator,
+        checkClaudeCode: async () => {
+          throw new Error(
+            "Claude Code SDK not available. Install it with: npm install @anthropic-ai/claude-code",
+          );
+        },
+      });
+
+      await expect(cmdWithCheck.execute()).rejects.toThrow(
+        "Claude Code SDK not available",
+      );
+    });
+
+    it("succeeds when Claude Code SDK is available", async () => {
+      const orchestrator = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine: new FakeRoutingEngine(),
+        contextAssembler: new FakeContextAssembler(),
+        skillInvoker: new FakeSkillInvoker(),
+        responsePoster: new FakeResponsePoster(),
+        threadQueue: new InMemoryThreadQueue(),
+        logger: new FakeLogger(),
+        config: defaultTestConfig(),
+      });
+
+      discord.channels.set("agent-debug", "debug-channel-id");
+
+      const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
+        orchestrator,
+        checkClaudeCode: async () => {
+          // SDK available — no-op
+        },
+      });
+
+      const result = await cmdWithCheck.execute();
+      expect(result).toBeDefined();
+      expect(typeof result.cleanup).toBe("function");
     });
   });
 });

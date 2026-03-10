@@ -6,7 +6,7 @@ import {
   type Message,
   type ThreadChannel,
 } from "discord.js";
-import type { ThreadMessage } from "../types.js";
+import type { ThreadMessage, EmbedOptions } from "../types.js";
 import type { Logger } from "./logger.js";
 
 export interface DiscordClient {
@@ -18,6 +18,11 @@ export interface DiscordClient {
     handler: (message: ThreadMessage) => Promise<void>,
   ): void;
   readThreadHistory(threadId: string): Promise<ThreadMessage[]>;
+
+  // --- Phase 3 ---
+  postEmbed(options: EmbedOptions): Promise<string>;
+  createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string>;
+  postSystemMessage(threadId: string, content: string): Promise<void>;
 }
 
 function toThreadMessage(message: Message): ThreadMessage {
@@ -167,5 +172,40 @@ export class DiscordJsClient implements DiscordClient {
 
     // Convert to ThreadMessage[]
     return allMessages.map((msg) => toThreadMessage(msg));
+  }
+
+  // --- Phase 3 methods (full implementations in service track) ---
+
+  async postEmbed(options: EmbedOptions): Promise<string> {
+    const channel = await this.client.channels.fetch(options.threadId) as ThreadChannel;
+    const message = await channel.send({
+      embeds: [{
+        title: options.title,
+        description: options.description,
+        color: options.colour,
+        footer: options.footer ? { text: options.footer } : undefined,
+      }],
+    });
+    return message.id;
+  }
+
+  async createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string> {
+    const channel = await this.client.channels.fetch(channelId) as ThreadChannel;
+    const parent = channel.isThread() ? channel.parent! : channel;
+    const thread = await (parent as unknown as { threads: { create: (opts: unknown) => Promise<ThreadChannel> } }).threads.create({
+      name,
+      type: ChannelType.PublicThread,
+    });
+    await this.postEmbed({ ...initialMessage, threadId: thread.id });
+    return thread.id;
+  }
+
+  async postSystemMessage(threadId: string, content: string): Promise<void> {
+    await this.postEmbed({
+      threadId,
+      title: "System",
+      description: content,
+      colour: 0x9E9E9E,
+    });
   }
 }

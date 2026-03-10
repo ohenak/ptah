@@ -144,6 +144,29 @@ describe("buildConfig", () => {
     expect(parsed.git.auto_commit).toBe(true);
   });
 
+  // Task 135: buildConfig includes agents.colours, agents.role_mentions, orchestrator.token_budget
+  it("includes agents.colours in generated config", () => {
+    const config = buildConfig("test-project");
+    const parsed = JSON.parse(config);
+    expect(parsed.agents.colours).toBeDefined();
+    expect(typeof parsed.agents.colours).toBe("object");
+  });
+
+  it("includes agents.role_mentions placeholder in generated config", () => {
+    const config = buildConfig("test-project");
+    const parsed = JSON.parse(config);
+    expect(parsed.agents.role_mentions).toBeDefined();
+    expect(typeof parsed.agents.role_mentions).toBe("object");
+  });
+
+  it("includes orchestrator.token_budget in generated config", () => {
+    const config = buildConfig("test-project");
+    const parsed = JSON.parse(config);
+    expect(parsed.orchestrator.token_budget).toBeDefined();
+    expect(parsed.orchestrator.token_budget.layer1_pct).toBe(0.15);
+    expect(parsed.orchestrator.token_budget.layer2_pct).toBe(0.45);
+  });
+
   it("contains discord section with env var name for bot token", () => {
     const config = buildConfig("test");
     const parsed = JSON.parse(config);

@@ -34,6 +34,12 @@ describe("NodeConfigLoader integration", () => {
           "dev-agent": "./ptah/skills/dev-agent.md",
           "test-agent": "./ptah/skills/test-agent.md",
         },
+        colours: {
+          "pm-agent": "#1F4E79",
+          "dev-agent": "#E65100",
+          "frontend-agent": "#6A1B9A",
+          "test-agent": "#1B5E20",
+        },
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
       },
@@ -71,7 +77,25 @@ describe("NodeConfigLoader integration", () => {
     const loader = new NodeConfigLoader(fs);
     const result = await loader.load();
 
-    expect(result).toEqual(expected);
+    // Defaults are applied for missing optional fields
+    const expectedWithDefaults = {
+      ...expected,
+      agents: {
+        ...expected.agents,
+        role_mentions: {},
+      },
+      orchestrator: {
+        ...expected.orchestrator,
+        token_budget: {
+          layer1_pct: 0.15,
+          layer2_pct: 0.45,
+          layer3_pct: 0.10,
+          thread_pct: 0.15,
+          headroom_pct: 0.15,
+        },
+      },
+    };
+    expect(result).toEqual(expectedWithDefaults);
     expect(result.project.name).toBe("test-project");
     expect(result.discord.server_id).toBe("test-server-123");
     expect(result.discord.channels.updates).toBe("agent-updates");

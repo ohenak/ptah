@@ -3,11 +3,21 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+import type { WorktreeInfo } from "../types.js";
+
 export interface GitClient {
   isRepo(): Promise<boolean>;
   hasStagedChanges(): Promise<boolean>;
   add(paths: string[]): Promise<void>;
   commit(message: string): Promise<void>;
+
+  // --- Phase 3 ---
+  createWorktree(branch: string, path: string): Promise<void>;
+  removeWorktree(path: string): Promise<void>;
+  deleteBranch(branch: string): Promise<void>;
+  listWorktrees(): Promise<WorktreeInfo[]>;
+  pruneWorktrees(branchPrefix: string): Promise<void>;
+  diffWorktree(worktreePath: string): Promise<string[]>;
 }
 
 export class NodeGitClient implements GitClient {
@@ -60,6 +70,96 @@ export class NodeGitClient implements GitClient {
     } catch (error: unknown) {
       throw new Error(
         `git commit failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  // --- Phase 3 worktree operations (implementations in service track) ---
+
+  async createWorktree(branch: string, path: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "add", "-b", branch, path], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree add failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async removeWorktree(path: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "remove", "--force", path], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree remove failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async deleteBranch(branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["branch", "-D", branch], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git branch delete failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async listWorktrees(): Promise<WorktreeInfo[]> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["worktree", "list", "--porcelain"],
+        { cwd: this.cwd },
+      );
+      const worktrees: WorktreeInfo[] = [];
+      let currentPath = "";
+      for (const line of stdout.split("\n")) {
+        if (line.startsWith("worktree ")) {
+          currentPath = line.slice("worktree ".length);
+        } else if (line.startsWith("branch refs/heads/")) {
+          worktrees.push({
+            path: currentPath,
+            branch: line.slice("branch refs/heads/".length),
+          });
+        }
+      }
+      return worktrees;
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree list failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async pruneWorktrees(branchPrefix: string): Promise<void> {
+    const worktrees = await this.listWorktrees();
+    for (const wt of worktrees) {
+      if (wt.branch.startsWith(branchPrefix)) {
+        await this.removeWorktree(wt.path);
+        await this.deleteBranch(wt.branch);
+      }
+    }
+  }
+
+  async diffWorktree(worktreePath: string): Promise<string[]> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["diff", "--name-only", "HEAD"],
+        { cwd: worktreePath },
+      );
+      return stdout.trim().split("\n").filter(Boolean);
+    } catch (error: unknown) {
+      throw new Error(
+        `git diff failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

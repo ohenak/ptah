@@ -467,6 +467,148 @@ describe("DiscordJsClient", () => {
     });
   });
 
+  // Task 121: postEmbed()
+  describe("postEmbed", () => {
+    it("posts a colour-coded embed to the specified thread, returns message ID", async () => {
+      const mockMessage = { id: "embed-msg-1" };
+      const mockChannel = {
+        id: "thread-1",
+        send: vi.fn().mockResolvedValue(mockMessage),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      const messageId = await discordClient.postEmbed({
+        threadId: "thread-1",
+        title: "Status Update",
+        description: "All tests passed",
+        colour: 0x00FF00,
+        footer: "v1.0.0",
+      });
+
+      expect(messageId).toBe("embed-msg-1");
+      expect(mockChannel.send).toHaveBeenCalledWith({
+        embeds: [{
+          title: "Status Update",
+          description: "All tests passed",
+          color: 0x00FF00,
+          footer: { text: "v1.0.0" },
+        }],
+      });
+    });
+
+    it("omits footer when not provided", async () => {
+      const mockMessage = { id: "embed-msg-2" };
+      const mockChannel = {
+        id: "thread-1",
+        send: vi.fn().mockResolvedValue(mockMessage),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      await discordClient.postEmbed({
+        threadId: "thread-1",
+        title: "Test",
+        description: "content",
+        colour: 0xFF0000,
+      });
+
+      expect(mockChannel.send).toHaveBeenCalledWith({
+        embeds: [{
+          title: "Test",
+          description: "content",
+          color: 0xFF0000,
+          footer: undefined,
+        }],
+      });
+    });
+
+    // Task 122: content >4096 chars — splitting is handled by DefaultResponsePoster, not DiscordJsClient
+    it("posts content >4096 chars as-is (splitting is ResponsePoster's responsibility)", async () => {
+      const longContent = "x".repeat(5000);
+      const mockMessage = { id: "embed-msg-1" };
+      const mockChannel = {
+        id: "thread-1",
+        send: vi.fn().mockResolvedValue(mockMessage),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      const messageId = await discordClient.postEmbed({
+        threadId: "thread-1",
+        title: "Long Report",
+        description: longContent,
+        colour: 0x0000FF,
+      });
+
+      // DiscordJsClient.postEmbed does not split — it sends as-is
+      expect(mockChannel.send).toHaveBeenCalledTimes(1);
+      expect(messageId).toBe("embed-msg-1");
+
+      const sentEmbed = mockChannel.send.mock.calls[0][0];
+      expect(sentEmbed.embeds[0].description).toHaveLength(5000);
+    });
+  });
+
+  // Task 123: createThread()
+  describe("createThread", () => {
+    it("creates thread with name and initial embed, returns thread ID", async () => {
+      const mockThread = {
+        id: "new-thread-1",
+        send: vi.fn().mockResolvedValue({ id: "initial-msg-1" }),
+      };
+
+      const mockParentChannel = {
+        id: "channel-1",
+        isThread: () => false,
+        threads: {
+          create: vi.fn().mockResolvedValue(mockThread),
+        },
+      };
+
+      // First call: fetch parent channel for createThread
+      // Second call: fetch thread channel for postEmbed
+      (stubClient as any).channels.fetch
+        .mockResolvedValueOnce(mockParentChannel)
+        .mockResolvedValueOnce(mockThread);
+
+      const threadId = await discordClient.createThread("channel-1", "my-thread", {
+        threadId: "", // will be overridden
+        title: "Welcome",
+        description: "Thread started",
+        colour: 0x00FF00,
+      });
+
+      expect(threadId).toBe("new-thread-1");
+      expect(mockParentChannel.threads.create).toHaveBeenCalledWith({
+        name: "my-thread",
+        type: ChannelType.PublicThread,
+      });
+      // Verify postEmbed was called on the thread
+      expect(mockThread.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Task 124: postSystemMessage()
+  describe("postSystemMessage", () => {
+    it("posts Gray embed to thread", async () => {
+      const mockMessage = { id: "sys-msg-1" };
+      const mockChannel = {
+        id: "thread-1",
+        send: vi.fn().mockResolvedValue(mockMessage),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      await discordClient.postSystemMessage("thread-1", "System initialized");
+
+      expect(mockChannel.send).toHaveBeenCalledWith({
+        embeds: [{
+          title: "System",
+          description: "System initialized",
+          color: 0x9E9E9E,
+          footer: undefined,
+        }],
+      });
+    });
+  });
+
   // Task 33: Internal warn/error listeners
   describe("internal warn/error listeners", () => {
     it("logs warn messages from discord.js client via Logger", () => {

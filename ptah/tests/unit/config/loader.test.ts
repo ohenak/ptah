@@ -212,6 +212,119 @@ describe("NodeConfigLoader", () => {
     });
   });
 
+  // Task 133: agents.active and agents.skills validation
+  describe("agents validation", () => {
+    it('throws when agents.active is missing', async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agents.active;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json "agents.active" must be a non-empty array.',
+      );
+    });
+
+    it('throws when agents.active is empty array', async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agents.active = [];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json "agents.active" must be a non-empty array.',
+      );
+    });
+
+    it('throws when agents.skills is missing', async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agents.skills;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json "agents.skills" must be a non-empty object.',
+      );
+    });
+
+    it('throws when agents.skills is empty object', async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agents.skills = {};
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json "agents.skills" must be a non-empty object.',
+      );
+    });
+
+    it('throws when agents section is missing entirely', async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agents;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json is missing the "agents" section.',
+      );
+    });
+  });
+
+  // Task 134: applies defaults for new optional fields
+  describe("default application", () => {
+    it("applies default agents.colours when missing", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agents.colours;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agents.colours).toEqual({});
+    });
+
+    it("applies default agents.role_mentions when missing", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agents.role_mentions;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agents.role_mentions).toEqual({});
+    });
+
+    it("applies default orchestrator.token_budget when missing", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.orchestrator.token_budget;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.orchestrator.token_budget).toEqual({
+        layer1_pct: 0.15,
+        layer2_pct: 0.45,
+        layer3_pct: 0.10,
+        thread_pct: 0.15,
+        headroom_pct: 0.15,
+      });
+    });
+
+    it("preserves existing agents.colours when provided", async () => {
+      const config = defaultTestConfig();
+      fs.addExisting("ptah.config.json", JSON.stringify(config));
+
+      const result = await loader.load();
+      expect(result.agents.colours).toEqual(config.agents.colours);
+    });
+
+    it("preserves existing orchestrator.token_budget when provided", async () => {
+      const config = defaultTestConfig();
+      fs.addExisting("ptah.config.json", JSON.stringify(config));
+
+      const result = await loader.load();
+      expect(result.orchestrator.token_budget).toEqual(config.orchestrator.token_budget);
+    });
+  });
+
   // Task 16: Happy path
   describe("happy path", () => {
     it("returns typed PtahConfig with all fields correctly parsed", async () => {
