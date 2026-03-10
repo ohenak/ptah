@@ -25,6 +25,8 @@ export interface PtahConfig {
     skills: Record<string, string>;
     model: string;
     max_tokens: number;
+    colours?: Record<string, string>;
+    role_mentions?: Record<string, string>;
   };
   discord: DiscordConfig;
   orchestrator: {
@@ -56,4 +58,22 @@ export interface ThreadMessage {
 
 export interface StartResult {
   cleanup: () => Promise<void>;
+}
+
+export type RoutingSignalType = "ROUTE_TO_AGENT" | "ROUTE_TO_USER" | "LGTM" | "TASK_COMPLETE";
+export type ThreadAction = "reply" | "new_thread";
+
+export interface RoutingSignal {
+  type: RoutingSignalType;
+  agentId?: string;
+  question?: string;
+  threadAction?: ThreadAction;
+}
+
+export interface RoutingDecision {
+  signal: RoutingSignal;
+  targetAgentId: string | null;
+  isTerminal: boolean;
+  isPaused: boolean;
+  createNewThread: boolean;
 }
