@@ -97,7 +97,7 @@ Implement new fakes and extend existing ones for Phase 3 testing. Fakes with non
 - [x] TypeScript compiler accepts all new types and protocols (`npm run build`)
 - [x] Existing Phase 1/2 tests remain green (no regressions) — 209 tests pass
 - [x] FakeSkillClient dedicated test passes — 5 tests
-- [ ] Changes committed in logical units with `type(scope): description` format
+- [x] Changes committed in logical units with `type(scope): description` format
 
 ---
 
