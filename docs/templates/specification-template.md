@@ -1,201 +1,206 @@
-# Specification Document
-
-## {Product or Feature Name}
+# Technical Specification: {Feature Title}
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | SPEC-{feature-code} |
-| **Parent Document** | [REQ-{feature-code}](../requirements/REQ-{feature-name}.md) |
-| **Version** | 1.0 |
+| **Requirements** | [REQ-{XX}-{NN}](../requirements/{NNN}-REQ-{product}.md) |
+| **Analysis** | [ANALYSIS-{feature-name}](./ANALYSIS-{feature-name}.md) |
 | **Date** | {Date} |
-| **Author** | Product Manager |
-| **Status** | Draft / In Review / Approved |
-| **Approval Date** | {Date when user approved, or "Pending"} |
+| **Status** | Draft / Approved (Rev N) |
 
 ---
 
-## 1. Overview
+## 1. Summary
 
-{Brief description of what this specification covers. Summarize the requirements it addresses and the overall design approach.}
-
-### 1.1 Scope
-
-**In scope:**
-- {What this specification covers}
-
-**Out of scope:**
-- {What is explicitly excluded and why}
-
-### 1.2 Referenced Requirements
-
-| Requirement ID | Title | Priority | Phase |
-|----------------|-------|----------|-------|
-| [REQ-{XX}-01] | {Title} | P0 | 1 |
-| [REQ-{XX}-02] | {Title} | P1 | 2 |
-
-{List all requirements this specification addresses.}
+{What is being built technically, in 2-3 sentences. State the scope and how it relates to previous/future phases.}
 
 ---
 
-## 2. Specifications
+## 2. Technology Stack
 
-Specifications are grouped by the same functional domains used in the Requirements Document.
+| Concern | Choice | Rationale |
+|---------|--------|-----------|
+| Runtime | {e.g., Node.js 20 LTS} | {Why this choice} |
+| Language | {e.g., TypeScript 5.x} | {Why this choice} |
+| Libraries | {e.g., discord.js v14} | {Why this choice} |
+| Test framework | {e.g., Vitest} | {Why this choice} |
+| CLI entry point | {e.g., bin/ptah.ts via tsx} | {Why this choice} |
 
-### 2.1 {Domain Name} ({DOMAIN-CODE})
+{Note any new dependencies being added.}
 
-#### SPEC-{XX}-01: {Specification Title}
+---
 
-| Field | Detail |
-|-------|--------|
-| **Linked Requirements** | [REQ-{XX}-01], [REQ-{XX}-02] |
-| **Priority** | P0/P1/P2 (inherited from highest-priority linked requirement) |
-| **Phase** | {Phase} |
-
-**Description:**
-
-{Detailed explanation of the solution design. What will be built and how it will work at a level sufficient for engineers to implement.}
-
-**Behavior:**
-
-{Expected system behavior in normal conditions, described step by step.}
-
-1. {Step 1}
-2. {Step 2}
-3. {Step 3}
-
-**Edge Cases:**
-
-| Condition | Expected Behavior |
-|-----------|-------------------|
-| {Edge case 1} | {What the system does} |
-| {Edge case 2} | {What the system does} |
-
-**Data Model:**
-
-{Relevant data structures, schemas, or models. Use code blocks for schemas.}
+## 3. Project Structure
 
 ```
-{
-  "field_name": "type — description",
-  "field_name": "type — description"
+project/
+├── src/
+│   ├── commands/
+│   │   └── {command}.ts              ← NEW / UPDATED
+│   ├── services/
+│   │   └── {service}.ts              ← NEW / UPDATED
+│   ├── config/
+│   │   └── {config}.ts               ← NEW / UPDATED
+│   └── types.ts                       ← UPDATED
+├── bin/
+│   └── {entry}.ts                     ← UPDATED
+└── tests/
+    ├── unit/
+    │   └── ...                        ← NEW
+    ├── integration/
+    │   └── ...                        ← NEW / UPDATED
+    └── fixtures/
+        └── factories.ts               ← UPDATED
+```
+
+---
+
+## 4. Module Architecture
+
+### 4.1 Dependency Graph
+
+```
+bin/{entry}.ts
+  └── src/commands/{command}.ts
+        ├── src/config/{loader}.ts (Protocol)
+        │     └── src/services/{filesystem}.ts (Protocol)
+        ├── src/services/{service}.ts (Protocol)
+        └── src/services/{logger}.ts (Protocol)
+```
+
+### 4.2 Protocols (Interfaces)
+
+#### {Protocol Name}
+
+```typescript
+// src/{path}/{file}.ts
+
+interface {ProtocolName} {
+  {method}({params}): {ReturnType};
 }
 ```
 
-**API / Interface:**
+| Method | Behavior |
+|--------|----------|
+| `{method}({params})` | {What it does, returns, throws} |
 
-{Endpoints, function signatures, UI elements, or interaction flows. Use code blocks for API definitions.}
+{Repeat for each protocol.}
+
+### 4.3 Types
+
+```typescript
+// src/types.ts
+
+interface {TypeName} {
+  {field}: {type};   // {description}
+}
+```
+
+{Design rationale for type decisions.}
+
+### 4.4 Concrete Implementations
+
+- `{ClassName}` — {what it wraps/implements, constructor dependencies}
+
+### 4.5 Composition Root
+
+```typescript
+// bin/{entry}.ts — wiring
+
+const {dep1} = new {Concrete1}();
+const {dep2} = new {Concrete2}({dep1});
+const command = new {Command}({dep1}, {dep2});
+await command.execute();
+```
+
+---
+
+## 5. {Core Algorithm / Command Algorithm}
 
 ```
-{METHOD} /api/{resource}
-Request: { ... }
-Response: { ... }
+1. {Step description}
+   a. {Sub-step}
+   b. {Sub-step}
+
+2. {Step description}
+   a. {Sub-step}
+   b. On failure: {error behavior}
+
+3. ...
 ```
 
-**Constraints:**
-
-- {Technical constraint or performance target}
-- {Compatibility requirement}
-
-**Acceptance Tests:**
-
-| Test ID | Scenario | Steps | Expected Result |
-|---------|----------|-------|-----------------|
-| T-{XX}-01-01 | {Test scenario name} | {Steps to execute} | {Expected outcome} |
-| T-{XX}-01-02 | {Test scenario name} | {Steps} | {Expected outcome} |
-
-**Dependencies:**
-
-- {Other specifications, external systems, or APIs this depends on}
-
-**Open Questions:**
-
-- {Any unresolved design decisions flagged for engineering review}
+{Design rationale for algorithm choices, referencing TE Review items or Analysis resolutions.}
 
 ---
 
-#### SPEC-{XX}-02: {Specification Title}
+## 6. {Validation / Business Rules}
 
-| Field | Detail |
-|-------|--------|
-| **Linked Requirements** | [REQ-{XX}-03] |
-| **Priority** | P0/P1/P2 |
-| **Phase** | {Phase} |
+{If the feature has validation logic, error handling tables, or business rules, document them here.}
 
-{Follow the same structure as SPEC-{XX}-01 above.}
+| Check | Rule | Error Message |
+|-------|------|---------------|
+| {What is checked} | {Validation rule} | `{exact error message}` |
 
 ---
 
-### 2.2 {Domain Name} ({DOMAIN-CODE})
+## 7. Error Handling
 
-#### SPEC-{YY}-01: {Specification Title}
-
-{Follow the same structure.}
-
----
-
-## 3. Non-Functional Specifications
-
-### SPEC-NF-01: {Title, e.g., Response Latency}
-
-| Field | Detail |
-|-------|--------|
-| **Linked Requirements** | [REQ-NF-01] |
-| **Priority** | P0 |
-| **Phase** | {Phase} |
-
-**Description:**
-
-{How the non-functional requirement will be met. Include specific technical approaches.}
-
-**Metrics and Targets:**
-
-| Metric | Target | Measurement Method |
-|--------|--------|-------------------|
-| {e.g., 95th percentile latency} | {e.g., < 5 seconds} | {e.g., APM monitoring} |
-
-**Implementation Approach:**
-
-{Technical strategy for meeting the requirement.}
+| Scenario | Behavior | Exit Code |
+|----------|----------|-----------|
+| {Error scenario} | `logger.error("{message}")` | 1 |
+| {Normal shutdown} | {Graceful behavior} | 0 |
 
 ---
 
-## 4. Specification Summary
+## 8. Test Strategy
 
-### Coverage Matrix
+### 8.1 Approach
 
-| Requirement | Specifications | Status |
-|-------------|---------------|--------|
-| [REQ-{XX}-01] | [SPEC-{XX}-01] | Specified |
-| [REQ-{XX}-02] | [SPEC-{XX}-01], [SPEC-{XX}-02] | Specified |
-| [REQ-{YY}-01] | [SPEC-{YY}-01] | Specified |
-| [REQ-NF-01] | [SPEC-NF-01] | Specified |
+{Overall testing approach. Reference project conventions (protocol-based DI, fakes, etc.)}
 
-{Verify every requirement has at least one specification. Flag any gaps.}
+### 8.2 Test Doubles
 
-### Open Questions Summary
+```typescript
+// tests/fixtures/factories.ts
 
-| ID | Question | Context | Blocking? |
-|----|----------|---------|-----------|
-| OQ-01 | {Unresolved question} | {Which spec it relates to} | Yes/No |
-| OQ-02 | {Question} | {Context} | Yes/No |
+class {FakeName} implements {Protocol} {
+  // ... fake implementation with error injection support
+}
+```
 
----
+{Design rationale for each test double. Note which fakes get dedicated test files vs implicit validation.}
 
-## 5. Approval
+### 8.3 Test Categories
 
-| Role | Name | Date | Status |
-|------|------|------|--------|
-| Product Owner | {Name} | {Date} | Pending / Approved |
-| Technical Lead | {Name} | {Date} | Pending / Approved |
+| Category | What is tested | Test file |
+|----------|---------------|-----------|
+| {Category name} | {Description} | `tests/{path}/{file}.test.ts` |
 
 ---
 
-## Change Log
+## 9. Requirement → Technical Component Mapping
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | {Date} | {Author} | Initial specification document |
+| Requirement | Technical Component(s) | Description |
+|-------------|----------------------|-------------|
+| REQ-{XX}-{NN} | {Protocol, implementation, types} | {How this requirement is technically realized} |
 
 ---
 
-*End of Document*
+## 10. Integration Points
+
+| # | Location | Description | Impact |
+|---|----------|-------------|--------|
+| 1 | {file path} | {How this integrates} | {What changes are needed} |
+
+---
+
+## 11. Open Questions
+
+| # | Item | Type | Resolution |
+|---|------|------|------------|
+| — | None | — | All questions resolved in Analysis phase |
+
+{Or list open questions with options for resolution.}
+
+---
+
+*Gate: User reviews and approves this technical specification before proceeding to Planning.*
