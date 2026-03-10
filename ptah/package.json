@@ -16,6 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.72",
     "discord.js": "^14.25.1"
   },
   "devDependencies": {
