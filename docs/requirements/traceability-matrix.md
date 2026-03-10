@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | March 8, 2026 |
-| **Version** | 1.3 |
+| **Date** | March 9, 2026 |
+| **Version** | 1.4 |
 | **Status** | Draft |
 
 ---
@@ -36,48 +36,48 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02], [US-04] | [REQ-DI-01] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-05] | [REQ-DI-02] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-04] | [REQ-DI-03] | Pending Spec | P0 | 2 | Pending Spec |
-| [US-02], [US-05] | [REQ-DI-04] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-02] | [REQ-DI-05] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-02], [US-05] | [REQ-DI-04] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-02] | [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-06] | Pending Spec | P1 | 7 | Pending Spec |
 | [US-03] | [REQ-DI-07] | Pending Spec | P0 | 5 | Pending Spec |
 | [US-02], [US-07] | [REQ-DI-08] | Pending Spec | P0 | 6 | Pending Spec |
-| [US-02], [US-04] | [REQ-DI-09] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-01] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-02] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-03] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-04] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-05] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04] | [REQ-CB-06] | Pending Spec | P1 | 3 | Pending Spec |
-| [US-02], [US-04] | [REQ-RP-01] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-02], [US-04] | [REQ-DI-09] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-01] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-02] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-03] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-04] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-05] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04] | [REQ-CB-06] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P1 | 3 | FSPEC Complete |
+| [US-02], [US-04] | [REQ-RP-01] | [FSPEC-RP-02](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-03], [US-04] | [REQ-RP-02] | Pending Spec | P0 | 5 | Pending Spec |
-| [US-02], [US-04] | [REQ-RP-03] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-02] | [REQ-RP-04] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-02], [US-04] | [REQ-RP-03] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-02] | [REQ-RP-04] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02], [US-07] | [REQ-RP-05] | Pending Spec | P0 | 6 | Pending Spec |
 | [US-03] | [REQ-PQ-01] | Pending Spec | P0 | 5 | Pending Spec |
 | [US-03] | [REQ-PQ-02] | Pending Spec | P0 | 5 | Pending Spec |
 | [US-03] | [REQ-PQ-03] | Pending Spec | P0 | 5 | Pending Spec |
 | [US-03] | [REQ-PQ-04] | Pending Spec | P0 | 5 | Pending Spec |
 | [US-03] | [REQ-PQ-05] | Pending Spec | P0 | 5 | Pending Spec |
-| [US-04], [US-06] | [REQ-SI-01] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-06] | [REQ-SI-02] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-02] | [REQ-SI-03] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-02], [US-03] | [REQ-SI-04] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-04], [US-06] | [REQ-SI-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-06] | [REQ-SI-02] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-02] | [REQ-SI-03] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-02], [US-03] | [REQ-SI-04] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-SI-05] | Pending Spec | P0 | 4 | Pending Spec |
 | [US-06] | [REQ-SI-06] | Pending Spec | P0 | 4 | Pending Spec |
 | [US-07] | [REQ-SI-07] | Pending Spec | P0 | 6 | Pending Spec |
 | [US-07] | [REQ-SI-08] | Pending Spec | P0 | 6 | Pending Spec |
 | [US-06], [US-07] | [REQ-SI-09] | Pending Spec | P0 | 4 | Pending Spec |
 | [US-05], [US-07] | [REQ-SI-10] | Pending Spec | P0 | 6 | Pending Spec |
-| [US-02], [US-04], [US-06] | [REQ-SI-11] | Pending Spec | P0 | 3 | Pending Spec |
-| [US-04], [US-06] | [REQ-SI-12] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-02], [US-04], [US-06] | [REQ-SI-11] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
+| [US-04], [US-06] | [REQ-SI-12] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-SI-13] | Pending Spec | P0 | 4 | Pending Spec |
-| [US-04] | [REQ-NF-01] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-04] | [REQ-NF-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-07] | [REQ-NF-02] | Pending Spec | P0 | 6 | Pending Spec |
 | [US-06] | [REQ-NF-03] | Pending Spec | P0 | 4 | Pending Spec |
-| [US-04] | [REQ-NF-04] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-04] | [REQ-NF-04] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-NF-05] | Pending Spec | P0 | 4 | Pending Spec |
 | [US-01], [US-05] | [REQ-NF-06] | [TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md) | P0 | 1 | Specified |
-| [US-04], [US-06] | [REQ-NF-07] | Pending Spec | P0 | 3 | Pending Spec |
+| [US-04], [US-06] | [REQ-NF-07] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-08] | [REQ-NF-08] | Pending Spec | P1 | 7 | Pending Spec |
 
 ---
@@ -89,11 +89,11 @@ This matrix provides full traceability from user scenarios through requirements 
 | User Scenario | Title | Requirement Count | Fully Specified? |
 |---------------|-------|-------------------|------------------|
 | [US-01] | Developer Bootstraps Ptah in an Existing Repository | 9 | Yes (9 of 9 specified) |
-| [US-02] | Orchestrator Coordinates Agent-to-Agent Review | 14 | No (0 of 14 specified) |
-| [US-03] | Agent Asks User a Blocking Question | 8 | No (0 of 8 specified) |
-| [US-04] | Orchestrator Assembles Context for Stateless Skill Invocation | 17 | No (0 of 17 specified) |
-| [US-05] | Developer Launches and Monitors the Orchestrator | 5 | No (0 of 5 specified) |
-| [US-06] | Agent Produces and Commits Artifacts | 11 | No (0 of 11 specified) |
+| [US-02] | Orchestrator Coordinates Agent-to-Agent Review | 14 | Partial (8 of 14 FSPEC'd — Phase 3 requirements) |
+| [US-03] | Agent Asks User a Blocking Question | 8 | Partial (1 of 8 FSPEC'd — REQ-SI-04) |
+| [US-04] | Orchestrator Assembles Context for Stateless Skill Invocation | 17 | Partial (15 of 17 FSPEC'd — Phase 3 requirements) |
+| [US-05] | Developer Launches and Monitors the Orchestrator | 5 | Partial (1 of 5 FSPEC'd — REQ-DI-04) |
+| [US-06] | Agent Produces and Commits Artifacts | 11 | Partial (5 of 11 FSPEC'd — Phase 3 requirements) |
 | [US-07] | System Handles Failures Gracefully | 7 | No (0 of 7 specified) |
 | [US-08] | New Agent is Added to the System | 1 | No (0 of 1 specified) |
 
@@ -112,48 +112,48 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-DI-01] | Orchestrator owns all Discord I/O | 0 | Pending |
 | [REQ-DI-02] | Watch #agent-updates threads | 0 | Pending |
 | [REQ-DI-03] | Read full thread history | 0 | Pending |
-| [REQ-DI-04] | Post colour-coded embeds | 0 | Pending |
-| [REQ-DI-05] | Create one thread per coordination task | 0 | Pending |
+| [REQ-DI-04] | Post colour-coded embeds | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-DI-05] | Create one thread per coordination task | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-DI-06] | Archive threads on resolution signal | 0 | Pending |
 | [REQ-DI-07] | @mention user in #open-questions | 0 | Pending |
 | [REQ-DI-08] | Post system message at max-turns limit | 0 | Pending |
-| [REQ-DI-09] | Route by routing signal only | 0 | Pending |
-| [REQ-CB-01] | Three-layer context model | 0 | Pending |
-| [REQ-CB-02] | Layer 1 and Layer 3 never truncated | 0 | Pending |
-| [REQ-CB-03] | Fresh artifact reads | 0 | Pending |
-| [REQ-CB-04] | Scope Layer 2 to current feature | 0 | Pending |
-| [REQ-CB-05] | Token budget enforcement | 0 | Pending |
-| [REQ-CB-06] | Task splitting on budget overflow | 0 | Pending |
-| [REQ-RP-01] | Pattern A — Agent-to-agent answer | 0 | Pending |
+| [REQ-DI-09] | Route by routing signal only | 1 | FSPEC'd ([FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-01] | Three-layer context model | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-02] | Layer 1 and Layer 3 never truncated | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-03] | Fresh artifact reads | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-04] | Scope Layer 2 to current feature | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-05] | Token budget enforcement | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-CB-06] | Task splitting on budget overflow | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-RP-01] | Pattern A — Agent-to-agent answer | 1 | FSPEC'd ([FSPEC-RP-02](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-02] | Pattern B — User answer resume | 0 | Pending |
-| [REQ-RP-03] | Pattern C — Review loop | 0 | Pending |
-| [REQ-RP-04] | Final review instruction at Turn 3 | 0 | Pending |
+| [REQ-RP-03] | Pattern C — Review loop | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-RP-04] | Final review instruction at Turn 3 | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-05] | Block fifth turn in review threads | 0 | Pending |
 | [REQ-PQ-01] | Write to pending.md | 0 | Pending |
 | [REQ-PQ-02] | Poll pending.md | 0 | Pending |
 | [REQ-PQ-03] | Resume on user answer | 0 | Pending |
 | [REQ-PQ-04] | Archive to resolved.md | 0 | Pending |
 | [REQ-PQ-05] | Discord reply writeback to pending.md | 0 | Pending |
-| [REQ-SI-01] | Stateless Skill invocation | 0 | Pending |
-| [REQ-SI-02] | Skill output format | 0 | Pending |
-| [REQ-SI-03] | Two-iteration rule in Skill prompts | 0 | Pending |
-| [REQ-SI-04] | Structured routing signal | 0 | Pending |
+| [REQ-SI-01] | Stateless Skill invocation | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-SI-02] | Skill output format | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-SI-03] | Two-iteration rule in Skill prompts | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-SI-04] | Structured routing signal | 1 | FSPEC'd ([FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-05] | Commit artifact changes | 0 | Pending |
 | [REQ-SI-06] | Append agent logs | 0 | Pending |
 | [REQ-SI-07] | Retry with exponential backoff | 0 | Pending |
 | [REQ-SI-08] | Graceful failure handling | 0 | Pending |
 | [REQ-SI-09] | Idempotent message processing | 0 | Pending |
 | [REQ-SI-10] | Graceful shutdown | 0 | Pending |
-| [REQ-SI-11] | Concurrent Skill invocations | 0 | Pending |
-| [REQ-SI-12] | Per-agent worktree isolation | 0 | Pending |
+| [REQ-SI-11] | Concurrent Skill invocations | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
+| [REQ-SI-12] | Per-agent worktree isolation | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-13] | Worktree merge and cleanup | 0 | Pending |
-| [REQ-NF-01] | Response latency | 0 | Pending |
+| [REQ-NF-01] | Response latency | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-NF-02] | Reliability | 0 | Pending |
 | [REQ-NF-03] | Idempotency | 0 | Pending |
-| [REQ-NF-04] | Token efficiency | 0 | Pending |
+| [REQ-NF-04] | Token efficiency | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-NF-05] | Auditability | 0 | Pending |
 | [REQ-NF-06] | Security | 1 | Specified ([TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md)) |
-| [REQ-NF-07] | Portability | 0 | Pending |
+| [REQ-NF-07] | Portability | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-NF-08] | Extensibility | 0 | Pending |
 
 ### 3.3 Orphan Check
@@ -165,7 +165,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 45 of 54 requirements are pending specification (Phase 1 requirements specified by TSPEC-ptah-init; Phases 2-7 pending)
+- 24 of 54 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phases 2, 4-7: 24 pending)
 
 ---
 
@@ -195,29 +195,29 @@ This matrix provides full traceability from user scenarios through requirements 
 
 ### Phase 3 — Skill Routing
 
-| Requirement | Specification | Priority | User Scenarios |
-|-------------|---------------|----------|----------------|
-| [REQ-DI-04] | Pending | P0 | [US-02], [US-05] |
-| [REQ-DI-05] | Pending | P0 | [US-02] |
-| [REQ-DI-09] | Pending | P0 | [US-02], [US-04] |
-| [REQ-CB-01] | Pending | P0 | [US-04] |
-| [REQ-CB-02] | Pending | P0 | [US-04] |
-| [REQ-CB-03] | Pending | P0 | [US-04] |
-| [REQ-CB-04] | Pending | P0 | [US-04] |
-| [REQ-CB-05] | Pending | P0 | [US-04] |
-| [REQ-CB-06] | Pending | P1 | [US-04] |
-| [REQ-RP-01] | Pending | P0 | [US-02], [US-04] |
-| [REQ-RP-03] | Pending | P0 | [US-02], [US-04] |
-| [REQ-RP-04] | Pending | P0 | [US-02] |
-| [REQ-SI-01] | Pending | P0 | [US-04], [US-06] |
-| [REQ-SI-02] | Pending | P0 | [US-06] |
-| [REQ-SI-03] | Pending | P0 | [US-02] |
-| [REQ-SI-04] | Pending | P0 | [US-02], [US-03] |
-| [REQ-SI-11] | Pending | P0 | [US-02], [US-04], [US-06] |
-| [REQ-SI-12] | Pending | P0 | [US-04], [US-06] |
-| [REQ-NF-01] | Pending | P0 | [US-04] |
-| [REQ-NF-04] | Pending | P0 | [US-04] |
-| [REQ-NF-07] | Pending | P0 | [US-04], [US-06] |
+| Requirement | FSPEC | Specification | Priority | User Scenarios |
+|-------------|-------|---------------|----------|----------------|
+| [REQ-DI-04] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-05] |
+| [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02] |
+| [REQ-DI-09] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-04] |
+| [REQ-CB-01] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-CB-02] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-CB-03] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-CB-04] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-CB-05] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-CB-06] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P1 | [US-04] |
+| [REQ-RP-01] | [FSPEC-RP-02](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-04] |
+| [REQ-RP-03] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-04] |
+| [REQ-RP-04] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02] |
+| [REQ-SI-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04], [US-06] |
+| [REQ-SI-02] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-06] |
+| [REQ-SI-03] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02] |
+| [REQ-SI-04] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-03] |
+| [REQ-SI-11] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-02], [US-04], [US-06] |
+| [REQ-SI-12] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04], [US-06] |
+| [REQ-NF-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-NF-04] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04] |
+| [REQ-NF-07] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | Pending TSPEC | P0 | [US-04], [US-06] |
 
 ### Phase 4 — Artifact Commits
 
@@ -266,9 +266,11 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | Document | Location | Description |
 |----------|----------|-------------|
-| Requirements | [REQ-PTAH](../requirements/REQ-PTAH.md) | Functional and non-functional requirements for Ptah v4.0 |
-| TSPEC — ptah init | [TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md) | Technical specification for Phase 1 (`ptah init`) |
-| Specifications (Phases 2-7) | Pending | Detailed specifications for remaining phases |
+| Requirements | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) | Functional and non-functional requirements for Ptah v4.0 |
+| TSPEC — ptah init | [001-TSPEC-ptah-init](../specifications/001-TSPEC-ptah-init.md) | Technical specification for Phase 1 (`ptah init`) |
+| TSPEC — ptah discord bot | [002-TSPEC-ptah-discord-bot](../specifications/002-TSPEC-ptah-discord-bot.md) | Technical specification for Phase 2 (`ptah start` — Discord Bot) |
+| FSPEC — ptah skill routing | [FSPEC-ptah-skill-routing](../specifications/FSPEC-ptah-skill-routing.md) | Functional specification for Phase 3 (Skill Routing) — 6 FSPECs |
+| Specifications (Phases 4-7) | Pending | Detailed specifications for remaining phases |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -281,6 +283,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 1.1 | March 8, 2026 | Product Manager | Added 5 new requirements from OQ resolutions: REQ-DI-09, REQ-PQ-05, REQ-SI-11, REQ-SI-12, REQ-SI-13. Updated coverage counts. |
 | 1.2 | March 8, 2026 | Product Manager | Added REQ-IN-07 and REQ-IN-08 from ANALYSIS-ptah-init.md question resolutions. US-01 coverage updated from 7 to 9. Total requirements updated from 52 to 54. |
 | 1.3 | March 8, 2026 | Backend Engineer | Updated Phase 1 requirements (REQ-IN-01 through REQ-IN-08, REQ-NF-06) to reference TSPEC-ptah-init. 9 of 54 requirements now specified. |
+| 1.4 | March 9, 2026 | Product Manager | Added FSPEC mappings for all 21 Phase 3 requirements. 6 FSPECs created: FSPEC-CB-01, FSPEC-RP-01, FSPEC-RP-02, FSPEC-RP-03, FSPEC-SI-01, FSPEC-DI-01. Phase 3 view updated with FSPEC column. Coverage: 9 TSPEC'd + 21 FSPEC'd = 30 of 54 requirements specified. |
 
 ---
 
