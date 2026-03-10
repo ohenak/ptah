@@ -112,7 +112,10 @@ export class FakeGitClient implements GitClient {
 
   // Phase 3 worktree state
   worktrees: WorktreeInfo[] = [];
+  createdWorktrees: WorktreeInfo[] = [];
   createWorktreeError: Error | null = null;
+  removeWorktreeError: Error | null = null;
+  deleteBranchError: Error | null = null;
   diffResult: string[] = [];
   removedWorktrees: string[] = [];
   deletedBranches: string[] = [];
@@ -139,15 +142,19 @@ export class FakeGitClient implements GitClient {
 
   async createWorktree(branch: string, path: string): Promise<void> {
     if (this.createWorktreeError) throw this.createWorktreeError;
-    this.worktrees.push({ path, branch });
+    const wt = { path, branch };
+    this.worktrees.push(wt);
+    this.createdWorktrees.push(wt);
   }
 
   async removeWorktree(path: string): Promise<void> {
+    if (this.removeWorktreeError) throw this.removeWorktreeError;
     this.removedWorktrees.push(path);
     this.worktrees = this.worktrees.filter((wt) => wt.path !== path);
   }
 
   async deleteBranch(branch: string): Promise<void> {
+    if (this.deleteBranchError) throw this.deleteBranchError;
     this.deletedBranches.push(branch);
   }
 
@@ -187,8 +194,12 @@ export class FakeDiscordClient implements DiscordClient {
   systemMessages: Array<{ threadId: string; content: string }> = [];
   postEmbedError: Error | null = null;
   createThreadError: Error | null = null;
+  postEmbedFailOnCall: number | null = null;
+  createThreadFailOnCall: number | null = null;
   private nextThreadId = 1;
   private nextMessageId = 1;
+  private postEmbedCallCount = 0;
+  private createThreadCallCount = 0;
 
   async connect(token: string): Promise<void> {
     if (this.connectError) throw this.connectError;
@@ -225,13 +236,34 @@ export class FakeDiscordClient implements DiscordClient {
   }
 
   async postEmbed(options: EmbedOptions): Promise<string> {
-    if (this.postEmbedError) throw this.postEmbedError;
+    this.postEmbedCallCount++;
+    if (this.postEmbedFailOnCall !== null) {
+      if (this.postEmbedCallCount === this.postEmbedFailOnCall) {
+        this.postEmbedFailOnCall = null; // only fail once
+        const err = this.postEmbedError;
+        this.postEmbedError = null; // clear so subsequent calls succeed
+        if (err) throw err;
+      }
+      // If failOnCall is set but this isn't the target call, proceed normally
+    } else if (this.postEmbedError) {
+      throw this.postEmbedError;
+    }
     this.postedEmbeds.push(options);
     return `embed-msg-${this.nextMessageId++}`;
   }
 
   async createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string> {
-    if (this.createThreadError) throw this.createThreadError;
+    this.createThreadCallCount++;
+    if (this.createThreadFailOnCall !== null) {
+      if (this.createThreadCallCount === this.createThreadFailOnCall) {
+        this.createThreadFailOnCall = null; // only fail once
+        const err = this.createThreadError;
+        this.createThreadError = null; // clear so subsequent calls succeed
+        if (err) throw err;
+      }
+    } else if (this.createThreadError) {
+      throw this.createThreadError;
+    }
     this.createdThreads.push({ channelId, name, initialMessage });
     const threadId = `fake-thread-${this.nextThreadId++}`;
     await this.postEmbed({ ...initialMessage, threadId });
@@ -554,8 +586,10 @@ export class FakeResponsePoster implements ResponsePoster {
 // Task 23: FakeTokenCounter
 export class FakeTokenCounter implements TokenCounter {
   fixedCount: number | null = null;
+  shouldThrow = false;
 
   count(text: string): number {
+    if (this.shouldThrow) throw new Error("TokenCounter unavailable");
     if (this.fixedCount !== null) return this.fixedCount;
     return Math.ceil(text.length / 4);
   }
