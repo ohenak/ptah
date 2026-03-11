@@ -17,6 +17,10 @@ import { InMemoryThreadQueue } from "../src/orchestrator/thread-queue.js";
 import { CharTokenCounter } from "../src/orchestrator/token-counter.js";
 import { ClaudeCodeClient } from "../src/services/claude-code.js";
 import type { ClaudeCodeInvokeFn } from "../src/services/claude-code.js";
+import { AsyncMutex } from "../src/orchestrator/merge-lock.js";
+import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer.js";
+import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
+import { InMemoryMessageDeduplicator } from "../src/orchestrator/message-deduplicator.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -125,6 +129,12 @@ async function main(): Promise<void> {
       const responsePoster = new DefaultResponsePoster(discord, logger);
       const threadQueue = new InMemoryThreadQueue();
 
+      // Phase 4: Artifact commit pipeline services
+      const mergeLock = new AsyncMutex();
+      const artifactCommitter = new DefaultArtifactCommitter(git, mergeLock, logger);
+      const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
+      const messageDeduplicator = new InMemoryMessageDeduplicator();
+
       const orchestrator = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
@@ -134,6 +144,11 @@ async function main(): Promise<void> {
         threadQueue,
         logger,
         config,
+        // Phase 4 additions:
+        gitClient: git,
+        artifactCommitter,
+        agentLogWriter,
+        messageDeduplicator,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {

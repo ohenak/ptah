@@ -266,7 +266,14 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | Document | Location | Description |
 |----------|----------|-------------|
-| Requirements | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) | Functional and non-functional requirements for Ptah v4.0 |
+| Requirements (Master) | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) | Master requirements index — user stories, scope, assumptions, risks |
+| Requirements — Phase 1 | [001-REQ-PTAH-init](../requirements/001-REQ-PTAH-init.md) | Phase 1 (Init) requirements — 9 requirements |
+| Requirements — Phase 2 | [002-REQ-PTAH-discord-bot](../requirements/002-REQ-PTAH-discord-bot.md) | Phase 2 (Discord Bot) requirements — 3 requirements |
+| Requirements — Phase 3 | [003-REQ-PTAH-skill-routing](../requirements/003-REQ-PTAH-skill-routing.md) | Phase 3 (Skill Routing) requirements — 21 requirements |
+| Requirements — Phase 4 | [004-REQ-PTAH-artifact-commits](../requirements/004-REQ-PTAH-artifact-commits.md) | Phase 4 (Artifact Commits) requirements — 6 requirements |
+| Requirements — Phase 5 | [005-REQ-PTAH-user-questions](../requirements/005-REQ-PTAH-user-questions.md) | Phase 5 (User Questions) requirements — 7 requirements |
+| Requirements — Phase 6 | [006-REQ-PTAH-guardrails](../requirements/006-REQ-PTAH-guardrails.md) | Phase 6 (Guardrails) requirements — 6 requirements |
+| Requirements — Phase 7 | [007-REQ-PTAH-polish](../requirements/007-REQ-PTAH-polish.md) | Phase 7 (Polish) requirements — 2 requirements |
 | TSPEC — ptah init | [001-TSPEC-ptah-init](../specifications/001-TSPEC-ptah-init.md) | Technical specification for Phase 1 (`ptah init`) |
 | TSPEC — ptah discord bot | [002-TSPEC-ptah-discord-bot](../specifications/002-TSPEC-ptah-discord-bot.md) | Technical specification for Phase 2 (`ptah start` — Discord Bot) |
 | FSPEC — ptah skill routing | [FSPEC-ptah-skill-routing](../specifications/003-FSPEC-ptah-skill-routing.md) | Functional specification for Phase 3 (Skill Routing) — 6 FSPECs |

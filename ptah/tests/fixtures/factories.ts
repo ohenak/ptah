@@ -9,6 +9,10 @@ import type { RoutingEngine } from "../../src/orchestrator/router.js";
 import type { ContextAssembler } from "../../src/orchestrator/context-assembler.js";
 import type { SkillInvoker } from "../../src/orchestrator/skill-invoker.js";
 import type { ResponsePoster } from "../../src/orchestrator/response-poster.js";
+import type { MergeLock, MergeLockRelease } from "../../src/orchestrator/merge-lock.js";
+import type { ArtifactCommitter } from "../../src/orchestrator/artifact-committer.js";
+import type { AgentLogWriter } from "../../src/orchestrator/agent-log-writer.js";
+import type { MessageDeduplicator } from "../../src/orchestrator/message-deduplicator.js";
 import type {
   PtahConfig,
   ThreadMessage,
@@ -21,6 +25,10 @@ import type {
   PostResult,
   EmbedOptions,
   WorktreeInfo,
+  MergeResult,
+  CommitParams,
+  CommitResult,
+  LogEntry,
 } from "../../src/types.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
@@ -30,6 +38,8 @@ export class FakeFileSystem implements FileSystem {
   private dirs = new Set<string>();
   private _cwd: string;
   writeFileError: Error | null = null;
+  appendFileError: Error | null = null;
+  appendFileCalls: Array<{ path: string; content: string }> = [];
 
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
@@ -99,6 +109,13 @@ export class FakeFileSystem implements FileSystem {
   joinPath(...segments: string[]): string {
     return nodePath.join(...segments);
   }
+
+  async appendFile(path: string, content: string): Promise<void> {
+    this.appendFileCalls.push({ path, content });
+    if (this.appendFileError) throw this.appendFileError;
+    const existing = this.files.get(path) ?? "";
+    this.files.set(path, existing + content);
+  }
 }
 
 export class FakeGitClient implements GitClient {
@@ -120,6 +137,34 @@ export class FakeGitClient implements GitClient {
   removedWorktrees: string[] = [];
   deletedBranches: string[] = [];
   prunedPrefixes: string[] = [];
+
+  // Phase 4 state
+  addInWorktreeError: Error | null = null;
+  addInWorktreeCalls: Array<{ worktreePath: string; files: string[] }> = [];
+
+  commitInWorktreeResult: string = "abc1234";
+  commitInWorktreeError: Error | null = null;
+  commitInWorktreeCalls: Array<{ worktreePath: string; message: string }> = [];
+
+  mergeResult: MergeResult = "merged";
+  mergeError: Error | null = null;
+  mergeCalls: string[] = [];
+
+  abortMergeError: Error | null = null;
+  abortMergeCalls: number = 0;
+
+  getShortShaResult: string = "abc1234";
+  getShortShaError: Error | null = null;
+  getShortShaCalls: string[] = [];
+
+  hasUnmergedCommitsResult: boolean = false;
+  hasUnmergedCommitsCalls: string[] = [];
+
+  diffWorktreeIncludingUntrackedResult: string[] = [];
+  diffWorktreeIncludingUntrackedCalls: string[] = [];
+
+  branchExistsResult: boolean = false;
+  branchExistsCalls: string[] = [];
 
   async isRepo(): Promise<boolean> {
     if (this.isRepoError) throw this.isRepoError;
@@ -173,6 +218,51 @@ export class FakeGitClient implements GitClient {
 
   async diffWorktree(_worktreePath: string): Promise<string[]> {
     return this.diffResult;
+  }
+
+  // Phase 4 methods
+
+  async addInWorktree(worktreePath: string, paths: string[]): Promise<void> {
+    this.addInWorktreeCalls.push({ worktreePath, files: paths });
+    if (this.addInWorktreeError) throw this.addInWorktreeError;
+  }
+
+  async commitInWorktree(worktreePath: string, message: string): Promise<string> {
+    this.commitInWorktreeCalls.push({ worktreePath, message });
+    if (this.commitInWorktreeError) throw this.commitInWorktreeError;
+    return this.commitInWorktreeResult;
+  }
+
+  async merge(branch: string): Promise<MergeResult> {
+    this.mergeCalls.push(branch);
+    if (this.mergeError) throw this.mergeError;
+    return this.mergeResult;
+  }
+
+  async abortMerge(): Promise<void> {
+    this.abortMergeCalls++;
+    if (this.abortMergeError) throw this.abortMergeError;
+  }
+
+  async getShortSha(worktreePath: string): Promise<string> {
+    this.getShortShaCalls.push(worktreePath);
+    if (this.getShortShaError) throw this.getShortShaError;
+    return this.getShortShaResult;
+  }
+
+  async hasUnmergedCommits(branch: string): Promise<boolean> {
+    this.hasUnmergedCommitsCalls.push(branch);
+    return this.hasUnmergedCommitsResult;
+  }
+
+  async diffWorktreeIncludingUntracked(worktreePath: string): Promise<string[]> {
+    this.diffWorktreeIncludingUntrackedCalls.push(worktreePath);
+    return this.diffWorktreeIncludingUntrackedResult;
+  }
+
+  async branchExists(branch: string): Promise<boolean> {
+    this.branchExistsCalls.push(branch);
+    return this.branchExistsResult;
   }
 }
 
@@ -465,7 +555,7 @@ export class FakeRoutingEngine implements RoutingEngine {
   }
 }
 
-// Task 20: FakeContextAssembler
+// Task 20: FakeContextAssembler (updated for Phase 4 — worktreePath support)
 export class FakeContextAssembler implements ContextAssembler {
   result: ContextBundle = {
     systemPrompt: "fake system prompt",
@@ -485,6 +575,7 @@ export class FakeContextAssembler implements ContextAssembler {
     threadHistory: ThreadMessage[];
     triggerMessage: ThreadMessage;
     config: PtahConfig;
+    worktreePath?: string;
   }> = [];
 
   async assemble(params: {
@@ -494,6 +585,7 @@ export class FakeContextAssembler implements ContextAssembler {
     threadHistory: ThreadMessage[];
     triggerMessage: ThreadMessage;
     config: PtahConfig;
+    worktreePath?: string;
   }): Promise<ContextBundle> {
     this.assembleCalls.push(params);
     if (this.assembleError) throw this.assembleError;
@@ -501,22 +593,20 @@ export class FakeContextAssembler implements ContextAssembler {
   }
 }
 
-// Task 21: FakeSkillInvoker
+// Task 21: FakeSkillInvoker (updated for Phase 4 — worktreePath parameter)
 export class FakeSkillInvoker implements SkillInvoker {
   result: InvocationResult = {
     textResponse: "fake response",
     routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
     artifactChanges: [],
-    worktreePath: "/tmp/ptah-worktrees/fake",
-    branch: "ptah/dev-agent/thread-1/fake",
     durationMs: 1000,
   };
   invokeError: Error | null = null;
-  invokeCalls: Array<{ bundle: ContextBundle; config: PtahConfig }> = [];
+  invokeCalls: Array<{ bundle: ContextBundle; config: PtahConfig; worktreePath?: string }> = [];
   pruned = false;
 
-  async invoke(bundle: ContextBundle, config: PtahConfig): Promise<InvocationResult> {
-    this.invokeCalls.push({ bundle, config });
+  async invoke(bundle: ContextBundle, config: PtahConfig, worktreePath?: string): Promise<InvocationResult> {
+    this.invokeCalls.push({ bundle, config, worktreePath });
     if (this.invokeError) throw this.invokeError;
     return this.result;
   }
@@ -620,5 +710,76 @@ export function createThreadMessage(options: ThreadMessageOptions = {}): ThreadM
     isBot: options.isBot ?? false,
     content: options.content ?? "test message",
     timestamp: options.timestamp ?? new Date("2026-03-09T12:00:00Z"),
+  };
+}
+
+// --- Phase 4: New fakes ---
+
+// Task 11: FakeMergeLock
+export class FakeMergeLock implements MergeLock {
+  acquireCalls: number[] = [];
+  releaseCalls: number = 0;
+  acquireError: Error | null = null;
+
+  async acquire(timeoutMs?: number): Promise<MergeLockRelease> {
+    this.acquireCalls.push(timeoutMs ?? 10_000);
+    if (this.acquireError) throw this.acquireError;
+    return () => {
+      this.releaseCalls++;
+    };
+  }
+}
+
+// Task 12: FakeArtifactCommitter
+export class FakeArtifactCommitter implements ArtifactCommitter {
+  results: CommitResult[] = [defaultCommitResult()];
+  callIndex: number = 0;
+  commitAndMergeCalls: CommitParams[] = [];
+
+  async commitAndMerge(params: CommitParams): Promise<CommitResult> {
+    this.commitAndMergeCalls.push(params);
+    if (this.callIndex >= this.results.length) {
+      throw new Error(
+        `FakeArtifactCommitter: no result configured for call index ${this.callIndex}. ` +
+        `Configure results via the .results array.`
+      );
+    }
+    return this.results[this.callIndex++];
+  }
+}
+
+// Task 13: FakeAgentLogWriter
+export class FakeAgentLogWriter implements AgentLogWriter {
+  entries: LogEntry[] = [];
+  appendError: Error | null = null;
+
+  async append(entry: LogEntry): Promise<void> {
+    if (this.appendError) throw this.appendError;
+    this.entries.push(entry);
+  }
+}
+
+// Task 14: FakeMessageDeduplicator
+export class FakeMessageDeduplicator implements MessageDeduplicator {
+  seenIds: Set<string> = new Set();
+  duplicateIds: Set<string> = new Set();
+
+  isDuplicate(messageId: string): boolean {
+    if (this.duplicateIds.has(messageId) || this.seenIds.has(messageId)) {
+      this.seenIds.add(messageId);
+      return true;
+    }
+    this.seenIds.add(messageId);
+    return false;
+  }
+}
+
+// --- Phase 4: Factory functions ---
+
+export function defaultCommitResult(): CommitResult {
+  return {
+    commitSha: "abc1234",
+    mergeStatus: "merged",
+    branch: "ptah/dev-agent/thread-1/fake",
   };
 }

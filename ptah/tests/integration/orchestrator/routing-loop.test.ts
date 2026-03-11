@@ -12,6 +12,9 @@ import {
   FakeGitClient,
   FakeFileSystem,
   FakeSkillClient,
+  FakeArtifactCommitter,
+  FakeAgentLogWriter,
+  FakeMessageDeduplicator,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -26,6 +29,7 @@ describe("Orchestrator routing loop integration", () => {
   let config: PtahConfig;
   let orchestrator: DefaultOrchestrator;
   let threadQueue: InMemoryThreadQueue;
+  let artifactCommitter: FakeArtifactCommitter;
 
   beforeEach(() => {
     discord = new FakeDiscordClient();
@@ -66,6 +70,10 @@ describe("Orchestrator routing loop integration", () => {
       threadQueue,
       logger,
       config,
+      gitClient,
+      artifactCommitter: artifactCommitter = new FakeArtifactCommitter(),
+      agentLogWriter: new FakeAgentLogWriter(),
+      messageDeduplicator: new FakeMessageDeduplicator(),
     });
   });
 
@@ -122,6 +130,12 @@ describe("Orchestrator routing loop integration", () => {
       });
 
       discord.threadHistory.set("thread-2", []);
+
+      // Provide 2 commit results (one per agent turn in the routing loop)
+      artifactCommitter.results = [
+        { commitSha: "abc1234", mergeStatus: "merged", branch: "ptah/dev-agent/thread-2/abc" },
+        { commitSha: "def5678", mergeStatus: "merged", branch: "ptah/pm-agent/thread-2/def" },
+      ];
 
       // First invocation (dev-agent): routes to pm-agent for review
       // Second invocation (pm-agent): returns LGTM

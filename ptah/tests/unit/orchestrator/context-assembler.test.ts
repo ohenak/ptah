@@ -796,4 +796,101 @@ describe("DefaultContextAssembler", () => {
       expect(warnings.some((w) => w.message.includes("falling back") || w.message.includes("char-based"))).toBe(true);
     });
   });
+
+  // ─── Task 57: ContextAssembler worktree Layer 2 ───────────────────
+  describe("Task 57: Layer 2 reads from worktreePath when provided", () => {
+    it("reads Layer 2 feature files from worktreePath instead of repo root", async () => {
+      const featureName = "wt-feature";
+      const worktreePath = "/tmp/ptah-worktrees/abc12345";
+
+      // Set up files in worktree path (not the default docs root)
+      const wtFeatureDir = `${worktreePath}/docs/${featureName}`;
+      fs.addExistingDir(wtFeatureDir);
+      fs.addExisting(`${wtFeatureDir}/overview.md`, "Worktree overview.");
+      fs.addExisting(`${wtFeatureDir}/spec.md`, "Worktree spec content.");
+
+      // Also set up files in main repo root (should NOT be used)
+      const mainFeatureDir = `docs/${featureName}`;
+      fs.addExistingDir(mainFeatureDir);
+      fs.addExisting(`${mainFeatureDir}/overview.md`, "Main repo overview.");
+      fs.addExisting(`${mainFeatureDir}/spec.md`, "Main repo spec content.");
+
+      const triggerMessage = createThreadMessage({
+        content: "Review the spec.",
+        threadName: `${featureName} \u2014 review`,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: `${featureName} \u2014 review`,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        worktreePath,
+      });
+
+      // Layer 2 should contain worktree content, not main repo content
+      expect(result.systemPrompt).toContain("Worktree spec content.");
+      expect(result.systemPrompt).not.toContain("Main repo spec content.");
+
+      // Layer 1 overview also from worktree
+      expect(result.systemPrompt).toContain("Worktree overview.");
+    });
+  });
+
+  // ─── Task 58: ContextAssembler fallback ───────────────────────────
+  describe("Task 58: Layer 2 reads from main when worktreePath not provided", () => {
+    it("reads Layer 2 from main repo when worktreePath is undefined", async () => {
+      const featureName = "main-feature";
+      const mainFeatureDir = `docs/${featureName}`;
+      fs.addExistingDir(mainFeatureDir);
+      fs.addExisting(`${mainFeatureDir}/overview.md`, "Main overview.");
+      fs.addExisting(`${mainFeatureDir}/details.md`, "Main details content.");
+
+      const triggerMessage = createThreadMessage({
+        content: "Do the thing.",
+        threadName: featureName,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        // worktreePath intentionally omitted
+      });
+
+      // Should read from main repo as before
+      expect(result.systemPrompt).toContain("Main overview.");
+      expect(result.systemPrompt).toContain("Main details content.");
+    });
+
+    it("reads Layer 2 from main repo when worktreePath is explicitly undefined", async () => {
+      const featureName = "explicit-undef-feature";
+      const mainFeatureDir = `docs/${featureName}`;
+      fs.addExistingDir(mainFeatureDir);
+      fs.addExisting(`${mainFeatureDir}/overview.md`, "Overview here.");
+      fs.addExisting(`${mainFeatureDir}/notes.md`, "Notes content.");
+
+      const triggerMessage = createThreadMessage({
+        content: "Check notes.",
+        threadName: featureName,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        worktreePath: undefined,
+      });
+
+      expect(result.systemPrompt).toContain("Notes content.");
+    });
+  });
 });

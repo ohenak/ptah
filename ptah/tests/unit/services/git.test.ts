@@ -289,3 +289,215 @@ describe("NodeGitClient — worktree operations (unit)", () => {
     });
   });
 });
+
+// --- Phase 4: Artifact commit git operations ---
+
+describe("NodeGitClient — Phase 4 artifact commit operations (unit)", () => {
+  let client: NodeGitClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    client = new NodeGitClient("/test/repo");
+  });
+
+  // Task 47: addInWorktree
+  describe("addInWorktree", () => {
+    it("runs git add with file paths in the worktree directory", async () => {
+      setupExecFileMock([{ stdout: "" }]);
+
+      await client.addInWorktree("/tmp/wt-123", ["src/main.ts", "README.md"]);
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(1);
+      const callArgs = mockFn.mock.calls[0];
+      expect(callArgs[0]).toBe("git");
+      expect(callArgs[1]).toEqual(["add", "src/main.ts", "README.md"]);
+      expect(callArgs[2]).toEqual({ cwd: "/tmp/wt-123" });
+    });
+
+    it("throws on failure", async () => {
+      setupExecFileMock([{ error: new Error("pathspec error") }]);
+
+      await expect(
+        client.addInWorktree("/tmp/wt-bad", ["nonexistent.ts"]),
+      ).rejects.toThrow("git add in worktree failed");
+    });
+  });
+
+  // Task 48: commitInWorktree
+  describe("commitInWorktree", () => {
+    it("runs git commit -m in worktree and returns the commit SHA", async () => {
+      setupExecFileMock([
+        { stdout: "" }, // git commit
+        { stdout: "abc123def456\n" }, // git rev-parse HEAD
+      ]);
+
+      const sha = await client.commitInWorktree("/tmp/wt-123", "feat: add feature");
+
+      expect(sha).toBe("abc123def456");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(2);
+      expect(mockFn.mock.calls[0][1]).toEqual(["commit", "-m", "feat: add feature"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/tmp/wt-123" });
+      expect(mockFn.mock.calls[1][1]).toEqual(["rev-parse", "HEAD"]);
+      expect(mockFn.mock.calls[1][2]).toEqual({ cwd: "/tmp/wt-123" });
+    });
+
+    it("throws on failure", async () => {
+      setupExecFileMock([{ error: new Error("nothing to commit") }]);
+
+      await expect(
+        client.commitInWorktree("/tmp/wt-bad", "empty"),
+      ).rejects.toThrow("git commit in worktree failed");
+    });
+  });
+
+  // Task 49: merge — success
+  describe("merge", () => {
+    it("runs git merge and returns 'merged' on success", async () => {
+      setupExecFileMock([{ stdout: "Merge made by the 'ort' strategy.\n" }]);
+
+      const result = await client.merge("feat/branch");
+
+      expect(result).toBe("merged");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn.mock.calls[0][1]).toEqual(["merge", "feat/branch"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/test/repo" });
+    });
+
+    // Task 50: merge — conflict
+    it("detects merge conflict, aborts, and returns 'conflict'", async () => {
+      const conflictError = new Error("merge conflict") as Error & { code: number };
+      conflictError.code = 1;
+
+      setupExecFileMock([
+        { error: conflictError }, // git merge fails with exit code 1
+        { stdout: "" }, // git merge --abort
+      ]);
+
+      const result = await client.merge("feat/conflicting");
+
+      expect(result).toBe("conflict");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(2);
+      expect(mockFn.mock.calls[1][1]).toEqual(["merge", "--abort"]);
+    });
+
+    it("returns 'merge-error' on non-conflict failures", async () => {
+      const otherError = new Error("fatal: not a git repo") as Error & { code: number };
+      otherError.code = 128;
+
+      setupExecFileMock([{ error: otherError }]);
+
+      const result = await client.merge("feat/broken");
+
+      expect(result).toBe("merge-error");
+    });
+  });
+
+  // Task 51: hasUnmergedCommits
+  describe("hasUnmergedCommits", () => {
+    it("returns true when branch has commits not on HEAD", async () => {
+      setupExecFileMock([{ stdout: "abc1234 some commit\ndef5678 another\n" }]);
+
+      const result = await client.hasUnmergedCommits("feat/branch");
+
+      expect(result).toBe(true);
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn.mock.calls[0][1]).toEqual(["log", "HEAD..feat/branch", "--oneline"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/test/repo" });
+    });
+
+    it("returns false when branch has no unmerged commits", async () => {
+      setupExecFileMock([{ stdout: "" }]);
+
+      const result = await client.hasUnmergedCommits("feat/branch");
+
+      expect(result).toBe(false);
+    });
+
+    it("throws on failure", async () => {
+      setupExecFileMock([{ error: new Error("bad revision") }]);
+
+      await expect(client.hasUnmergedCommits("bad/ref")).rejects.toThrow("git log failed");
+    });
+  });
+
+  // Task 52: diffWorktreeIncludingUntracked
+  describe("diffWorktreeIncludingUntracked", () => {
+    it("returns combined list of tracked changes and untracked files", async () => {
+      setupExecFileMock([
+        { stdout: "src/modified.ts\nsrc/changed.ts\n" }, // git diff --name-only HEAD
+        { stdout: "src/new-file.ts\n" }, // git ls-files --others --exclude-standard
+      ]);
+
+      const result = await client.diffWorktreeIncludingUntracked("/tmp/wt-123");
+
+      expect(result).toEqual(["src/modified.ts", "src/changed.ts", "src/new-file.ts"]);
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(2);
+      expect(mockFn.mock.calls[0][1]).toEqual(["diff", "--name-only", "HEAD"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/tmp/wt-123" });
+      expect(mockFn.mock.calls[1][1]).toEqual(["ls-files", "--others", "--exclude-standard"]);
+      expect(mockFn.mock.calls[1][2]).toEqual({ cwd: "/tmp/wt-123" });
+    });
+
+    it("deduplicates files that appear in both tracked and untracked", async () => {
+      setupExecFileMock([
+        { stdout: "src/file.ts\n" },
+        { stdout: "src/file.ts\n" },
+      ]);
+
+      const result = await client.diffWorktreeIncludingUntracked("/tmp/wt-dup");
+
+      expect(result).toEqual(["src/file.ts"]);
+    });
+
+    it("returns empty array when no changes", async () => {
+      setupExecFileMock([
+        { stdout: "" },
+        { stdout: "" },
+      ]);
+
+      const result = await client.diffWorktreeIncludingUntracked("/tmp/wt-clean");
+
+      expect(result).toEqual([]);
+    });
+
+    it("throws on failure", async () => {
+      setupExecFileMock([{ error: new Error("not a repo") }]);
+
+      await expect(
+        client.diffWorktreeIncludingUntracked("/tmp/bad"),
+      ).rejects.toThrow("git diff including untracked failed");
+    });
+  });
+
+  // Task 53: branchExists
+  describe("branchExists", () => {
+    it("returns true when branch exists", async () => {
+      setupExecFileMock([{ stdout: "abc123\n" }]);
+
+      const result = await client.branchExists("feat/my-branch");
+
+      expect(result).toBe(true);
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn.mock.calls[0][1]).toEqual(["rev-parse", "--verify", "refs/heads/feat/my-branch"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/test/repo" });
+    });
+
+    it("returns false when branch does not exist", async () => {
+      setupExecFileMock([{ error: new Error("fatal: Needed a single revision") }]);
+
+      const result = await client.branchExists("nonexistent");
+
+      expect(result).toBe(false);
+    });
+  });
+});

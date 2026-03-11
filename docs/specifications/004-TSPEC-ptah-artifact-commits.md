@@ -145,6 +145,7 @@ export interface GitClient {
   getShortSha(worktreePath: string): Promise<string>;
   hasUnmergedCommits(branch: string): Promise<boolean>;
   diffWorktreeIncludingUntracked(worktreePath: string): Promise<string[]>;
+  branchExists(branch: string): Promise<boolean>;
 }
 ```
 
@@ -157,6 +158,7 @@ export interface GitClient {
 | `getShortSha(worktreePath)` | Runs `git rev-parse --short HEAD` with `cwd` set to `worktreePath`. Returns the 7-char abbreviated commit SHA. |
 | `hasUnmergedCommits(branch)` | Runs `git log main..{branch} --oneline`. Returns `true` if the branch has commits not on main. Used during startup pruning to detect committed-but-unmerged worktrees. |
 | `diffWorktreeIncludingUntracked(worktreePath)` | Runs `git diff --name-only HEAD` AND `git ls-files --others --exclude-standard` in the worktree. Returns the union of both — tracked changes plus untracked files. Needed because `diffWorktree` only returns tracked file changes; new files created by Skills are untracked until staged. |
+| `branchExists(branch)` | Runs `git rev-parse --verify {branch}`. Returns `true` if the branch exists, `false` otherwise. Used by the branch-already-exists guard (FSPEC-AC-01 §3.5) during worktree creation. |
 
 **New type:**
 
@@ -273,7 +275,7 @@ export interface AgentLogWriter {
 
 | Method | Behavior |
 |--------|----------|
-| `append(entry)` | Appends a single log entry to `docs/agent-logs/{agentId}.md` on the main working tree. Acquires the merge lock before writing (AC-R9). Creates the file with header if missing. Escapes pipe characters in fields (AL-R7). Non-blocking — failures log a warning but do not throw. See §5.2 for algorithm. |
+| `append(entry)` | Appends a single log entry to `docs/agent-logs/{agentId}.md` on the main working tree. Acquires the merge lock before writing (AC-R9). Creates the file with header if missing — derives display name from `agentId` via `formatAgentName()` (e.g., "dev-agent" → "Dev Agent") for the header. Escapes pipe characters in fields (AL-R7). Non-blocking — failures log a warning but do not throw. See §5.2 for algorithm. |
 
 **Constructor dependencies:**
 
@@ -397,6 +399,7 @@ export interface SkillInvoker {
 | Worktree cleanup | SkillInvoker cleans up in `finally` block | Orchestrator cleans up (via ArtifactCommitter) after commit/merge |
 | `InvocationResult.worktreePath` | Included (worktree path) | **Removed** — caller already knows the path |
 | `InvocationResult.branch` | Included (branch name) | **Removed** — caller already knows the branch |
+| Artifact change detection | `diffWorktree()` (tracked changes only) | `diffWorktreeIncludingUntracked()` — detects both tracked changes and new untracked files created by Skills |
 | `pruneOrphanedWorktrees()` | Prunes all `ptah/` worktrees unconditionally | **Updated** — flags worktrees with commits, prunes only uncommitted ones |
 
 **Updated `InvocationResult`:**
@@ -600,8 +603,13 @@ commitAndMerge(params):
 
 3. STAGE ARTIFACT CHANGES
    a. Filter params.artifactChanges to docs/ only (AC-R1 defense-in-depth)
-   b. Call gitClient.addInWorktree(worktreePath, docsChanges)
-   c. On failure → return { commitSha: null, mergeStatus: "commit-error",
+   b. If any non-docs/ changes were filtered out:
+      logger.warn("Filtered non-docs changes: {filteredPaths.join(', ')}")
+   c. If docsChanges is empty after filtering:
+      return { commitSha: null, mergeStatus: "no-changes",
+               worktreeRetained: false, conflictMessage: null }
+   d. Call gitClient.addInWorktree(worktreePath, docsChanges)
+   e. On failure → return { commitSha: null, mergeStatus: "commit-error",
                             worktreeRetained: false, conflictMessage: error.message }
 
 4. COMMIT IN WORKTREE
@@ -657,6 +665,7 @@ append(entry):
    a. Check if file exists
    b. If NOT exists:
       - Create directory: "docs/agent-logs/" (mkdir recursive)
+      - Derive display name: formatAgentName(entry.agentId) → e.g., "Dev Agent"
       - Write file with header:
         "# Agent Log: {displayName}\n\n| Timestamp | Status | Thread | Commit | Summary |\n|-----------|--------|--------|--------|---------|"
       - Log warning about missing file
@@ -704,6 +713,21 @@ executeRoutingLoop(initialAgentId, triggerMessage):
       invocationId = randomBytes(4).toString("hex")
       branch = "ptah/{currentAgentId}/{triggerMessage.threadId}/{invocationId}"
       worktreePath = "{tmpdir()}/ptah-worktrees/{invocationId}"
+
+      // Branch-already-exists guard (FSPEC-AC-01 §3.5)
+      // The random invocationId makes collisions negligible, but a leftover
+      // branch from a crash (e.g., startup pruning failed to delete it) could
+      // still exist. Check and handle defensively:
+      if (gitClient.branchExists(branch)):
+        if (gitClient.hasUnmergedCommits(branch)):
+          logger.warn("Branch {branch} already exists with commits. Generating new invocationId.")
+          invocationId = randomBytes(4).toString("hex")
+          branch = "ptah/{currentAgentId}/{triggerMessage.threadId}/{invocationId}"
+          worktreePath = "{tmpdir()}/ptah-worktrees/{invocationId}"
+        else:
+          // No commits — safe to delete and recreate
+          gitClient.deleteBranch(branch)
+
       gitClient.createWorktree(branch, worktreePath)
 
       try:
@@ -735,25 +759,33 @@ executeRoutingLoop(initialAgentId, triggerMessage):
           artifactChanges: result.artifactChanges,
         })
 
-        // Handle commit/merge errors — post error embeds but continue pipeline
+        // Handle commit/merge errors — post error embeds + log to debug, continue pipeline
         if (commitResult.mergeStatus === "conflict"):
           responsePoster.postErrorEmbed(triggerMessage.threadId,
             "Merge conflict: {agentDisplayName}'s changes in {branch} " +
             "conflict with recent changes on main. The worktree has been " +
             "retained at {worktreePath} for manual resolution.")
+          // Log conflict details for developer visibility (FSPEC §3.6)
+          logger.error("Merge conflict for {agentDisplayName} in {branch}: " +
+            "{commitResult.conflictMessage}")
         else if (commitResult.mergeStatus === "commit-error"):
           responsePoster.postErrorEmbed(triggerMessage.threadId,
             "Commit failed: {commitResult.conflictMessage}")
+          logger.error("Commit failed for {agentDisplayName} in {branch}: " +
+            "{commitResult.conflictMessage}")
           // Cleanup worktree (discard changes — Step 8a)
           cleanupWorktree(worktreePath, branch)
         else if (commitResult.mergeStatus === "merge-error"):
           responsePoster.postErrorEmbed(triggerMessage.threadId,
             "Merge failed: {commitResult.conflictMessage}. " +
             "Worktree retained at {worktreePath} for manual resolution.")
+          logger.error("Merge error for {agentDisplayName} in {branch}: " +
+            "{commitResult.conflictMessage}")
         else if (commitResult.mergeStatus === "lock-timeout"):
           responsePoster.postErrorEmbed(triggerMessage.threadId,
             "Merge lock timeout: could not acquire merge lock within 10s. " +
             "Worktree retained for manual resolution.")
+          logger.error("Merge lock timeout for {agentDisplayName} in {branch}")
 
         // Cleanup worktree on no-changes path
         if (commitResult.mergeStatus === "no-changes"):
@@ -858,7 +890,8 @@ function deriveLogStatus(commitResult: CommitResult, _invocationResult: Invocati
     case "merged": return "completed";
     case "no-changes": return "completed (no changes)";
     case "conflict": return "conflict";
-    default: return "error"; // commit-error, merge-error, lock-timeout
+    case "merge-error": return "conflict"; // FSPEC-AC-01 AT-AC-16: non-conflict merge failure treated as conflict for logging
+    default: return "error"; // commit-error, lock-timeout
   }
 }
 ```
@@ -885,6 +918,7 @@ function deriveLogStatus(commitResult: CommitResult, _invocationResult: Invocati
 | Skill timeout/crash | Worktree cleaned up (no commit). Log entry with "error". Error embed. | FSPEC-AC-01 §3.4(d)/(e) |
 | Orphaned worktree with commits (startup) | Warning logged, not pruned. Manual review required. | FSPEC-AC-01 §3.4(f) |
 | Orphaned worktree without commits (startup) | Pruned normally (Phase 3 behavior). | FSPEC-AC-01 §3.4(f) |
+| Worktree branch already exists (leftover from crash) | If branch has commits: log warning, generate new invocationId. If no commits: delete branch and recreate. | FSPEC-AC-01 §3.5 |
 
 ---
 
@@ -971,6 +1005,8 @@ class FakeMessageDeduplicator implements MessageDeduplicator {
 //   shortShaResult: string = "abc1234";
 //   hasUnmergedResult: boolean = false;
 //   addInWorktreeError: Error | null = null;
+//   branchExistsResult: boolean = false;
+//   diffWorktreeIncludingUntrackedResult: string[] = [];
 
 // --- FakeFileSystem — Extended for Phase 4 ---
 
@@ -985,7 +1021,7 @@ class FakeMessageDeduplicator implements MessageDeduplicator {
 |----------|---------------|-----------|
 | **ArtifactCommitter — happy path** | No changes (skip), commit + merge success, worktree cleaned up | `tests/unit/orchestrator/artifact-committer.test.ts` |
 | **ArtifactCommitter — commit message** | Format `[ptah] {Agent}: {description}`, em-dash extraction, fallback | `tests/unit/orchestrator/artifact-committer.test.ts` |
-| **ArtifactCommitter — docs filter** | Only docs/ changes staged, non-docs ignored | `tests/unit/orchestrator/artifact-committer.test.ts` |
+| **ArtifactCommitter — docs filter** | Only docs/ changes staged, non-docs ignored, warning logged for filtered non-docs changes (AT-AC-06) | `tests/unit/orchestrator/artifact-committer.test.ts` |
 | **ArtifactCommitter — merge conflict** | Conflict detected, worktree retained, lock released | `tests/unit/orchestrator/artifact-committer.test.ts` |
 | **ArtifactCommitter — commit failure** | git add/commit error, worktree not retained, lock not acquired | `tests/unit/orchestrator/artifact-committer.test.ts` |
 | **ArtifactCommitter — merge error** | Non-conflict merge failure, worktree retained, lock released | `tests/unit/orchestrator/artifact-committer.test.ts` |
@@ -995,9 +1031,10 @@ class FakeMessageDeduplicator implements MessageDeduplicator {
 | **AgentLogWriter — all statuses** | completed, completed (no changes), conflict, error | `tests/unit/orchestrator/agent-log-writer.test.ts` |
 | **AgentLogWriter — missing file** | Auto-created with header, warning logged | `tests/unit/orchestrator/agent-log-writer.test.ts` |
 | **AgentLogWriter — write failure** | Warning logged, no throw, pipeline continues | `tests/unit/orchestrator/agent-log-writer.test.ts` |
-| **AgentLogWriter — retry on lock** | First write fails, retries once, succeeds | `tests/unit/orchestrator/agent-log-writer.test.ts` |
+| **AgentLogWriter — retry on write failure** | First write fails, retries once after 100ms, succeeds (AT-AL-10) | `tests/unit/orchestrator/agent-log-writer.test.ts` |
 | **AgentLogWriter — pipe escaping** | `\|` in thread name, summary | `tests/unit/orchestrator/agent-log-writer.test.ts` |
 | **AgentLogWriter — merge lock** | Lock acquired before write, released after | `tests/unit/orchestrator/agent-log-writer.test.ts` |
+| **AgentLogWriter — malformed file** | Existing file with missing/corrupt header — entry appended best-effort, warning logged (AT-AL-09) | `tests/unit/orchestrator/agent-log-writer.test.ts` |
 | **MergeLock — basic acquire/release** | Acquire succeeds, release frees lock | `tests/unit/orchestrator/merge-lock.test.ts` |
 | **MergeLock — serialization** | Second acquire waits until first released | `tests/unit/orchestrator/merge-lock.test.ts` |
 | **MergeLock — timeout** | MergeLockTimeoutError after configured ms | `tests/unit/orchestrator/merge-lock.test.ts` |
@@ -1007,6 +1044,8 @@ class FakeMessageDeduplicator implements MessageDeduplicator {
 | **MessageDeduplicator — duplicate** | Returns true on second call with same ID | `tests/unit/orchestrator/message-deduplicator.test.ts` |
 | **MessageDeduplicator — different IDs** | Different IDs are independent | `tests/unit/orchestrator/message-deduplicator.test.ts` |
 | **Orchestrator — dedup** | Duplicate message skipped, no routing/invocation | `tests/unit/orchestrator/orchestrator.test.ts` |
+| **Orchestrator — malformed message (no ID)** | Message with no ID skipped, warning logged (AT-ID-07) | `tests/unit/orchestrator/orchestrator.test.ts` |
+| **Orchestrator — branch-already-exists** | Leftover branch detected, regenerated invocationId or deleted (FSPEC-AC-01 §3.5) | `tests/unit/orchestrator/orchestrator.test.ts` |
 | **Orchestrator — flow reorder** | Worktree created before context assembly, worktreePath passed | `tests/unit/orchestrator/orchestrator.test.ts` |
 | **Orchestrator — commit/merge success** | Full pipeline: invoke → commit → merge → log → post → route | `tests/unit/orchestrator/orchestrator.test.ts` |
 | **Orchestrator — merge conflict continues** | Error embed posted, response still posted, routing continues | `tests/unit/orchestrator/orchestrator.test.ts` |
@@ -1024,8 +1063,11 @@ class FakeMessageDeduplicator implements MessageDeduplicator {
 | **GitClient — merge conflict** | Returns conflict status, abort called | `tests/unit/services/git.test.ts` |
 | **GitClient — hasUnmergedCommits** | True when branch has commits, false otherwise | `tests/unit/services/git.test.ts` |
 | **GitClient — diffWorktreeIncludingUntracked** | Returns both tracked and untracked files | `tests/unit/services/git.test.ts` |
+| **GitClient — branchExists** | True when branch exists, false otherwise | `tests/unit/services/git.test.ts` |
+| **SkillInvoker — diffWorktreeIncludingUntracked** | Uses new diff method to detect both tracked changes and new untracked files | `tests/unit/orchestrator/skill-invoker.test.ts` |
 | **FileSystem — appendFile** | Appends to existing file, creates if missing | `tests/unit/services/filesystem.test.ts` |
 | **Integration — artifact pipeline** | End-to-end: invoke → commit → merge → log → cleanup, using fakes for Discord/SkillClient | `tests/integration/orchestrator/artifact-pipeline.test.ts` |
+| **Integration — concurrent log serialization** | Two concurrent AgentLogWriter.append() calls with real AsyncMutex — entries serialized, no corruption (AT-AL-07) | `tests/integration/orchestrator/artifact-pipeline.test.ts` |
 
 ---
 
@@ -1071,6 +1113,7 @@ None at this time. All design decisions were informed by resolved FSPEC open que
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 10, 2026 | Backend Engineer | Initial technical specification for Phase 4 (Artifact Commits). Covers all 6 Phase 4 requirements across 3 FSPECs. 4 new modules: ArtifactCommitter, AgentLogWriter, MergeLock (AsyncMutex), MessageDeduplicator. 3 updated protocols: SkillInvoker, ContextAssembler, Orchestrator. |
+| 1.1 | March 10, 2026 | Backend Engineer | Addressed PM and TE review feedback: (1) Added branch-already-exists guard in §5.3 with `branchExists()` GitClient method (PM-F-02, TE-F-01). (2) Added non-docs warning log to §5.1 Step 3 (TE-F-02, AT-AC-06). (3) Fixed `deriveLogStatus` to map `merge-error` → `"conflict"` per FSPEC AT-AC-16 (TE-F-03). (4) Added explicit `logger.error()` calls for debug visibility on conflict/error paths (PM-F-03). (5) Clarified SkillInvoker switches to `diffWorktreeIncludingUntracked` for new file detection (PM-Q-01). (6) Clarified `formatAgentName()` derives display name from `agentId` for log file header creation (TE-Q-02). (7) Added 7 new test categories: malformed log file, malformed message, branch-already-exists, branchExists, diffWorktreeIncludingUntracked, SkillInvoker diff update, concurrent log serialization (TE-F-06/F-08/F-09). (8) Renamed "retry on lock" → "retry on write failure" (TE-F-05). |
 
 ---
 

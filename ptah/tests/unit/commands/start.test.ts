@@ -8,6 +8,10 @@ import {
   FakeContextAssembler,
   FakeSkillInvoker,
   FakeResponsePoster,
+  FakeGitClient,
+  FakeArtifactCommitter,
+  FakeAgentLogWriter,
+  FakeMessageDeduplicator,
   defaultTestConfig,
   createThreadMessage,
 } from "../../fixtures/factories.js";
@@ -199,6 +203,10 @@ describe("StartCommand", () => {
         threadQueue: new InMemoryThreadQueue(),
         logger: orchestratorLogger,
         config: defaultTestConfig(),
+        gitClient: new FakeGitClient(),
+        artifactCommitter: new FakeArtifactCommitter(),
+        agentLogWriter: new FakeAgentLogWriter(),
+        messageDeduplicator: new FakeMessageDeduplicator(),
       });
 
       command = new StartCommand(configLoader, discord, logger, {
@@ -259,6 +267,10 @@ describe("StartCommand", () => {
         threadQueue: new InMemoryThreadQueue(),
         logger: new FakeLogger(),
         config: defaultTestConfig(),
+        gitClient: new FakeGitClient(),
+        artifactCommitter: new FakeArtifactCommitter(),
+        agentLogWriter: new FakeAgentLogWriter(),
+        messageDeduplicator: new FakeMessageDeduplicator(),
       });
 
       const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
@@ -285,6 +297,10 @@ describe("StartCommand", () => {
         threadQueue: new InMemoryThreadQueue(),
         logger: new FakeLogger(),
         config: defaultTestConfig(),
+        gitClient: new FakeGitClient(),
+        artifactCommitter: new FakeArtifactCommitter(),
+        agentLogWriter: new FakeAgentLogWriter(),
+        messageDeduplicator: new FakeMessageDeduplicator(),
       });
 
       discord.channels.set("agent-debug", "debug-channel-id");

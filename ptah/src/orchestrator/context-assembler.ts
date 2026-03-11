@@ -17,6 +17,7 @@ export interface ContextAssembler {
     threadHistory: ThreadMessage[];
     triggerMessage: ThreadMessage;
     config: PtahConfig;
+    worktreePath?: string;  // Phase 4: read Layer 2 from worktree when provided
   }): Promise<ContextBundle>;
 }
 
@@ -52,17 +53,24 @@ export class DefaultContextAssembler implements ContextAssembler {
     threadHistory: ThreadMessage[];
     triggerMessage: ThreadMessage;
     config: PtahConfig;
+    worktreePath?: string;
   }): Promise<ContextBundle> {
-    const { agentId, threadId, threadName, threadHistory, triggerMessage, config } = params;
+    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath } = params;
 
     const featureName = this.extractFeatureName(threadName);
     const resumePattern = this.detectResumePattern(agentId, threadHistory);
 
-    // Read role prompt (fatal if missing)
+    // Determine the base path for Layer 1/2 file reads
+    // Phase 4: when worktreePath is provided, read from worktree; otherwise main repo
+    const docsRoot = worktreePath
+      ? this.fs.joinPath(worktreePath, config.docs.root)
+      : config.docs.root;
+
+    // Read role prompt (fatal if missing) — always from main repo
     const rolePrompt = await this.readRolePrompt(agentId, config);
 
-    // Read overview.md for Layer 1
-    const overviewContent = await this.readOverview(featureName, config);
+    // Read overview.md for Layer 1 (from worktree if available)
+    const overviewContent = await this.readOverviewFromBase(featureName, docsRoot);
 
     // Build Layer 1: system prompt
     const layer1 = this.buildLayer1(rolePrompt, overviewContent);
@@ -77,7 +85,7 @@ export class DefaultContextAssembler implements ContextAssembler {
     );
 
     // Read Layer 2: feature folder files (excluding overview.md)
-    let layer2Files = await this.readFeatureFiles(featureName, config);
+    let layer2Files = await this.readFeatureFilesFromBase(featureName, docsRoot);
 
     // Token budget enforcement
     const budget = config.orchestrator.token_budget ?? DEFAULT_TOKEN_BUDGET;
@@ -173,7 +181,11 @@ export class DefaultContextAssembler implements ContextAssembler {
   }
 
   private async readOverview(featureName: string, config: PtahConfig): Promise<string | null> {
-    const overviewPath = this.fs.joinPath(config.docs.root, featureName, "overview.md");
+    return this.readOverviewFromBase(featureName, config.docs.root);
+  }
+
+  private async readOverviewFromBase(featureName: string, docsRoot: string): Promise<string | null> {
+    const overviewPath = this.fs.joinPath(docsRoot, featureName, "overview.md");
     try {
       const content = await this.fs.readFile(overviewPath);
       return content;
@@ -310,7 +322,14 @@ export class DefaultContextAssembler implements ContextAssembler {
     featureName: string,
     config: PtahConfig,
   ): Promise<Array<{ name: string; content: string }>> {
-    const featureDir = this.fs.joinPath(config.docs.root, featureName);
+    return this.readFeatureFilesFromBase(featureName, config.docs.root);
+  }
+
+  private async readFeatureFilesFromBase(
+    featureName: string,
+    docsRoot: string,
+  ): Promise<Array<{ name: string; content: string }>> {
+    const featureDir = this.fs.joinPath(docsRoot, featureName);
 
     try {
       const dirExists = await this.fs.exists(featureDir);
