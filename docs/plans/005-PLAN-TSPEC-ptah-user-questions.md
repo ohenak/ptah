@@ -102,10 +102,10 @@ Add new fakes and extend existing fakes. No TDD cycle — fakes are validated by
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 39 | `DiscordJsClient.postChannelMessage` — calls `channel.send()` on the resolved `GuildText` channel; returns the Discord message ID string | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ⬚ Not Started |
-| 40 | `DiscordJsClient.onChannelMessage` — registers `messageCreate` listener; thread messages ignored (`channel.isThread() === true`); wrong channel ID ignored; bot messages ignored; handler called for matching non-bot non-thread message | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ⬚ Not Started |
-| 41 | `DiscordJsClient.addReaction` — fetches message by ID from channel; calls `message.react(emoji)` | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ⬚ Not Started |
-| 42 | `DiscordJsClient.replyToMessage` — fetches message by ID from channel; calls `message.reply(content)` | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ⬚ Not Started |
+| 39 | `DiscordJsClient.postChannelMessage` — calls `channel.send()` on the resolved `GuildText` channel; returns the Discord message ID string | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ✅ Done |
+| 40 | `DiscordJsClient.onChannelMessage` — registers `messageCreate` listener; thread messages ignored (`channel.isThread() === true`); wrong channel ID ignored; bot messages ignored; handler called for matching non-bot non-thread message | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ✅ Done |
+| 41 | `DiscordJsClient.addReaction` — fetches message by ID from channel; calls `message.react(emoji)` | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ✅ Done |
+| 42 | `DiscordJsClient.replyToMessage` — fetches message by ID from channel; calls `message.reply(content)` | `ptah/tests/unit/services/discord.test.ts` | `ptah/src/services/discord.ts` | ✅ Done |
 
 ### Phase G: Orchestrator Updates
 
