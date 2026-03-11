@@ -151,8 +151,6 @@ export interface InvocationResult {
   textResponse: string;
   routingSignalRaw: string;
   artifactChanges: string[];
-  worktreePath: string;
-  branch: string;
   durationMs: number;
 }
 
@@ -175,4 +173,35 @@ export interface PostResult {
 export interface WorktreeInfo {
   path: string;
   branch: string;
+}
+
+// --- Phase 4: Artifact commit types ---
+
+export type MergeResult = "merged" | "conflict" | "merge-error";
+
+export interface CommitParams {
+  worktreePath: string;
+  branch: string;
+  artifactChanges: string[];
+  agentId: string;
+  threadName: string;
+}
+
+export interface CommitResult {
+  commitSha: string | null;
+  mergeStatus: MergeResult | "no-changes" | "commit-error" | "lock-timeout";
+  branch: string;
+  conflictMessage?: string;
+}
+
+export type LogStatus = "completed" | "completed (no changes)" | "conflict" | "error";
+
+export interface LogEntry {
+  agentId: string;
+  threadId: string;
+  threadName: string;
+  status: LogStatus;
+  commitSha: string | null;
+  summary: string;
+  timestamp: Date;
 }

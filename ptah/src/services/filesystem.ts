@@ -12,6 +12,9 @@ export interface FileSystem {
   // --- Phase 3 ---
   readDir(path: string): Promise<string[]>;
   joinPath(...segments: string[]): string;
+
+  // --- Phase 4 ---
+  appendFile(path: string, content: string): Promise<void>;
 }
 
 export class NodeFileSystem implements FileSystem {
@@ -60,5 +63,9 @@ export class NodeFileSystem implements FileSystem {
 
   joinPath(...segments: string[]): string {
     return path.join(...segments);
+  }
+
+  async appendFile(filePath: string, content: string): Promise<void> {
+    await fs.appendFile(path.resolve(this._cwd, filePath), content, "utf-8");
   }
 }
