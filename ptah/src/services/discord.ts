@@ -6,7 +6,7 @@ import {
   type Message,
   type ThreadChannel,
 } from "discord.js";
-import type { ThreadMessage, EmbedOptions } from "../types.js";
+import type { ThreadMessage, EmbedOptions, ChannelMessage } from "../types.js";
 import type { Logger } from "./logger.js";
 
 export interface DiscordClient {
@@ -23,6 +23,12 @@ export interface DiscordClient {
   postEmbed(options: EmbedOptions): Promise<string>;
   createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string>;
   postSystemMessage(threadId: string, content: string): Promise<void>;
+
+  // --- Phase 5 ---
+  postChannelMessage(channelId: string, content: string): Promise<string>;
+  onChannelMessage(channelId: string, handler: (msg: ChannelMessage) => Promise<void>): void;
+  addReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
+  replyToMessage(channelId: string, messageId: string, content: string): Promise<void>;
 }
 
 function toThreadMessage(message: Message): ThreadMessage {
@@ -207,5 +213,54 @@ export class DiscordJsClient implements DiscordClient {
       description: content,
       colour: 0x9E9E9E,
     });
+  }
+
+  // --- Phase 5 stubs (full implementations in Batch 3d) ---
+
+  async postChannelMessage(channelId: string, content: string): Promise<string> {
+    const channel = await this.client.channels.fetch(channelId) as { send: (opts: unknown) => Promise<{ id: string }> };
+    const message = await channel.send({ content });
+    return message.id;
+  }
+
+  onChannelMessage(channelId: string, handler: (msg: ChannelMessage) => Promise<void>): void {
+    this.client.on("messageCreate", async (message: Message) => {
+      if (message.author.bot) return;
+      if (message.channelId !== channelId) return;
+      if (message.channel.isThread()) return;
+
+      const channelMessage: ChannelMessage = {
+        id: message.id,
+        channelId: message.channelId,
+        authorId: message.author.id,
+        authorName: message.author.displayName,
+        isBot: message.author.bot,
+        content: message.content,
+        replyToMessageId: message.reference?.messageId ?? null,
+        timestamp: message.createdAt,
+      };
+
+      try {
+        await handler(channelMessage);
+      } catch (err) {
+        this.logger.error(
+          `Channel message handler error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    });
+  }
+
+  async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+    type FetchableChannel = { messages: { fetch: (id: string) => Promise<{ react: (emoji: string) => Promise<void> }> } };
+    const channel = await this.client.channels.fetch(channelId) as unknown as FetchableChannel;
+    const message = await channel.messages.fetch(messageId);
+    await message.react(emoji);
+  }
+
+  async replyToMessage(channelId: string, messageId: string, content: string): Promise<void> {
+    type FetchableChannel = { messages: { fetch: (id: string) => Promise<{ reply: (opts: unknown) => Promise<void> }> } };
+    const channel = await this.client.channels.fetch(channelId) as unknown as FetchableChannel;
+    const message = await channel.messages.fetch(messageId);
+    await message.reply({ content });
   }
 }

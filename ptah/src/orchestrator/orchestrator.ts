@@ -15,10 +15,16 @@ import type { ThreadQueue } from "./thread-queue.js";
 import type { ArtifactCommitter } from "./artifact-committer.js";
 import type { AgentLogWriter } from "./agent-log-writer.js";
 import type { MessageDeduplicator } from "./message-deduplicator.js";
+import type { PendingQuestion } from "../types.js";
+import type { QuestionStore } from "./question-store.js";
+import type { QuestionPoller } from "./question-poller.js";
+import type { PatternBContextBuilder } from "./pattern-b-context-builder.js";
 
 export interface Orchestrator {
   handleMessage(message: ThreadMessage): Promise<void>;
   startup(): Promise<void>;
+  shutdown(): Promise<void>;
+  resumeWithPatternB(question: PendingQuestion): Promise<void>;
 }
 
 export interface OrchestratorDeps {
@@ -36,6 +42,11 @@ export interface OrchestratorDeps {
   artifactCommitter: ArtifactCommitter;
   agentLogWriter: AgentLogWriter;
   messageDeduplicator: MessageDeduplicator;
+
+  // --- Phase 5 (new) ---
+  questionStore?: QuestionStore;
+  questionPoller?: QuestionPoller;
+  patternBContextBuilder?: PatternBContextBuilder;
 }
 
 export class DefaultOrchestrator implements Orchestrator {
@@ -51,6 +62,17 @@ export class DefaultOrchestrator implements Orchestrator {
   private readonly artifactCommitter: ArtifactCommitter;
   private readonly agentLogWriter: AgentLogWriter;
   private readonly messageDeduplicator: MessageDeduplicator;
+  private readonly questionStore!: QuestionStore;
+  private readonly questionPoller!: QuestionPoller;
+  private readonly patternBContextBuilder!: PatternBContextBuilder;
+  private pausedThreadIds = new Set<string>();
+  private openQuestionsChannelId: string | null = null;
+  /**
+   * In-memory map of Discord message ID → question ID.
+   * Seeded on startup from both pending.md and resolved.md.
+   * Updated whenever a new question notification is posted.
+   */
+  private discordMessageIdMap = new Map<string, string>();
 
   constructor(deps: OrchestratorDeps) {
     this.discord = deps.discordClient;
@@ -65,12 +87,23 @@ export class DefaultOrchestrator implements Orchestrator {
     this.artifactCommitter = deps.artifactCommitter;
     this.agentLogWriter = deps.agentLogWriter;
     this.messageDeduplicator = deps.messageDeduplicator;
+    if (deps.questionStore) this.questionStore = deps.questionStore;
+    if (deps.questionPoller) this.questionPoller = deps.questionPoller;
+    if (deps.patternBContextBuilder) this.patternBContextBuilder = deps.patternBContextBuilder;
   }
 
   async handleMessage(message: ThreadMessage): Promise<void> {
     this.threadQueue.enqueue(message.threadId, async () => {
       await this.processMessage(message);
     });
+  }
+
+  async shutdown(): Promise<void> {
+    throw new Error("not implemented");
+  }
+
+  async resumeWithPatternB(_question: PendingQuestion): Promise<void> {
+    throw new Error("not implemented");
   }
 
   async startup(): Promise<void> {

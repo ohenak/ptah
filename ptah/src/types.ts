@@ -100,7 +100,40 @@ export interface RoutingDecision {
   createNewThread: boolean;
 }
 
-export type ResumePattern = "fresh" | "pattern_a" | "pattern_c";
+export type ResumePattern = "fresh" | "pattern_a" | "pattern_b" | "pattern_c";
+
+// --- Phase 5: User question types ---
+
+// In-memory representation of a pending question entry
+export interface PendingQuestion {
+  id: string;               // "Q-0001"
+  agentId: string;          // "pm-agent"
+  threadId: string;         // Discord thread snowflake ID
+  threadName: string;       // "auth — define requirements"
+  askedAt: Date;            // when the question was written
+  questionText: string;     // verbatim question from ROUTE_TO_USER signal
+  answer: string | null;    // null until answered; verbatim once written
+  discordMessageId: string | null;  // null until notification posted
+}
+
+// In-memory tracking record for the poller
+export interface RegisteredQuestion {
+  questionId: string;   // "Q-0001"
+  agentId: string;      // "pm-agent"
+  threadId: string;     // Discord thread snowflake ID
+}
+
+// Message type for non-thread channel messages (Phase 5 Discord writeback)
+export interface ChannelMessage {
+  id: string;
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  isBot: boolean;
+  content: string;
+  replyToMessageId: string | null;
+  timestamp: Date;
+}
 
 // --- Phase 3: Context types ---
 
