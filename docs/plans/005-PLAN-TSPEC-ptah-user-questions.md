@@ -80,11 +80,11 @@ Add new fakes and extend existing fakes. No TDD cycle — fakes are validated by
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 27 | `registerQuestion` — auto-starts `setInterval` on first call; subsequent calls add to registered set without restarting | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ⬚ Not Started |
-| 28 | Poll tick — fires `onAnswer` callback and removes from registered set for each question whose entry in `pending.md` has a non-null answer; unanswered questions remain registered | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ⬚ Not Started |
-| 29 | Self-stop — clears interval when `registered` becomes empty after `onAnswer` fires for last question | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ⬚ Not Started |
-| 30 | `stop()` — clears interval immediately; awaits any in-progress tick before resolving | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ⬚ Not Started |
-| 31 | Malformed `pending.md` — `readPendingQuestions` returns partial/empty list due to parse errors; warns and continues polling on next tick; does not throw | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ⬚ Not Started |
+| 27 | `registerQuestion` — auto-starts `setInterval` on first call; subsequent calls add to registered set without restarting | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ✅ Done |
+| 28 | Poll tick — fires `onAnswer` callback and removes from registered set for each question whose entry in `pending.md` has a non-null answer; unanswered questions remain registered | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ✅ Done |
+| 29 | Self-stop — clears interval when `registered` becomes empty after `onAnswer` fires for last question | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ✅ Done |
+| 30 | `stop()` — clears interval immediately; awaits any in-progress tick before resolving | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ✅ Done |
+| 31 | Malformed `pending.md` — `readPendingQuestions` returns partial/empty list due to parse errors; warns and continues polling on next tick; does not throw | `ptah/tests/unit/orchestrator/question-poller.test.ts` | `ptah/src/orchestrator/question-poller.ts` | ✅ Done |
 
 ### Phase E: PatternBContextBuilder
 
