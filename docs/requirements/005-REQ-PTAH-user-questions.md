@@ -156,7 +156,7 @@ No non-functional requirements are assigned to Phase 5.
 | P0 | 7 | REQ-DI-07, REQ-RP-02, REQ-PQ-01, REQ-PQ-02, REQ-PQ-03, REQ-PQ-04, REQ-PQ-05 |
 | P1 | 0 | — |
 
-**Specification status:** All 7 requirements are pending specification (no FSPEC or TSPEC yet).
+**Specification status:** All 7 requirements are FSPEC'd — see [005-FSPEC-ptah-user-questions v1.1](../specifications/005-FSPEC-ptah-user-questions.md) (3 FSPECs: FSPEC-PQ-01, FSPEC-PQ-02, FSPEC-RPB-01). **FSPEC approved March 11, 2026. TSPEC pending.**
 
 ---
 
