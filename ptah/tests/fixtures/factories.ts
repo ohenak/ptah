@@ -29,7 +29,13 @@ import type {
   CommitParams,
   CommitResult,
   LogEntry,
+  PendingQuestion,
+  RegisteredQuestion,
+  ChannelMessage,
 } from "../../src/types.js";
+import type { QuestionStore } from "../../src/orchestrator/question-store.js";
+import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
+import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-context-builder.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -368,6 +374,41 @@ export class FakeDiscordClient implements DiscordClient {
       description: content,
       colour: 0x9E9E9E,
     });
+  }
+
+  // --- Phase 5 additions ---
+  postChannelMessageCalls: { channelId: string; content: string }[] = [];
+  postChannelMessageResponse = "msg-001";
+  postChannelMessageError: Error | null = null;
+  addReactionCalls: { channelId: string; messageId: string; emoji: string }[] = [];
+  addReactionError: Error | null = null;
+  replyToMessageCalls: { channelId: string; messageId: string; content: string }[] = [];
+  replyToMessageError: Error | null = null;
+  private channelMessageHandlers = new Map<string, (msg: ChannelMessage) => Promise<void>>();
+
+  async postChannelMessage(channelId: string, content: string): Promise<string> {
+    this.postChannelMessageCalls.push({ channelId, content });
+    if (this.postChannelMessageError) throw this.postChannelMessageError;
+    return this.postChannelMessageResponse;
+  }
+
+  onChannelMessage(channelId: string, handler: (msg: ChannelMessage) => Promise<void>): void {
+    this.channelMessageHandlers.set(channelId, handler);
+  }
+
+  async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+    this.addReactionCalls.push({ channelId, messageId, emoji });
+    if (this.addReactionError) throw this.addReactionError;
+  }
+
+  async replyToMessage(channelId: string, messageId: string, content: string): Promise<void> {
+    this.replyToMessageCalls.push({ channelId, messageId, content });
+    if (this.replyToMessageError) throw this.replyToMessageError;
+  }
+
+  async simulateChannelMessage(channelId: string, msg: ChannelMessage): Promise<void> {
+    const handler = this.channelMessageHandlers.get(channelId);
+    if (handler) await handler(msg);
   }
 }
 
@@ -782,4 +823,152 @@ export function defaultCommitResult(): CommitResult {
     mergeStatus: "merged",
     branch: "ptah/dev-agent/thread-1/fake",
   };
+}
+
+// --- Phase 5: New fakes and factories ---
+
+// Task 8: FakeQuestionStore
+export class FakeQuestionStore implements QuestionStore {
+  private questions = new Map<string, PendingQuestion>();
+  private archived: PendingQuestion[] = [];
+  private nextId = 1;
+
+  appendError: Error | null = null;
+  updateDiscordMessageIdError: Error | null = null;
+  readError: Error | null = null;
+  setAnswerError: Error | null = null;
+  archiveError: Error | null = null;
+
+  seedQuestion(q: PendingQuestion): void {
+    this.questions.set(q.id, q);
+  }
+
+  getArchivedQuestions(): PendingQuestion[] {
+    return [...this.archived];
+  }
+
+  async appendQuestion(question: Omit<PendingQuestion, "id">): Promise<PendingQuestion> {
+    if (this.appendError) throw this.appendError;
+    const id = `Q-${String(this.nextId++).padStart(4, "0")}`;
+    const full: PendingQuestion = { ...question, id };
+    this.questions.set(id, full);
+    return full;
+  }
+
+  async updateDiscordMessageId(questionId: string, messageId: string): Promise<void> {
+    if (this.updateDiscordMessageIdError) throw this.updateDiscordMessageIdError;
+    const q = this.questions.get(questionId);
+    if (q) this.questions.set(questionId, { ...q, discordMessageId: messageId });
+  }
+
+  async readPendingQuestions(): Promise<PendingQuestion[]> {
+    if (this.readError) throw this.readError;
+    return [...this.questions.values()];
+  }
+
+  async readResolvedQuestions(): Promise<PendingQuestion[]> {
+    if (this.readError) throw this.readError;
+    return [...this.archived];
+  }
+
+  async getQuestion(questionId: string): Promise<PendingQuestion | null> {
+    return this.questions.get(questionId) ?? null;
+  }
+
+  async setAnswer(questionId: string, answer: string): Promise<void> {
+    if (this.setAnswerError) throw this.setAnswerError;
+    const q = this.questions.get(questionId);
+    if (q) this.questions.set(questionId, { ...q, answer });
+  }
+
+  async archiveQuestion(questionId: string, resolvedAt: Date): Promise<void> {
+    if (this.archiveError) throw this.archiveError;
+    const q = this.questions.get(questionId);
+    if (q) {
+      this.questions.delete(questionId);
+      this.archived.push({ ...q, askedAt: resolvedAt });
+    }
+  }
+}
+
+// Task 9: FakeQuestionPoller
+export class FakeQuestionPoller implements QuestionPoller {
+  registeredQuestions: RegisteredQuestion[] = [];
+  stopCalled = false;
+  private onAnswer: ((question: PendingQuestion) => Promise<void>) | null;
+
+  constructor(onAnswer?: (question: PendingQuestion) => Promise<void>) {
+    this.onAnswer = onAnswer ?? null;
+  }
+
+  registerQuestion(question: RegisteredQuestion): void {
+    this.registeredQuestions.push(question);
+  }
+
+  async stop(): Promise<void> {
+    this.stopCalled = true;
+  }
+
+  async simulateAnswerDetected(question: PendingQuestion): Promise<void> {
+    if (this.onAnswer) {
+      await this.onAnswer(question);
+    }
+  }
+}
+
+// Task 11: createPendingQuestion factory
+export function createPendingQuestion(overrides: Partial<PendingQuestion> = {}): PendingQuestion {
+  return {
+    id: "Q-0001",
+    agentId: "pm-agent",
+    threadId: "thread-123",
+    threadName: "auth — define requirements",
+    askedAt: new Date("2026-01-01T10:00:00Z"),
+    questionText: "What is the expected response format?",
+    answer: null,
+    discordMessageId: null,
+    ...overrides,
+  };
+}
+
+// Task 12: createChannelMessage factory
+export function createChannelMessage(overrides: Partial<ChannelMessage> = {}): ChannelMessage {
+  return {
+    id: "msg-001",
+    channelId: "channel-open-questions",
+    authorId: "user-456",
+    authorName: "kane",
+    isBot: false,
+    content: "The response format should be JSON.",
+    replyToMessageId: null,
+    timestamp: new Date("2026-01-01T10:05:00Z"),
+    ...overrides,
+  };
+}
+
+// FakePatternBContextBuilder (task 14 companion)
+export class FakePatternBContextBuilder implements PatternBContextBuilder {
+  buildCalls: Array<{ question: PendingQuestion; worktreePath: string }> = [];
+  buildResult: ContextBundle = {
+    systemPrompt: "fake system prompt",
+    userMessage: "fake user message",
+    agentId: "pm-agent",
+    threadId: "thread-123",
+    featureName: "test-feature",
+    resumePattern: "pattern_b",
+    turnNumber: 1,
+    tokenCounts: { layer1: 100, layer2: 200, layer3: 50, total: 350 },
+  };
+  buildError: Error | null = null;
+
+  async build(params: {
+    question: PendingQuestion;
+    worktreePath: string;
+    config: PtahConfig;
+    threadHistory: ThreadMessage[];
+  }): Promise<ContextBundle> {
+    this.buildCalls.push({ question: params.question, worktreePath: params.worktreePath });
+    if (this.buildError) throw this.buildError;
+    return this.buildResult;
+  }
 }

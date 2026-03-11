@@ -11,6 +11,9 @@ import {
   FakeArtifactCommitter,
   FakeAgentLogWriter,
   FakeMessageDeduplicator,
+  FakeQuestionStore,
+  FakeQuestionPoller,
+  FakePatternBContextBuilder,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -32,6 +35,9 @@ describe("DefaultOrchestrator", () => {
   let artifactCommitter: FakeArtifactCommitter;
   let agentLogWriter: FakeAgentLogWriter;
   let messageDeduplicator: FakeMessageDeduplicator;
+  let questionStore: FakeQuestionStore;
+  let questionPoller: FakeQuestionPoller;
+  let patternBContextBuilder: FakePatternBContextBuilder;
   let orchestrator: DefaultOrchestrator;
 
   beforeEach(() => {
@@ -47,6 +53,9 @@ describe("DefaultOrchestrator", () => {
     artifactCommitter = new FakeArtifactCommitter();
     agentLogWriter = new FakeAgentLogWriter();
     messageDeduplicator = new FakeMessageDeduplicator();
+    questionStore = new FakeQuestionStore();
+    questionPoller = new FakeQuestionPoller();
+    patternBContextBuilder = new FakePatternBContextBuilder();
 
     orchestrator = new DefaultOrchestrator({
       discordClient: discord,
@@ -61,6 +70,9 @@ describe("DefaultOrchestrator", () => {
       artifactCommitter,
       agentLogWriter,
       messageDeduplicator,
+      questionStore,
+      questionPoller,
+      patternBContextBuilder,
     });
   });
 
