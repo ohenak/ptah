@@ -11,7 +11,6 @@ import {
   defaultTestConfig,
 } from "../../fixtures/factories.js";
 import type { ContextBundle, PtahConfig } from "../../../src/types.js";
-import * as os from "node:os";
 
 function createBundle(overrides: Partial<ContextBundle> = {}): ContextBundle {
   return {
@@ -33,6 +32,7 @@ describe("DefaultSkillInvoker", () => {
   let logger: FakeLogger;
   let config: PtahConfig;
   let invoker: DefaultSkillInvoker;
+  const worktreePath = "/tmp/ptah-worktrees/test1234";
 
   beforeEach(() => {
     skillClient = new FakeSkillClient();
@@ -42,29 +42,126 @@ describe("DefaultSkillInvoker", () => {
     invoker = new DefaultSkillInvoker(skillClient, gitClient, logger);
   });
 
-  // Task 92: Happy path (AT-SI-01)
-  describe("happy path", () => {
-    it("creates worktree, invokes Claude Code, detects /docs artifact changes, cleans up worktree + branch", async () => {
+  // ─── Task 54: SkillInvoker receives worktreePath ─────────────────
+  describe("Task 54: receives worktreePath, does not create worktree", () => {
+    it("uses the provided worktreePath and does NOT call gitClient.createWorktree", async () => {
       skillClient.responses = [{ textContent: "I made changes to docs." }];
-      gitClient.diffResult = [
+      gitClient.diffWorktreeIncludingUntrackedResult = [
+        "docs/features/my-feature.md",
+      ];
+
+      const bundle = createBundle();
+      const result = await invoker.invoke(bundle, config, worktreePath);
+
+      // Worktree was NOT created by SkillInvoker
+      expect(gitClient.createdWorktrees).toHaveLength(0);
+
+      // SkillClient was invoked with the provided worktreePath
+      expect(skillClient.invocations).toHaveLength(1);
+      const req = skillClient.invocations[0];
+      expect(req.worktreePath).toBe(worktreePath);
+      expect(req.systemPrompt).toBe(bundle.systemPrompt);
+      expect(req.userMessage).toBe(bundle.userMessage);
+      expect(req.timeoutMs).toBe(config.orchestrator.invocation_timeout_ms);
+
+      // Result has correct shape (no worktreePath or branch fields)
+      expect(result.textResponse).toBe("I made changes to docs.");
+      expect(result.routingSignalRaw).toBe("I made changes to docs.");
+      expect(result.artifactChanges).toEqual(["docs/features/my-feature.md"]);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      expect((result as Record<string, unknown>)["worktreePath"]).toBeUndefined();
+      expect((result as Record<string, unknown>)["branch"]).toBeUndefined();
+    });
+  });
+
+  // ─── Task 55: SkillInvoker no cleanup ─────────────────────────────
+  describe("Task 55: no cleanup — worktree not removed, no branch deletion", () => {
+    it("does NOT remove worktree or delete branch on success", async () => {
+      skillClient.responses = [{ textContent: "done" }];
+      gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+      const bundle = createBundle();
+      await invoker.invoke(bundle, config, worktreePath);
+
+      // No cleanup operations performed
+      expect(gitClient.removedWorktrees).toHaveLength(0);
+      expect(gitClient.deletedBranches).toHaveLength(0);
+    });
+
+    it("does NOT remove worktree or delete branch on timeout", async () => {
+      config.orchestrator.invocation_timeout_ms = 50;
+      skillClient.invokeDelay = 200;
+
+      const bundle = createBundle();
+      try {
+        await invoker.invoke(bundle, config, worktreePath);
+      } catch {
+        // expected
+      }
+
+      expect(gitClient.removedWorktrees).toHaveLength(0);
+      expect(gitClient.deletedBranches).toHaveLength(0);
+    });
+
+    it("does NOT remove worktree or delete branch on error", async () => {
+      skillClient.invokeError = new Error("boom");
+
+      const bundle = createBundle();
+      try {
+        await invoker.invoke(bundle, config, worktreePath);
+      } catch {
+        // expected
+      }
+
+      expect(gitClient.removedWorktrees).toHaveLength(0);
+      expect(gitClient.deletedBranches).toHaveLength(0);
+    });
+  });
+
+  // ─── Task 56: SkillInvoker uses diffWorktreeIncludingUntracked ────
+  describe("Task 56: uses diffWorktreeIncludingUntracked", () => {
+    it("detects both tracked and untracked files via diffWorktreeIncludingUntracked", async () => {
+      skillClient.responses = [{ textContent: "created new files" }];
+      // Set up diffWorktreeIncludingUntrackedResult (the new method)
+      gitClient.diffWorktreeIncludingUntrackedResult = [
+        "docs/features/existing.md",    // tracked change
+        "docs/features/new-file.md",    // untracked new file
+      ];
+      // Old method should NOT be used — set different value to verify
+      gitClient.diffResult = ["docs/features/old-only.md"];
+
+      const bundle = createBundle();
+      const result = await invoker.invoke(bundle, config, worktreePath);
+
+      // Should use diffWorktreeIncludingUntracked results, not diffWorktree
+      expect(result.artifactChanges).toEqual([
+        "docs/features/existing.md",
+        "docs/features/new-file.md",
+      ]);
+      // The old diffResult should not appear
+      expect(result.artifactChanges).not.toContain("docs/features/old-only.md");
+    });
+  });
+
+  // ─── Existing tests updated for new signature ─────────────────────
+
+  describe("happy path", () => {
+    it("invokes Claude Code, detects /docs artifact changes via diffWorktreeIncludingUntracked", async () => {
+      skillClient.responses = [{ textContent: "I made changes to docs." }];
+      gitClient.diffWorktreeIncludingUntrackedResult = [
         "docs/features/my-feature.md",
         "docs/overview.md",
       ];
 
       const bundle = createBundle();
-      const result = await invoker.invoke(bundle, config);
-
-      // Worktree was created (use createdWorktrees since cleanup removes from worktrees)
-      expect(gitClient.createdWorktrees).toHaveLength(1);
-      const worktree = gitClient.createdWorktrees[0];
-      expect(worktree.path).toContain(`${os.tmpdir()}/ptah-worktrees/`);
+      const result = await invoker.invoke(bundle, config, worktreePath);
 
       // SkillClient was invoked with correct request
       expect(skillClient.invocations).toHaveLength(1);
       const req = skillClient.invocations[0];
       expect(req.systemPrompt).toBe(bundle.systemPrompt);
       expect(req.userMessage).toBe(bundle.userMessage);
-      expect(req.worktreePath).toBe(worktree.path);
+      expect(req.worktreePath).toBe(worktreePath);
       expect(req.timeoutMs).toBe(config.orchestrator.invocation_timeout_ms);
 
       // Result has correct shape
@@ -74,140 +171,61 @@ describe("DefaultSkillInvoker", () => {
         "docs/features/my-feature.md",
         "docs/overview.md",
       ]);
-      expect(result.worktreePath).toBe(worktree.path);
-      expect(result.branch).toBe(worktree.branch);
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
-
-      // Cleanup happened
-      expect(gitClient.removedWorktrees).toContain(worktree.path);
-      expect(gitClient.deletedBranches).toContain(worktree.branch);
     });
   });
 
-  // Task 93: Branch naming (AT-SI-08)
-  describe("branch naming", () => {
-    it("follows ptah/{agentId}/{threadId}/{invocationId} convention with 8-char hex ID", async () => {
-      skillClient.responses = [{ textContent: "ok" }];
-      gitClient.diffResult = [];
-
-      const bundle = createBundle({ agentId: "pm-agent", threadId: "thread-99" });
-      await invoker.invoke(bundle, config);
-
-      const branch = gitClient.createdWorktrees[0].branch;
-      const parts = branch.split("/");
-      expect(parts[0]).toBe("ptah");
-      expect(parts[1]).toBe("pm-agent");
-      expect(parts[2]).toBe("thread-99");
-      expect(parts[3]).toMatch(/^[0-9a-f]{8}$/);
-    });
-  });
-
-  // Task 94: Worktree path
-  describe("worktree path", () => {
-    it("uses {os.tmpdir()}/ptah-worktrees/{invocationId}", async () => {
-      skillClient.responses = [{ textContent: "ok" }];
-      gitClient.diffResult = [];
-
-      const bundle = createBundle();
-      await invoker.invoke(bundle, config);
-
-      const worktree = gitClient.createdWorktrees[0];
-      const tmpdir = os.tmpdir();
-      expect(worktree.path).toMatch(
-        new RegExp(`^${tmpdir.replace(/[/\\]/g, "[/\\\\]")}/ptah-worktrees/[0-9a-f]{8}$`)
-      );
-
-      // The invocationId in the path matches the one in the branch
-      const branchId = worktree.branch.split("/")[3];
-      expect(worktree.path).toContain(branchId);
-    });
-  });
-
-  // Task 95: Timeout (AT-SI-04)
   describe("timeout", () => {
-    it("throws InvocationTimeoutError when invocation exceeds timeout, cleans up worktree", async () => {
-      // Use a very short timeout
+    it("throws InvocationTimeoutError when invocation exceeds timeout", async () => {
       config.orchestrator.invocation_timeout_ms = 50;
       skillClient.invokeDelay = 200;
 
       const bundle = createBundle();
-      await expect(invoker.invoke(bundle, config)).rejects.toThrow(
-        InvocationTimeoutError
+      await expect(invoker.invoke(bundle, config, worktreePath)).rejects.toThrow(
+        InvocationTimeoutError,
       );
-
-      // Cleanup still happened
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
     });
   });
 
-  // Task 96: Invocation error (AT-SI-07)
   describe("invocation error", () => {
-    it("throws InvocationError when SkillClient throws, cleans up worktree", async () => {
+    it("throws InvocationError when SkillClient throws", async () => {
       skillClient.invokeError = new Error("Claude Code crashed");
 
       const bundle = createBundle();
-      await expect(invoker.invoke(bundle, config)).rejects.toThrow(
-        InvocationError
+      await expect(invoker.invoke(bundle, config, worktreePath)).rejects.toThrow(
+        InvocationError,
       );
-
-      // Cleanup still happened
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
     });
   });
 
-  // Task 97: Rate limit / API error (AT-SI-11)
   describe("rate limit / API error", () => {
-    it("wraps rate limit error in InvocationError and cleans up worktree", async () => {
+    it("wraps rate limit error in InvocationError", async () => {
       const rateLimitError = new Error("Rate limit exceeded");
       rateLimitError.name = "RateLimitError";
       skillClient.invokeError = rateLimitError;
 
       const bundle = createBundle();
-      await expect(invoker.invoke(bundle, config)).rejects.toThrow(
-        InvocationError
+      await expect(invoker.invoke(bundle, config, worktreePath)).rejects.toThrow(
+        InvocationError,
       );
-
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
     });
 
-    it("wraps API error in InvocationError and cleans up worktree", async () => {
+    it("wraps API error in InvocationError", async () => {
       const apiError = new Error("API unavailable");
       apiError.name = "APIError";
       skillClient.invokeError = apiError;
 
       const bundle = createBundle();
-      await expect(invoker.invoke(bundle, config)).rejects.toThrow(
-        InvocationError
+      await expect(invoker.invoke(bundle, config, worktreePath)).rejects.toThrow(
+        InvocationError,
       );
-
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
     });
   });
 
-  // Task 98: Worktree creation failure (AT-SI-06)
-  describe("worktree creation failure", () => {
-    it("throws when git worktree creation fails, skill is not invoked", async () => {
-      gitClient.createWorktreeError = new Error("git worktree add failed");
-
-      const bundle = createBundle();
-      await expect(invoker.invoke(bundle, config)).rejects.toThrow(
-        "git worktree add failed"
-      );
-
-      // Skill was never invoked
-      expect(skillClient.invocations).toHaveLength(0);
-    });
-  });
-
-  // Task 99: Artifact filtering (AT-SI-09)
   describe("artifact filtering", () => {
     it("only includes /docs changes, ignores non-/docs changes with warning", async () => {
       skillClient.responses = [{ textContent: "made changes" }];
-      gitClient.diffResult = [
+      gitClient.diffWorktreeIncludingUntrackedResult = [
         "docs/features/new-feature.md",
         "src/main.ts",
         "package.json",
@@ -216,7 +234,7 @@ describe("DefaultSkillInvoker", () => {
       ];
 
       const bundle = createBundle();
-      const result = await invoker.invoke(bundle, config);
+      const result = await invoker.invoke(bundle, config, worktreePath);
 
       expect(result.artifactChanges).toEqual([
         "docs/features/new-feature.md",
@@ -229,110 +247,30 @@ describe("DefaultSkillInvoker", () => {
     });
   });
 
-  // Task 100: Layer 1 file modification warning (AT-SI-12)
   describe("layer 1 file modification warning", () => {
     it("logs warning for overview.md changes but still includes them", async () => {
       skillClient.responses = [{ textContent: "updated overview" }];
-      gitClient.diffResult = [
+      gitClient.diffWorktreeIncludingUntrackedResult = [
         "docs/overview.md",
         "docs/features/something.md",
       ];
 
       const bundle = createBundle();
-      const result = await invoker.invoke(bundle, config);
+      const result = await invoker.invoke(bundle, config, worktreePath);
 
-      // overview.md is included in artifact changes
       expect(result.artifactChanges).toContain("docs/overview.md");
 
-      // Warning logged about layer 1 modification
       const warnings = logger.messages.filter((m) => m.level === "warn");
       expect(
-        warnings.some((w) => w.message.includes("overview.md"))
+        warnings.some((w) => w.message.includes("overview.md")),
       ).toBe(true);
     });
   });
 
-  // Task 101: pruneOrphanedWorktrees (SI-R9)
   describe("pruneOrphanedWorktrees", () => {
     it("calls gitClient.pruneWorktrees with ptah/ prefix", async () => {
       await invoker.pruneOrphanedWorktrees();
-
       expect(gitClient.prunedPrefixes).toEqual(["ptah/"]);
-    });
-  });
-
-  // Task 102: Cleanup guaranteed on success, timeout, and error
-  describe("cleanup guaranteed", () => {
-    it("cleans up worktree and branch on success", async () => {
-      skillClient.responses = [{ textContent: "done" }];
-      gitClient.diffResult = [];
-
-      const bundle = createBundle();
-      await invoker.invoke(bundle, config);
-
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
-    });
-
-    it("cleans up worktree and branch on timeout", async () => {
-      config.orchestrator.invocation_timeout_ms = 50;
-      skillClient.invokeDelay = 200;
-
-      const bundle = createBundle();
-      try {
-        await invoker.invoke(bundle, config);
-      } catch {
-        // expected
-      }
-
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
-    });
-
-    it("cleans up worktree and branch on error", async () => {
-      skillClient.invokeError = new Error("boom");
-
-      const bundle = createBundle();
-      try {
-        await invoker.invoke(bundle, config);
-      } catch {
-        // expected
-      }
-
-      expect(gitClient.removedWorktrees).toHaveLength(1);
-      expect(gitClient.deletedBranches).toHaveLength(1);
-    });
-
-    it("swallows cleanup errors with warning log", async () => {
-      skillClient.responses = [{ textContent: "done" }];
-      gitClient.diffResult = [];
-      gitClient.removeWorktreeError = new Error("cleanup failed");
-
-      const bundle = createBundle();
-      // Should not throw despite cleanup error
-      const result = await invoker.invoke(bundle, config);
-      expect(result.textResponse).toBe("done");
-
-      // Warning was logged about cleanup failure
-      const warnings = logger.messages.filter((m) => m.level === "warn");
-      expect(
-        warnings.some((w) => w.message.includes("Failed to cleanup worktree"))
-      ).toBe(true);
-    });
-
-    it("swallows branch deletion errors with warning log", async () => {
-      skillClient.responses = [{ textContent: "done" }];
-      gitClient.diffResult = [];
-      gitClient.deleteBranchError = new Error("branch delete failed");
-
-      const bundle = createBundle();
-      const result = await invoker.invoke(bundle, config);
-      expect(result.textResponse).toBe("done");
-
-      const warnings = logger.messages.filter((m) => m.level === "warn");
-      expect(
-        warnings.some((w) => w.message.includes("Failed to cleanup branch"))
-      ).toBe(true);
     });
   });
 });

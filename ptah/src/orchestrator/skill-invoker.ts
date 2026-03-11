@@ -1,13 +1,10 @@
-import { randomBytes } from "node:crypto";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { ContextBundle, InvocationResult, PtahConfig } from "../types.js";
 import type { SkillClient } from "../services/claude-code.js";
 import type { GitClient } from "../services/git.js";
 import type { Logger } from "../services/logger.js";
 
 export interface SkillInvoker {
-  invoke(bundle: ContextBundle, config: PtahConfig): Promise<InvocationResult>;
+  invoke(bundle: ContextBundle, config: PtahConfig, worktreePath: string): Promise<InvocationResult>;
   pruneOrphanedWorktrees(): Promise<void>;
 }
 
@@ -41,16 +38,10 @@ export class DefaultSkillInvoker implements SkillInvoker {
 
   async invoke(
     bundle: ContextBundle,
-    config: PtahConfig
+    config: PtahConfig,
+    worktreePath: string,
   ): Promise<InvocationResult> {
-    const invocationId = randomBytes(4).toString("hex");
-    const branch = `ptah/${bundle.agentId}/${bundle.threadId}/${invocationId}`;
-    const worktreePath = join(tmpdir(), "ptah-worktrees", invocationId);
     const timeoutMs = config.orchestrator.invocation_timeout_ms ?? 300_000;
-
-    // Create worktree (not in try/finally — if this fails, nothing to clean up)
-    await this.gitClient.createWorktree(branch, worktreePath);
-
     const startTime = Date.now();
 
     try {
@@ -58,11 +49,11 @@ export class DefaultSkillInvoker implements SkillInvoker {
       const response = await this.invokeWithTimeout(
         bundle,
         worktreePath,
-        timeoutMs
+        timeoutMs,
       );
 
-      // Detect artifact changes
-      const allChanges = await this.gitClient.diffWorktree(worktreePath);
+      // Detect artifact changes (including untracked files)
+      const allChanges = await this.gitClient.diffWorktreeIncludingUntracked(worktreePath);
       const artifactChanges = this.filterArtifactChanges(allChanges);
 
       const durationMs = Date.now() - startTime;
@@ -71,8 +62,6 @@ export class DefaultSkillInvoker implements SkillInvoker {
         textResponse: response.textContent,
         routingSignalRaw: response.textContent,
         artifactChanges,
-        worktreePath,
-        branch,
         durationMs,
       };
     } catch (error) {
@@ -84,11 +73,10 @@ export class DefaultSkillInvoker implements SkillInvoker {
       }
       throw new InvocationError(
         `Skill invocation failed: ${error instanceof Error ? error.message : String(error)}`,
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
-    } finally {
-      await this.cleanup(worktreePath, branch);
     }
+    // No finally block — orchestrator/ArtifactCommitter owns cleanup
   }
 
   async pruneOrphanedWorktrees(): Promise<void> {
@@ -98,7 +86,7 @@ export class DefaultSkillInvoker implements SkillInvoker {
   private async invokeWithTimeout(
     bundle: ContextBundle,
     worktreePath: string,
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<{ textContent: string }> {
     return new Promise<{ textContent: string }>((resolve, reject) => {
       let settled = false;
@@ -130,8 +118,8 @@ export class DefaultSkillInvoker implements SkillInvoker {
             reject(
               new InvocationError(
                 `Skill invocation failed: ${error instanceof Error ? error.message : String(error)}`,
-                error instanceof Error ? error : new Error(String(error))
-              )
+                error instanceof Error ? error : new Error(String(error)),
+              ),
             );
           }
         });
@@ -149,7 +137,7 @@ export class DefaultSkillInvoker implements SkillInvoker {
         // Check for Layer 1 file (overview.md) modification
         if (change.endsWith("overview.md")) {
           this.logger.warn(
-            `Layer 1 file modified: ${change} — this is unusual but allowed`
+            `Layer 1 file modified: ${change} — this is unusual but allowed`,
           );
         }
       } else {
@@ -159,28 +147,10 @@ export class DefaultSkillInvoker implements SkillInvoker {
 
     if (nonDocsChanges.length > 0) {
       this.logger.warn(
-        `Ignoring ${nonDocsChanges.length} non-docs change(s): ${nonDocsChanges.join(", ")}`
+        `Ignoring ${nonDocsChanges.length} non-docs change(s): ${nonDocsChanges.join(", ")}`,
       );
     }
 
     return docsChanges;
-  }
-
-  private async cleanup(worktreePath: string, branch: string): Promise<void> {
-    try {
-      await this.gitClient.removeWorktree(worktreePath);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to cleanup worktree ${worktreePath}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    try {
-      await this.gitClient.deleteBranch(branch);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to cleanup branch ${branch}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
   }
 }
