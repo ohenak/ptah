@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ThreadMessage, PtahConfig, CommitResult, LogStatus, LogEntry } from "../types.js";
+import type { ThreadMessage, PtahConfig, CommitResult, LogStatus, LogEntry, PendingQuestion, ChannelMessage } from "../types.js";
 import type { DiscordClient } from "../services/discord.js";
 import type { GitClient } from "../services/git.js";
 import type { Logger } from "../services/logger.js";
@@ -15,7 +15,6 @@ import type { ThreadQueue } from "./thread-queue.js";
 import type { ArtifactCommitter } from "./artifact-committer.js";
 import type { AgentLogWriter } from "./agent-log-writer.js";
 import type { MessageDeduplicator } from "./message-deduplicator.js";
-import type { PendingQuestion } from "../types.js";
 import type { QuestionStore } from "./question-store.js";
 import type { QuestionPoller } from "./question-poller.js";
 import type { PatternBContextBuilder } from "./pattern-b-context-builder.js";
@@ -99,11 +98,15 @@ export class DefaultOrchestrator implements Orchestrator {
   }
 
   async shutdown(): Promise<void> {
-    throw new Error("not implemented");
+    if (this.questionPoller) {
+      await this.questionPoller.stop();
+    }
   }
 
-  async resumeWithPatternB(_question: PendingQuestion): Promise<void> {
-    throw new Error("not implemented");
+  async resumeWithPatternB(question: PendingQuestion): Promise<void> {
+    this.threadQueue.enqueue(question.threadId, async () => {
+      await this.executePatternBResume(question);
+    });
   }
 
   async startup(): Promise<void> {
@@ -129,6 +132,61 @@ export class DefaultOrchestrator implements Orchestrator {
         `debug channel #${this.config.discord.channels.debug} not found`,
       );
     }
+
+    // Phase 5: Resolve #open-questions channel
+    if (this.questionStore && this.questionPoller) {
+      const openQuestionsChannelId = await this.discord.findChannelByName(
+        this.config.discord.server_id,
+        this.config.discord.channels.questions,
+      );
+
+      if (openQuestionsChannelId) {
+        this.openQuestionsChannelId = openQuestionsChannelId;
+        this.logger.info(`Resolved open-questions channel: ${openQuestionsChannelId}`);
+
+        // Register Discord reply listener
+        this.discord.onChannelMessage(openQuestionsChannelId, async (msg) => {
+          await this.handleOpenQuestionReply(msg);
+        });
+      } else {
+        this.logger.warn(
+          `open-questions channel #${this.config.discord.channels.questions} not found — Discord notifications will be skipped`,
+        );
+      }
+
+      // Restart recovery: seed discordMessageIdMap and restore paused threads
+      let pendingQuestions: PendingQuestion[] = [];
+      let resolvedQuestions: PendingQuestion[] = [];
+      try {
+        pendingQuestions = await this.questionStore.readPendingQuestions();
+        resolvedQuestions = await this.questionStore.readResolvedQuestions();
+      } catch (error) {
+        this.logger.warn(
+          `Failed to read questions on startup: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      // Seed discordMessageIdMap from both files
+      for (const q of [...pendingQuestions, ...resolvedQuestions]) {
+        if (q.discordMessageId) {
+          this.discordMessageIdMap.set(q.discordMessageId, q.id);
+        }
+      }
+
+      // Restore paused threads and re-register with poller
+      for (const q of pendingQuestions) {
+        this.pausedThreadIds.add(q.threadId);
+        this.questionPoller.registerQuestion({
+          questionId: q.id,
+          agentId: q.agentId,
+          threadId: q.threadId,
+        });
+      }
+
+      if (pendingQuestions.length > 0) {
+        this.logger.info(`Restored ${pendingQuestions.length} pending question(s) from pending.md`);
+      }
+    }
   }
 
   private async processMessage(message: ThreadMessage): Promise<void> {
@@ -141,6 +199,12 @@ export class DefaultOrchestrator implements Orchestrator {
     // Step 1: Dedup check (FSPEC-AC-03, ID-R1)
     if (this.messageDeduplicator.isDuplicate(message.id)) {
       this.logger.warn(`Skipping duplicate message ${message.id}`);
+      return;
+    }
+
+    // Phase 5: silently drop messages for paused threads (PQ-R10)
+    if (this.pausedThreadIds.has(message.threadId)) {
+      // Thread is paused waiting for user answer — drop silently
       return;
     }
 
@@ -282,10 +346,8 @@ export class DefaultOrchestrator implements Orchestrator {
         }
 
         if (decision.isPaused) {
-          await this.discord.postSystemMessage(
-            triggerMessage.threadId,
-            decision.signal.question ?? "Awaiting user input.",
-          );
+          const questionText = decision.signal.question ?? "Awaiting user input.";
+          await this.handleRouteToUser(questionText, triggerMessage, currentAgentId);
           return;
         }
 
@@ -337,6 +399,290 @@ export class DefaultOrchestrator implements Orchestrator {
         );
         return;
       }
+    }
+  }
+
+  private async handleRouteToUser(
+    questionText: string,
+    triggerMessage: ThreadMessage,
+    agentId: string,
+  ): Promise<void> {
+    // 1. Append question to store (atomically assigns ID)
+    const partialQuestion = {
+      agentId,
+      threadId: triggerMessage.threadId,
+      threadName: triggerMessage.threadName,
+      askedAt: new Date(),
+      questionText,
+      answer: null,
+      discordMessageId: null,
+    };
+
+    let question: PendingQuestion;
+    if (this.questionStore) {
+      question = await this.questionStore.appendQuestion(partialQuestion);
+    } else {
+      // No question store — fallback to posting system message
+      await this.discord.postSystemMessage(triggerMessage.threadId, questionText);
+      return;
+    }
+
+    // 2. Post Discord notification (best-effort)
+    if (this.openQuestionsChannelId) {
+      try {
+        const content = this.formatQuestionNotification(question);
+        const discordMessageId = await this.discord.postChannelMessage(
+          this.openQuestionsChannelId,
+          content,
+        );
+        await this.questionStore.updateDiscordMessageId(question.id, discordMessageId);
+        this.discordMessageIdMap.set(discordMessageId, question.id);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to post Discord notification for ${question.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } else {
+      this.logger.warn(
+        `open-questions channel not resolved — skipping Discord notification for ${question.id}`,
+      );
+    }
+
+    // 3. Post pause embed to originating thread
+    await this.discord.postSystemMessage(
+      triggerMessage.threadId,
+      `\u23F8 Paused \u2014 waiting for user answer to ${question.id}`,
+    );
+
+    // 4. Add threadId to pausedThreadIds
+    this.pausedThreadIds.add(triggerMessage.threadId);
+
+    // 5. Register with poller
+    if (this.questionPoller) {
+      this.questionPoller.registerQuestion({
+        questionId: question.id,
+        agentId,
+        threadId: triggerMessage.threadId,
+      });
+    }
+  }
+
+  private formatQuestionNotification(question: PendingQuestion): string {
+    return (
+      `<@${this.config.discord.mention_user_id}> **Question from ${question.agentId}** (${question.id})\n\n` +
+      `**Thread:** ${question.threadName}\n\n` +
+      `**Question:**\n${question.questionText}`
+    );
+  }
+
+  private async handleOpenQuestionReply(message: ChannelMessage): Promise<void> {
+    // 1. Ignore if not a Discord reply
+    if (!message.replyToMessageId) return;
+
+    // 2. Ignore if not the configured user
+    if (message.authorId !== this.config.discord.mention_user_id) return;
+
+    // 3. Ignore empty messages
+    if (!message.content.trim()) return;
+
+    // 4. Look up question ID from discordMessageIdMap
+    const questionId = this.discordMessageIdMap.get(message.replyToMessageId);
+    if (questionId === undefined) return;
+
+    // 5. Check if question still pending
+    const existing = await this.questionStore.getQuestion(questionId);
+    if (existing === null) {
+      try {
+        await this.discord.replyToMessage(
+          this.openQuestionsChannelId!,
+          message.id,
+          "This question has already been resolved.",
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to reply to message: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
+    }
+
+    // 6. Check if already answered
+    if (existing.answer !== null) {
+      try {
+        await this.discord.replyToMessage(
+          this.openQuestionsChannelId!,
+          message.id,
+          "This question already has an answer.",
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to reply to message: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
+    }
+
+    // 7. Write answer
+    await this.questionStore.setAnswer(questionId, message.content);
+
+    // 8. Confirm (best-effort)
+    try {
+      await this.discord.addReaction(this.openQuestionsChannelId!, message.id, "✅");
+    } catch (error) {
+      this.logger.warn(
+        `Failed to add ✅ reaction: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async executePatternBResume(question: PendingQuestion): Promise<void> {
+    // Generate worktree identifiers
+    let invocationId = randomBytes(4).toString("hex");
+    let branch = `ptah/${question.agentId}/${question.threadId}/${invocationId}`;
+    let worktreePath = join(tmpdir(), "ptah-worktrees", invocationId);
+
+    // Branch-already-exists guard
+    try {
+      branch = await this.ensureUniqueBranch(
+        question.agentId,
+        question.threadId,
+        invocationId,
+        branch,
+        worktreePath,
+      );
+      const parts = branch.split("/");
+      const newInvocationId = parts[parts.length - 1];
+      worktreePath = join(tmpdir(), "ptah-worktrees", newInvocationId);
+    } catch {
+      // Continue with original
+    }
+
+    // Build synthetic trigger message
+    const threadHistory = await this.discord.readThreadHistory(question.threadId);
+    const syntheticTrigger: ThreadMessage = {
+      id: `pattern-b-resume-${question.id}`,
+      threadId: question.threadId,
+      threadName: question.threadName,
+      parentChannelId: threadHistory[0]?.parentChannelId ?? "",
+      authorId: this.config.discord.mention_user_id,
+      authorName: "User",
+      isBot: false,
+      content: question.answer!,
+      timestamp: new Date(),
+    };
+
+    // Create worktree
+    try {
+      await this.gitClient.createWorktree(branch, worktreePath);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.responsePoster.postErrorEmbed(
+        question.threadId,
+        `Worktree creation failed (Pattern B): ${errorMessage}`,
+      );
+      await this.writeLogEntry(question.agentId, syntheticTrigger, "error", null);
+      return;
+    }
+
+    try {
+      // Build Pattern B context
+      const bundle = await this.patternBContextBuilder.build({
+        question,
+        worktreePath,
+        config: this.config,
+        threadHistory,
+      });
+
+      // Invoke skill
+      const result = await this.skillInvoker.invoke(bundle, this.config, worktreePath);
+
+      // Artifact commit & merge
+      const agentDisplayName = formatAgentName(question.agentId);
+      const commitResult = await this.artifactCommitter.commitAndMerge({
+        agentId: question.agentId,
+        threadName: question.threadName,
+        worktreePath,
+        branch,
+        artifactChanges: result.artifactChanges,
+      });
+
+      await this.handleCommitResult(commitResult, syntheticTrigger, worktreePath, branch, agentDisplayName);
+
+      if (commitResult.mergeStatus === "no-changes") {
+        await this.cleanupWorktree(worktreePath, branch);
+      }
+
+      const logStatus = deriveLogStatus(commitResult);
+      await this.writeLogEntry(question.agentId, syntheticTrigger, logStatus, commitResult.commitSha);
+
+      // Post response (best-effort — post-invocation Discord errors do not block archival)
+      try {
+        await this.responsePoster.postAgentResponse({
+          threadId: question.threadId,
+          agentId: question.agentId,
+          text: result.textResponse,
+          config: this.config,
+          footer: `${result.durationMs}ms`,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to post Pattern B response to Discord: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      // Remove from paused threads
+      this.pausedThreadIds.delete(question.threadId);
+
+      // Archive the question
+      await this.questionStore.archiveQuestion(question.id, new Date());
+
+      // Parse routing signal and continue
+      const signal = this.routingEngine.parseSignal(result.routingSignalRaw);
+      const decision = this.routingEngine.decide(signal, this.config);
+
+      if (decision.isTerminal) {
+        await this.responsePoster.postCompletionEmbed(
+          question.threadId,
+          question.agentId,
+          this.config,
+        );
+        return;
+      }
+
+      if (decision.isPaused) {
+        await this.handleRouteToUser(
+          decision.signal.question ?? "Awaiting user input.",
+          syntheticTrigger,
+          question.agentId,
+        );
+        return;
+      }
+
+      if (decision.createNewThread) {
+        const featureName = bundle.featureName;
+        await this.responsePoster.createCoordinationThread({
+          channelId: syntheticTrigger.parentChannelId,
+          featureName,
+          description: `Coordination with ${decision.targetAgentId}`,
+          agentId: decision.targetAgentId!,
+          initialText: result.textResponse,
+          config: this.config,
+        });
+        return;
+      }
+
+      // ROUTE_TO_AGENT — continue with executeRoutingLoop
+      await this.executeRoutingLoop(decision.targetAgentId!, syntheticTrigger);
+    } catch (error) {
+      await this.cleanupWorktree(worktreePath, branch);
+      await this.writeLogEntry(question.agentId, syntheticTrigger, "error", null);
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.responsePoster.postErrorEmbed(
+        question.threadId,
+        `Pattern B resume failed: ${errorMessage}`,
+      );
+      // Question remains in pending.md for retry — do NOT clear pausedThreadIds
     }
   }
 

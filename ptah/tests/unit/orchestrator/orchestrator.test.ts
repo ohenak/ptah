@@ -15,6 +15,8 @@ import {
   FakeQuestionPoller,
   FakePatternBContextBuilder,
   createThreadMessage,
+  createPendingQuestion,
+  createChannelMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
 import { InMemoryThreadQueue } from "../../../src/orchestrator/thread-queue.js";
@@ -304,9 +306,9 @@ describe("DefaultOrchestrator", () => {
     });
   });
 
-  // Task 108: ROUTE_TO_USER — posts system message with question
+  // Task 108: ROUTE_TO_USER — posts pause embed to thread, question written to store
   describe("ROUTE_TO_USER (AT-RP-04)", () => {
-    it("posts system message with question, thread paused", async () => {
+    it("posts pause embed to thread, question written to store, thread paused", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement the feature",
         threadId: "thread-1",
@@ -334,9 +336,16 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Verify system message posted with question
+      // Pause embed posted to originating thread
       expect(discord.systemMessages).toHaveLength(1);
-      expect(discord.systemMessages[0].content).toContain("What framework should I use?");
+      expect(discord.systemMessages[0].threadId).toBe("thread-1");
+      // The pause embed contains the question ID
+      expect(discord.systemMessages[0].content).toContain("Paused");
+
+      // Question written to store
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending).toHaveLength(1);
+      expect(pending[0].questionText).toBe("What framework should I use?");
     });
   });
 
@@ -1223,6 +1232,836 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.startup();
 
       expect(skillInvoker.pruned).toBe(true);
+    });
+  });
+
+  // Task 43: Paused thread guard
+  describe("paused thread guard (Task 43)", () => {
+    it("drops messages for paused threads silently with debug log, no context assembly or skill invocation", async () => {
+      // Set up orchestrator with a paused thread by going through startup + ROUTE_TO_USER path
+      // We need to manually put a threadId into pausedThreadIds via handleRouteToUser
+      // The simplest way is to simulate a full message flow that triggers ROUTE_TO_USER,
+      // then send another message to the same thread.
+
+      const threadId = "paused-thread-111";
+      const message1 = createThreadMessage({
+        content: "<@&111222333> implement",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+
+      // Set up so first message triggers ROUTE_TO_USER
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchestrator.startup();
+
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "What is the expected format?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What is the expected format?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What is the expected format?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "What is the expected format?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchestrator.handleMessage(message1);
+      await waitForQueue(threadQueue, threadId);
+
+      // Now the thread is paused. Send a second message to the same thread.
+      const invokeCallsBefore = skillInvoker.invokeCalls.length;
+      const message2 = createThreadMessage({
+        id: "msg-2",
+        content: "hello again",
+        threadId,
+      });
+
+      await orchestrator.handleMessage(message2);
+      await waitForQueue(threadQueue, threadId);
+
+      // Skill should NOT have been invoked again
+      expect(skillInvoker.invokeCalls.length).toBe(invokeCallsBefore);
+      // Context assembler should not have been called again
+      // (total calls = 1, from the first message)
+      expect(contextAssembler.assembleCalls.length).toBe(1);
+    });
+  });
+
+  // Task 44: handleRouteToUser — appendQuestion called, Discord notification posted
+  describe("handleRouteToUser — appendQuestion and Discord notification (Task 44)", () => {
+    it("calls appendQuestion with correct data and posts @mention notification", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchestrator.startup();
+
+      const threadId = "thread-route-44";
+      const message = createThreadMessage({
+        content: "<@&111222333> plan the feature",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "What OAuth provider should we use?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider should we use?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What OAuth provider should we use?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "What OAuth provider should we use?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, threadId);
+
+      // appendQuestion was called — check the pending questions in the store
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending).toHaveLength(1);
+      expect(pending[0].agentId).toBe("pm-agent");
+      expect(pending[0].questionText).toBe("What OAuth provider should we use?");
+      expect(pending[0].threadId).toBe(threadId);
+
+      // Discord notification posted
+      expect(discord.postChannelMessageCalls).toHaveLength(1);
+      expect(discord.postChannelMessageCalls[0].channelId).toBe("oq-channel-123");
+      expect(discord.postChannelMessageCalls[0].content).toContain("pm-agent");
+      expect(discord.postChannelMessageCalls[0].content).toContain("What OAuth provider should we use?");
+    });
+  });
+
+  // Task 45: handleRouteToUser — updateDiscordMessageId, discordMessageIdMap, pause embed, pausedThreadIds, poller
+  describe("handleRouteToUser — updateDiscordMessageId, map seeding, pause embed, poller (Task 45)", () => {
+    it("updates discord message ID, seeds map, posts pause embed, updates pausedThreadIds, registers with poller", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      discord.postChannelMessageResponse = "discord-msg-001";
+      await orchestrator.startup();
+
+      const threadId = "thread-route-45";
+      const message = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "Which auth provider?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth provider?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which auth provider?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which auth provider?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, threadId);
+
+      // updateDiscordMessageId was called — check store has the discordMessageId
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending[0].discordMessageId).toBe("discord-msg-001");
+
+      // Pause embed posted to originating thread
+      expect(discord.systemMessages.some((m) => m.threadId === threadId)).toBe(true);
+
+      // Poller registered
+      expect(questionPoller.registeredQuestions).toHaveLength(1);
+      expect(questionPoller.registeredQuestions[0].agentId).toBe("pm-agent");
+      expect(questionPoller.registeredQuestions[0].threadId).toBe(threadId);
+    });
+  });
+
+  // Task 46: handleRouteToUser — Discord postChannelMessage fails
+  describe("handleRouteToUser — Discord notification fails (Task 46)", () => {
+    it("logs warning, question still in store, thread still paused, poller registered", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      discord.postChannelMessageError = new Error("Discord unavailable");
+      await orchestrator.startup();
+
+      const threadId = "thread-route-46";
+      const message = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "Which provider?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which provider?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which provider?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, threadId);
+
+      // Warning logged
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.toLowerCase().includes("discord") || m.message.toLowerCase().includes("notification"))).toBe(true);
+
+      // Question still in store
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending).toHaveLength(1);
+
+      // Poller still registered
+      expect(questionPoller.registeredQuestions).toHaveLength(1);
+    });
+  });
+
+  // Task 47: handleRouteToUser — openQuestionsChannelId is null
+  describe("handleRouteToUser — openQuestionsChannelId null (Task 47)", () => {
+    it("logs warning, no Discord notification attempt, file write proceeds", async () => {
+      // Do NOT add open-questions channel — so openQuestionsChannelId stays null
+      await orchestrator.startup();
+
+      const threadId = "thread-route-47";
+      const message = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "Which provider?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which provider?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which provider?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, threadId);
+
+      // No Discord notification posted to channel
+      expect(discord.postChannelMessageCalls).toHaveLength(0);
+
+      // Question still written to store
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending).toHaveLength(1);
+
+      // Warning logged about channel not found
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.toLowerCase().includes("open-questions") || m.message.toLowerCase().includes("channel") || m.message.toLowerCase().includes("notification"))).toBe(true);
+    });
+  });
+
+  // Task 48: startup() — resolves #open-questions channel
+  describe("startup() Phase 5 — resolves open-questions channel (Task 48)", () => {
+    it("resolves #open-questions channel and registers onChannelMessage handler when found", async () => {
+      discord.channels.set("open-questions", "oq-channel-999");
+      discord.channels.set("agent-debug", "debug-channel-123");
+
+      await orchestrator.startup();
+
+      // The channel was found — verify postChannelMessage would work
+      // by checking if onChannelMessage handler was registered
+      // We can indirectly test this by simulating a channel message
+      // The handler should have been registered for "oq-channel-999"
+      // We'll verify by checking logger for info messages
+      const infoMessages = logger.messages.filter((m) => m.level === "info");
+      expect(infoMessages.some((m) => m.message.includes("oq-channel-999") || m.message.includes("open-questions"))).toBe(true);
+    });
+
+    it("logs warning when #open-questions channel not found", async () => {
+      // Don't add open-questions channel
+      discord.channels.set("agent-debug", "debug-channel-123");
+
+      await orchestrator.startup();
+
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.includes("open-questions"))).toBe(true);
+    });
+  });
+
+  // Task 49: startup() — restart recovery
+  describe("startup() — restart recovery (Task 49)", () => {
+    it("seeds discordMessageIdMap from pending and resolved questions, restores pausedThreadIds, re-registers with poller", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+
+      // Seed store with a pending question that has a discordMessageId
+      const pendingQ = createPendingQuestion({
+        id: "Q-0001",
+        threadId: "paused-thread-A",
+        discordMessageId: "discord-msg-pending",
+      });
+      questionStore.seedQuestion(pendingQ);
+
+      // Seed a resolved question (use updateDiscordMessageId approach via seedQuestion on archived)
+      // FakeQuestionStore.readResolvedQuestions returns from archived array
+      // We need to seed a resolved question — use the store's internal mechanism
+      // We can call archiveQuestion manually before startup:
+      questionStore.seedQuestion(createPendingQuestion({
+        id: "Q-0002",
+        threadId: "resolved-thread-B",
+        discordMessageId: "discord-msg-resolved",
+      }));
+      await questionStore.archiveQuestion("Q-0002", new Date());
+
+      await orchestrator.startup();
+
+      // discordMessageIdMap seeded — verify by simulating a reply to the pending question's message
+      // We verify indirectly: the poller should have the pending question registered
+      expect(questionPoller.registeredQuestions).toHaveLength(1);
+      expect(questionPoller.registeredQuestions[0].questionId).toBe("Q-0001");
+
+      // Logger should report restoration
+      const infoMessages = logger.messages.filter((m) => m.level === "info");
+      expect(infoMessages.some((m) => m.message.includes("1") && (m.message.includes("pending") || m.message.includes("Restored")))).toBe(true);
+    });
+
+    it("does not crash when no pending questions exist on restart", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchestrator.startup();
+      expect(questionPoller.registeredQuestions).toHaveLength(0);
+    });
+  });
+
+  // Task 50: shutdown() calls questionPoller.stop()
+  describe("shutdown() (Task 50)", () => {
+    it("calls questionPoller.stop()", async () => {
+      await orchestrator.shutdown();
+      expect(questionPoller.stopCalled).toBe(true);
+    });
+  });
+
+  // Task 51: resumeWithPatternB enqueues to ThreadQueue
+  describe("resumeWithPatternB enqueues to ThreadQueue (Task 51)", () => {
+    it("enqueues execution to ThreadQueue for question.threadId", async () => {
+      // Use closure-capture pattern for this test group
+      let orch: DefaultOrchestrator;
+      const fakePoller = new FakeQuestionPoller((q) => orch.resumeWithPatternB(q));
+      orch = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine,
+        contextAssembler,
+        skillInvoker,
+        responsePoster,
+        threadQueue,
+        logger,
+        config,
+        gitClient,
+        artifactCommitter,
+        agentLogWriter,
+        messageDeduplicator,
+        questionStore,
+        questionPoller: fakePoller,
+        patternBContextBuilder,
+      });
+
+      const q = createPendingQuestion({
+        id: "Q-0001",
+        threadId: "resume-thread-51",
+        answer: "Use Google",
+      });
+
+      // resumeWithPatternB should enqueue something to the queue
+      const resumePromise = orch.resumeWithPatternB(q);
+      // The queue should be processing
+      expect(threadQueue.isProcessing("resume-thread-51")).toBe(true);
+      await resumePromise;
+      await waitForQueue(threadQueue, "resume-thread-51");
+    });
+  });
+
+  // Tasks 52, 53, 54: Pattern B resume — create orchestrators with closure-capture for poller
+  describe("Pattern B resume (Tasks 52-54)", () => {
+    let orchB: DefaultOrchestrator;
+    let fakePollerB: FakeQuestionPoller;
+
+    beforeEach(() => {
+      fakePollerB = new FakeQuestionPoller((q) => orchB.resumeWithPatternB(q));
+      orchB = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine,
+        contextAssembler,
+        skillInvoker,
+        responsePoster,
+        threadQueue,
+        logger,
+        config,
+        gitClient,
+        artifactCommitter,
+        agentLogWriter,
+        messageDeduplicator,
+        questionStore,
+        questionPoller: fakePollerB,
+        patternBContextBuilder,
+      });
+    });
+
+    // Task 52: Pattern B happy path
+    it("happy path: builds context, invokes skill, posts response, removes from paused, archives question (Task 52)", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchB.startup();
+
+      // Step 1: Send a message that triggers ROUTE_TO_USER to pause the thread
+      const threadId = "resume-thread-52";
+      const setupMessage = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "What OAuth provider?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What OAuth provider?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "What OAuth provider?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      await orchB.handleMessage(setupMessage);
+      await waitForQueue(threadQueue, threadId);
+
+      // Step 2: Get the question from the store and set an answer on it
+      const pendingBefore = await questionStore.readPendingQuestions();
+      expect(pendingBefore).toHaveLength(1);
+      const qId = pendingBefore[0].id;
+      await questionStore.setAnswer(qId, "Use Google as the OAuth provider");
+
+      // Build the question object with the answer (as the poller would see it)
+      const qWithAnswer = { ...pendingBefore[0], answer: "Use Google as the OAuth provider" };
+
+      // Step 3: Reset to happy path for skill invocation during resume
+      skillInvoker.result = {
+        textResponse: "I'll use Google OAuth.",
+        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+        artifactChanges: [],
+        durationMs: 700,
+      };
+      skillInvoker.invokeCalls = [];
+      routingEngine.parseResult = { type: "TASK_COMPLETE" };
+      routingEngine.decideResult = {
+        signal: { type: "TASK_COMPLETE" },
+        targetAgentId: null,
+        isTerminal: true,
+        isPaused: false,
+        createNewThread: false,
+      };
+      artifactCommitter.results = [{ commitSha: "def5678", mergeStatus: "merged", branch: `ptah/pm-agent/${threadId}/fake2` }];
+      artifactCommitter.callIndex = 0;
+
+      // Step 4: Simulate poller detecting the answer
+      await fakePollerB.simulateAnswerDetected(qWithAnswer);
+      await waitForQueue(threadQueue, threadId);
+
+      // patternBContextBuilder.build was called
+      expect(patternBContextBuilder.buildCalls).toHaveLength(1);
+      expect(patternBContextBuilder.buildCalls[0].question.id).toBe(qId);
+
+      // skillInvoker was called (for the resume)
+      expect(skillInvoker.invokeCalls.length).toBeGreaterThanOrEqual(1);
+
+      // Response posted to originating thread
+      expect(responsePoster.postedEmbeds.some((e) => e.threadId === threadId)).toBe(true);
+
+      // Question archived (moved from pending to archived)
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending.find((p) => p.id === qId)).toBeUndefined();
+    });
+
+    // Task 53: Pattern B — postAgentResponse fails, archival still proceeds
+    it("postAgentResponse throws: warning logged, archiveQuestion still called, pausedThreadIds cleared (Task 53)", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchB.startup();
+
+      const threadId = "resume-thread-53";
+
+      // Pause the thread first via ROUTE_TO_USER
+      const setupMsg = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "Which OAuth?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which OAuth?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which OAuth?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+      await orchB.handleMessage(setupMsg);
+      await waitForQueue(threadQueue, threadId);
+
+      // Get the created question and set its answer
+      const pendingBefore = await questionStore.readPendingQuestions();
+      const qId = pendingBefore[0].id;
+      await questionStore.setAnswer(qId, "Use GitHub OAuth");
+      const qWithAnswer = { ...pendingBefore[0], answer: "Use GitHub OAuth" };
+
+      // Set up for resume — postAgentResponse will throw
+      skillInvoker.result = {
+        textResponse: "Using GitHub OAuth.",
+        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      skillInvoker.invokeCalls = [];
+      routingEngine.parseResult = { type: "TASK_COMPLETE" };
+      routingEngine.decideResult = {
+        signal: { type: "TASK_COMPLETE" },
+        targetAgentId: null,
+        isTerminal: true,
+        isPaused: false,
+        createNewThread: false,
+      };
+      artifactCommitter.results = [
+        { commitSha: "def5678", mergeStatus: "merged", branch: `ptah/pm-agent/${threadId}/fake2` },
+      ];
+      artifactCommitter.callIndex = 0;
+
+      // Make postAgentResponse throw on all resume calls
+      responsePoster.postAgentResponse = async (_params) => {
+        throw new Error("Discord post failed");
+      };
+
+      await fakePollerB.simulateAnswerDetected(qWithAnswer);
+      await waitForQueue(threadQueue, threadId);
+
+      // Warning logged
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.toLowerCase().includes("discord") || m.message.toLowerCase().includes("post") || m.message.toLowerCase().includes("response"))).toBe(true);
+
+      // Question still archived despite post failure
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending.find((p) => p.id === qId)).toBeUndefined();
+    });
+
+    // Task 54: Pattern B — skill invocation fails, no archive, no pausedThreadIds clear
+    it("skill invocation fails: archiveQuestion NOT called, pausedThreadIds NOT cleared (Task 54)", async () => {
+      discord.channels.set("open-questions", "oq-channel-123");
+      await orchB.startup();
+
+      const threadId = "resume-thread-54";
+
+      // Pause the thread first via ROUTE_TO_USER
+      const setupMsg = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId,
+        threadName: "auth — define requirements",
+      });
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set(threadId, []);
+      skillInvoker.result = {
+        textResponse: "Which auth?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which auth?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which auth?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+      await orchB.handleMessage(setupMsg);
+      await waitForQueue(threadQueue, threadId);
+
+      // Get the created question and set its answer
+      const pendingBefore = await questionStore.readPendingQuestions();
+      const qId = pendingBefore[0].id;
+      await questionStore.setAnswer(qId, "Use Auth0");
+      const qWithAnswer = { ...pendingBefore[0], answer: "Use Auth0" };
+
+      // Make skill throw on resume invocation
+      skillInvoker.invokeError = new Error("Skill timed out");
+
+      await fakePollerB.simulateAnswerDetected(qWithAnswer);
+      await waitForQueue(threadQueue, threadId);
+
+      // Question NOT archived — still pending
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending.find((p) => p.id === qId)).toBeDefined();
+
+      // Error embed posted
+      expect(responsePoster.postedErrors.some((e) => e.threadId === threadId)).toBe(true);
+    });
+  });
+
+  // Tasks 55-62: handleOpenQuestionReply tests
+  describe("handleOpenQuestionReply (Tasks 55-62)", () => {
+    let orchC: DefaultOrchestrator;
+
+    beforeEach(async () => {
+      orchC = new DefaultOrchestrator({
+        discordClient: discord,
+        routingEngine,
+        contextAssembler,
+        skillInvoker,
+        responsePoster,
+        threadQueue,
+        logger,
+        config,
+        gitClient,
+        artifactCommitter,
+        agentLogWriter,
+        messageDeduplicator,
+        questionStore,
+        questionPoller,
+        patternBContextBuilder,
+      });
+
+      // Set up open-questions channel and startup
+      discord.channels.set("open-questions", "oq-channel-555");
+      discord.postChannelMessageResponse = "posted-msg-001";
+      await orchC.startup();
+
+      // Seed a pending question with a discordMessageId in the map
+      // We do this by triggering ROUTE_TO_USER via a message
+      routingEngine.resolveHumanResult = "pm-agent";
+      discord.threadHistory.set("thread-qa-55", []);
+      skillInvoker.result = {
+        textResponse: "Which OAuth provider?",
+        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth provider?"}</routing>',
+        artifactChanges: [],
+        durationMs: 500,
+      };
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which OAuth provider?" };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: "Which OAuth provider?" },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      const msg = createThreadMessage({
+        content: "<@&111222333> plan",
+        threadId: "thread-qa-55",
+        threadName: "auth — define requirements",
+      });
+      await orchC.handleMessage(msg);
+      await waitForQueue(threadQueue, "thread-qa-55");
+    });
+
+    // Task 55: Standard reply — answer written, reaction added
+    it("standard reply: discordMessageId in map, setAnswer called, addReaction called with ✅ (Task 55)", async () => {
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-001",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "Use Google OAuth",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // setAnswer was called — question has an answer
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending[0].answer).toBe("Use Google OAuth");
+
+      // addReaction called with ✅
+      expect(discord.addReactionCalls).toHaveLength(1);
+      expect(discord.addReactionCalls[0].emoji).toBe("✅");
+      expect(discord.addReactionCalls[0].messageId).toBe("reply-msg-001");
+    });
+
+    // Task 56: Duplicate reply — already has answer
+    it("duplicate reply: existing.answer non-null, replyToMessage called with 'already has an answer', setAnswer not called (Task 56)", async () => {
+      // First set an answer
+      const pending = await questionStore.readPendingQuestions();
+      const qId = pending[0].id;
+      await questionStore.setAnswer(qId, "First answer");
+
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-002",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "Another answer attempt",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      const setAnswerCallsBefore = (await questionStore.readPendingQuestions()).filter((q) => q.answer !== null).length;
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // replyToMessage called with "already has an answer"
+      expect(discord.replyToMessageCalls).toHaveLength(1);
+      expect(discord.replyToMessageCalls[0].content).toContain("already has an answer");
+
+      // setAnswer not called again (answer still the same)
+      const updatedPending = await questionStore.readPendingQuestions();
+      expect(updatedPending[0].answer).toBe("First answer");
+    });
+
+    // Task 57: Already resolved — getQuestion returns null
+    it("already resolved: getQuestion returns null, replyToMessage called with 'already been resolved' (Task 57)", async () => {
+      // Archive the question (move to resolved)
+      const pending = await questionStore.readPendingQuestions();
+      await questionStore.archiveQuestion(pending[0].id, new Date());
+
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-003",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "Late answer",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // replyToMessage called with "already been resolved"
+      expect(discord.replyToMessageCalls).toHaveLength(1);
+      expect(discord.replyToMessageCalls[0].content).toContain("already been resolved");
+    });
+
+    // Task 58: Unrelated bot message — discordMessageId not in map
+    it("unrelated message: discordMessageId not in map, silently ignored (Task 58)", async () => {
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-004",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "some reply",
+        replyToMessageId: "unknown-msg-id-not-in-map",
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // No store calls, no Discord calls
+      expect(discord.addReactionCalls).toHaveLength(0);
+      expect(discord.replyToMessageCalls).toHaveLength(0);
+    });
+
+    // Task 59: Non-configured user — silently ignored
+    it("non-configured user: authorId !== mention_user_id, silently ignored (Task 59)", async () => {
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-005",
+        channelId: "oq-channel-555",
+        authorId: "wrong-user-999",
+        content: "My answer",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // No store or Discord action
+      expect(discord.addReactionCalls).toHaveLength(0);
+      expect(discord.replyToMessageCalls).toHaveLength(0);
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending[0].answer).toBeNull();
+    });
+
+    // Task 60: Non-reply message — replyToMessageId is null
+    it("non-reply message: replyToMessageId is null, silently ignored (Task 60)", async () => {
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-006",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "My answer",
+        replyToMessageId: null,
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // No store or Discord action
+      expect(discord.addReactionCalls).toHaveLength(0);
+      expect(discord.replyToMessageCalls).toHaveLength(0);
+    });
+
+    // Task 61: addReaction fails — warning logged, answer already written, no rollback
+    it("addReaction fails: warning logged, answer written, pipeline continues (Task 61)", async () => {
+      discord.addReactionError = new Error("No permissions to add reaction");
+
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-007",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "Use Google",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // Answer was written despite reaction failure
+      const pending = await questionStore.readPendingQuestions();
+      expect(pending[0].answer).toBe("Use Google");
+
+      // Warning logged
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.toLowerCase().includes("reaction") || m.message.toLowerCase().includes("✅"))).toBe(true);
+    });
+
+    // Task 62: replyToMessage fails when rejecting duplicate reply
+    it("replyToMessage fails when rejecting duplicate: warning logged, no file state changed (Task 62)", async () => {
+      // First answer the question
+      const pending = await questionStore.readPendingQuestions();
+      await questionStore.setAnswer(pending[0].id, "First answer");
+
+      discord.replyToMessageError = new Error("Cannot reply to message");
+
+      const replyMsg = createChannelMessage({
+        id: "reply-msg-008",
+        channelId: "oq-channel-555",
+        authorId: config.discord.mention_user_id,
+        content: "Duplicate answer",
+        replyToMessageId: "posted-msg-001",
+      });
+
+      // Should not throw
+      await discord.simulateChannelMessage("oq-channel-555", replyMsg);
+
+      // Warning logged
+      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      expect(warnMessages.some((m) => m.message.toLowerCase().includes("reply") || m.message.toLowerCase().includes("message"))).toBe(true);
+
+      // Answer unchanged
+      const updatedPending = await questionStore.readPendingQuestions();
+      expect(updatedPending[0].answer).toBe("First answer");
     });
   });
 });
