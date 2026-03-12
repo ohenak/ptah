@@ -21,6 +21,9 @@ import { AsyncMutex } from "../src/orchestrator/merge-lock.js";
 import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer.js";
 import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
 import { InMemoryMessageDeduplicator } from "../src/orchestrator/message-deduplicator.js";
+import { DefaultQuestionStore } from "../src/orchestrator/question-store.js";
+import { DefaultQuestionPoller } from "../src/orchestrator/question-poller.js";
+import { DefaultPatternBContextBuilder } from "../src/orchestrator/pattern-b-context-builder.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -135,7 +138,25 @@ async function main(): Promise<void> {
       const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
       const messageDeduplicator = new InMemoryMessageDeduplicator();
 
-      const orchestrator = new DefaultOrchestrator({
+      // Phase 5: Question pipeline (closure-capture for circular construction)
+      const questionStore = new DefaultQuestionStore(
+        fs,
+        git,
+        mergeLock,
+        logger,
+        "docs/open-questions/pending.md",
+        "docs/open-questions/resolved.md",
+      );
+      let orchestrator: DefaultOrchestrator;
+      const questionPoller = new DefaultQuestionPoller(
+        questionStore,
+        (q) => orchestrator.resumeWithPatternB(q),
+        30_000, // 30s poll interval
+        logger,
+      );
+      const patternBContextBuilder = new DefaultPatternBContextBuilder(fs, tokenCounter, logger);
+
+      orchestrator = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
         contextAssembler,
@@ -149,6 +170,10 @@ async function main(): Promise<void> {
         artifactCommitter,
         agentLogWriter,
         messageDeduplicator,
+        // Phase 5 additions:
+        questionStore,
+        questionPoller,
+        patternBContextBuilder,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {
