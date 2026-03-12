@@ -8,7 +8,7 @@
 | **Test Files** | `tests/unit/orchestrator/question-store.test.ts`, `question-poller.test.ts`, `pattern-b-context-builder.test.ts`, `orchestrator.test.ts`, `tests/integration/orchestrator/question-pipeline.test.ts` |
 | **Date** | 2026-03-11 |
 | **Author** | Test Engineer |
-| **Status** | In Review |
+| **Status** | Approved (v1.1) |
 
 ---
 
@@ -20,7 +20,7 @@ All 65 plan tasks are marked ✅ Done. The implementation is feature-complete. U
 
 **3 untested properties** were identified — all low severity. Two are edge cases not in the plan; one is an architectural invariant that would benefit from an explicit assertion.
 
-**Recommendation: Conditional Approval** — the implementation is functionally sound. Mismatches M-01 and M-02 should be resolved (spec update or implementation change). Mismatches M-03 and M-04 are intentional design choices requiring spec updates. Untested properties U-01 and U-02 should be added as follow-up tasks.
+**Recommendation: Approved** — M-01 and M-02 implementation fixes applied, TSPEC §5.1–§5.4 updated (F-03), FSPEC updated to v1.2. Mismatches M-03 and M-04 are resolved via spec updates. Untested properties U-01 and U-02 are documented as follow-up tasks.
 
 ---
 
@@ -99,8 +99,8 @@ All 65 plan tasks are marked ✅ Done. The implementation is feature-complete. U
 
 | # | Property ID | Description | Expected Test Level | Gap Description | Risk |
 |---|-------------|-------------|---------------------|-----------------|------|
-| U-01 | PROP-PQ-81 | `handleOpenQuestionReply` must silently ignore replies with empty/whitespace-only content | Unit | Implementation guard exists (`if (!message.content.trim()) return;` at orchestrator.ts:486) but no plan task covers this case. Tasks 60 (non-reply) and 59 (wrong user) both test silent-ignore paths, but the empty-content path is not covered. | Low |
-| U-02 | PROP-PQ-83 | `executePatternBResume` must NOT call `contextAssembler.assemble()` during a Pattern B resume | Unit | Task 52 (happy path) verifies that `patternBContextBuilder.build` is called, but does not assert that `contextAssembler.assembleCalls` remains empty. This is an architectural invariant (RPB-R6) that could be silently violated by a refactor. | Low |
+| U-01 | PROP-PQ-81 | `handleOpenQuestionReply` must silently ignore replies with empty/whitespace-only content | Unit | Implementation guard exists (`if (!message.content.trim()) return;` at orchestrator.ts:486) but no plan task covers this case. Tasks 60 (non-reply) and 59 (wrong user) both test silent-ignore paths, but the empty-content path is not covered. **Recommended test:** In `orchestrator.test.ts`, add a test in the `handleOpenQuestionReply` describe block: `it("ignores replies with empty content")` — simulate a channel message with `content: "   "` (whitespace only), assert that `fakeQuestionStore.setAnswerCalls.length === 0` and `fakeDiscord.addReactionCalls.length === 0`. | Low |
+| U-02 | PROP-PQ-83 | `executePatternBResume` must NOT call `contextAssembler.assemble()` during a Pattern B resume | Unit | Task 52 (happy path) verifies that `patternBContextBuilder.build` is called, but does not assert that `contextAssembler.assembleCalls` remains empty. This is an architectural invariant (RPB-R6) that could be silently violated by a refactor. **Recommended assertion:** Add `expect(fakeContextAssembler.assembleCalls).toHaveLength(0)` to the existing task 52 happy-path test in `orchestrator.test.ts`. | Low |
 | U-03 | PROP-PQ-64 | Concurrent `appendQuestion` calls must produce distinct IDs | Integration | Task 17 tests a single MergeLock acquisition; the sequential multi-question scenario is covered by task 16. True concurrent invocation (two calls racing before either commits) is not tested. The `AsyncMutex` implementation provides the guarantee, but no test validates the combined behavior end-to-end. | Low |
 
 ---
@@ -183,24 +183,30 @@ All 65 plan tasks are marked ✅ Done. The implementation is feature-complete. U
 
 ---
 
-## 8. Recommendation
+## 8. Backend-Engineer Review Response
 
-**Conditional Approval.**
+The backend-engineer reviewed this document on 2026-03-11 and returned **Approved with minor changes**. All findings were accepted and addressed as follows:
 
-The implementation is functionally complete, well-tested, and correctly implements all 7 Phase 5 requirements. No blocking issues were found.
+| BE Finding | Verdict | Action Taken |
+|------------|---------|--------------|
+| F-01 (Low): M-01 — add debug log | Implement fix | Added `this.logger.debug(\`Dropping message for paused thread ${message.threadId}\`)` at orchestrator.ts paused-thread guard. |
+| F-02 (Low): M-02 — make Phase 5 deps required | Implement fix | Removed `?` from `OrchestratorDeps` Phase 5 fields; removed `!` non-null assertions from private fields; replaced conditional constructor assignment with direct assignment; removed `if (this.questionPoller)` guard in `shutdown()`; removed `if (this.questionStore && this.questionPoller)` guard in `startup()`; removed fallback branch in `handleRouteToUser()`; removed `if (this.questionPoller)` guard on `registerQuestion()`. |
+| F-03 (Medium — new): TSPEC §5.1–§5.4 outdated | Documentation update | Updated TSPEC §5.1 (regex), §5.2 (parse rules + answer detection), §5.3 (pending.md format), §5.4 (resolved.md format + Discord Message ID note). |
+| F-04 (Low): U-01 — add test recommendation | Documentation update | Added recommended test description to U-01 row in §3. |
+| F-05 (Low): U-02 — add assertion note | Documentation update | Added recommended assertion to U-02 row in §3. |
 
-**Must address before final approval:**
-- Q-01: Add debug log to paused thread guard (M-01) — or explicitly decide to omit it and update TSPEC.
-- Q-02: Resolve `OrchestratorDeps` optional-vs-required decision (M-02) — recommended: make required.
+---
 
-**Should address (non-blocking):**
-- Q-03: Update TSPEC §5.1–§5.3 and FSPEC §3.6 to document the implemented `pending.md` format (M-03).
-- Q-04: Update TSPEC §5.4 to include `Discord Message ID` in `resolved.md` format (M-04).
-- U-01: Add unit test for empty-content Discord reply (one test, small scope).
-- U-02: Add assertion in task 52 test that `contextAssembler.assembleCalls` is empty during Pattern B resume.
+## 9. Recommendation
 
-**Deferred (optional, low priority):**
-- U-03: Concurrent `appendQuestion` integration test — the `AsyncMutex` provides the guarantee; this is belt-and-suspenders coverage.
+**Approved.**
+
+The implementation is functionally complete, well-tested, and correctly implements all 7 Phase 5 requirements. All M-01 and M-02 implementation fixes have been applied. TSPEC §5.1–§5.4 has been updated to match the implementation (F-03). Test recommendations for U-01 and U-02 are documented as follow-up tasks.
+
+**Follow-up tasks (non-blocking, low priority):**
+- U-01: Add unit test for empty-content Discord reply — see recommended test in §3.
+- U-02: Add `expect(fakeContextAssembler.assembleCalls).toHaveLength(0)` assertion to task 52 happy-path test.
+- U-03: Concurrent `appendQuestion` integration test — deferred; `AsyncMutex` provides the guarantee.
 
 ---
 
@@ -209,6 +215,7 @@ The implementation is functionally complete, well-tested, and correctly implemen
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-11 | Test Engineer | Initial review — Phase 5 TSPEC and implementation |
+| 1.1 | 2026-03-11 | Test Engineer | Addressed BE review (F-01–F-05): applied M-01/M-02 implementation fixes to orchestrator.ts; updated TSPEC §5.1–§5.4 (F-03); added test recommendations for U-01/U-02; updated recommendation from Conditional Approval to Approved. |
 
 ---
 

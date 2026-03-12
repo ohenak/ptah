@@ -43,9 +43,9 @@ export interface OrchestratorDeps {
   messageDeduplicator: MessageDeduplicator;
 
   // --- Phase 5 (new) ---
-  questionStore?: QuestionStore;
-  questionPoller?: QuestionPoller;
-  patternBContextBuilder?: PatternBContextBuilder;
+  questionStore: QuestionStore;
+  questionPoller: QuestionPoller;
+  patternBContextBuilder: PatternBContextBuilder;
 }
 
 export class DefaultOrchestrator implements Orchestrator {
@@ -61,9 +61,9 @@ export class DefaultOrchestrator implements Orchestrator {
   private readonly artifactCommitter: ArtifactCommitter;
   private readonly agentLogWriter: AgentLogWriter;
   private readonly messageDeduplicator: MessageDeduplicator;
-  private readonly questionStore!: QuestionStore;
-  private readonly questionPoller!: QuestionPoller;
-  private readonly patternBContextBuilder!: PatternBContextBuilder;
+  private readonly questionStore: QuestionStore;
+  private readonly questionPoller: QuestionPoller;
+  private readonly patternBContextBuilder: PatternBContextBuilder;
   private pausedThreadIds = new Set<string>();
   private openQuestionsChannelId: string | null = null;
   /**
@@ -86,9 +86,9 @@ export class DefaultOrchestrator implements Orchestrator {
     this.artifactCommitter = deps.artifactCommitter;
     this.agentLogWriter = deps.agentLogWriter;
     this.messageDeduplicator = deps.messageDeduplicator;
-    if (deps.questionStore) this.questionStore = deps.questionStore;
-    if (deps.questionPoller) this.questionPoller = deps.questionPoller;
-    if (deps.patternBContextBuilder) this.patternBContextBuilder = deps.patternBContextBuilder;
+    this.questionStore = deps.questionStore;
+    this.questionPoller = deps.questionPoller;
+    this.patternBContextBuilder = deps.patternBContextBuilder;
   }
 
   async handleMessage(message: ThreadMessage): Promise<void> {
@@ -98,9 +98,7 @@ export class DefaultOrchestrator implements Orchestrator {
   }
 
   async shutdown(): Promise<void> {
-    if (this.questionPoller) {
-      await this.questionPoller.stop();
-    }
+    await this.questionPoller.stop();
   }
 
   async resumeWithPatternB(question: PendingQuestion): Promise<void> {
@@ -134,58 +132,56 @@ export class DefaultOrchestrator implements Orchestrator {
     }
 
     // Phase 5: Resolve #open-questions channel
-    if (this.questionStore && this.questionPoller) {
-      const openQuestionsChannelId = await this.discord.findChannelByName(
-        this.config.discord.server_id,
-        this.config.discord.channels.questions,
+    const openQuestionsChannelId = await this.discord.findChannelByName(
+      this.config.discord.server_id,
+      this.config.discord.channels.questions,
+    );
+
+    if (openQuestionsChannelId) {
+      this.openQuestionsChannelId = openQuestionsChannelId;
+      this.logger.info(`Resolved open-questions channel: ${openQuestionsChannelId}`);
+
+      // Register Discord reply listener
+      this.discord.onChannelMessage(openQuestionsChannelId, async (msg) => {
+        await this.handleOpenQuestionReply(msg);
+      });
+    } else {
+      this.logger.warn(
+        `open-questions channel #${this.config.discord.channels.questions} not found — Discord notifications will be skipped`,
       );
+    }
 
-      if (openQuestionsChannelId) {
-        this.openQuestionsChannelId = openQuestionsChannelId;
-        this.logger.info(`Resolved open-questions channel: ${openQuestionsChannelId}`);
+    // Restart recovery: seed discordMessageIdMap and restore paused threads
+    let pendingQuestions: PendingQuestion[] = [];
+    let resolvedQuestions: PendingQuestion[] = [];
+    try {
+      pendingQuestions = await this.questionStore.readPendingQuestions();
+      resolvedQuestions = await this.questionStore.readResolvedQuestions();
+    } catch (error) {
+      this.logger.warn(
+        `Failed to read questions on startup: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
-        // Register Discord reply listener
-        this.discord.onChannelMessage(openQuestionsChannelId, async (msg) => {
-          await this.handleOpenQuestionReply(msg);
-        });
-      } else {
-        this.logger.warn(
-          `open-questions channel #${this.config.discord.channels.questions} not found — Discord notifications will be skipped`,
-        );
+    // Seed discordMessageIdMap from both files
+    for (const q of [...pendingQuestions, ...resolvedQuestions]) {
+      if (q.discordMessageId) {
+        this.discordMessageIdMap.set(q.discordMessageId, q.id);
       }
+    }
 
-      // Restart recovery: seed discordMessageIdMap and restore paused threads
-      let pendingQuestions: PendingQuestion[] = [];
-      let resolvedQuestions: PendingQuestion[] = [];
-      try {
-        pendingQuestions = await this.questionStore.readPendingQuestions();
-        resolvedQuestions = await this.questionStore.readResolvedQuestions();
-      } catch (error) {
-        this.logger.warn(
-          `Failed to read questions on startup: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+    // Restore paused threads and re-register with poller
+    for (const q of pendingQuestions) {
+      this.pausedThreadIds.add(q.threadId);
+      this.questionPoller.registerQuestion({
+        questionId: q.id,
+        agentId: q.agentId,
+        threadId: q.threadId,
+      });
+    }
 
-      // Seed discordMessageIdMap from both files
-      for (const q of [...pendingQuestions, ...resolvedQuestions]) {
-        if (q.discordMessageId) {
-          this.discordMessageIdMap.set(q.discordMessageId, q.id);
-        }
-      }
-
-      // Restore paused threads and re-register with poller
-      for (const q of pendingQuestions) {
-        this.pausedThreadIds.add(q.threadId);
-        this.questionPoller.registerQuestion({
-          questionId: q.id,
-          agentId: q.agentId,
-          threadId: q.threadId,
-        });
-      }
-
-      if (pendingQuestions.length > 0) {
-        this.logger.info(`Restored ${pendingQuestions.length} pending question(s) from pending.md`);
-      }
+    if (pendingQuestions.length > 0) {
+      this.logger.info(`Restored ${pendingQuestions.length} pending question(s) from pending.md`);
     }
   }
 
@@ -204,7 +200,7 @@ export class DefaultOrchestrator implements Orchestrator {
 
     // Phase 5: silently drop messages for paused threads (PQ-R10)
     if (this.pausedThreadIds.has(message.threadId)) {
-      // Thread is paused waiting for user answer — drop silently
+      this.logger.info(`Dropping message for paused thread ${message.threadId}`);
       return;
     }
 
@@ -418,14 +414,7 @@ export class DefaultOrchestrator implements Orchestrator {
       discordMessageId: null,
     };
 
-    let question: PendingQuestion;
-    if (this.questionStore) {
-      question = await this.questionStore.appendQuestion(partialQuestion);
-    } else {
-      // No question store — fallback to posting system message
-      await this.discord.postSystemMessage(triggerMessage.threadId, questionText);
-      return;
-    }
+    const question = await this.questionStore.appendQuestion(partialQuestion);
 
     // 2. Post Discord notification (best-effort)
     if (this.openQuestionsChannelId) {
@@ -458,13 +447,11 @@ export class DefaultOrchestrator implements Orchestrator {
     this.pausedThreadIds.add(triggerMessage.threadId);
 
     // 5. Register with poller
-    if (this.questionPoller) {
-      this.questionPoller.registerQuestion({
-        questionId: question.id,
-        agentId,
-        threadId: triggerMessage.threadId,
-      });
-    }
+    this.questionPoller.registerQuestion({
+      questionId: question.id,
+      agentId,
+      threadId: triggerMessage.threadId,
+    });
   }
 
   private formatQuestionNotification(question: PendingQuestion): string {

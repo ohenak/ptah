@@ -404,9 +404,9 @@ ID assignment is no longer a public method — it is performed atomically inside
 ```
 Inside appendQuestion() — under MergeLock:
 
-1. Read pending.md → extract all "## Q-{NNNN}" headers → collect N values
+1. Read pending.md → extract all "<!-- Q-NNNN -->" comment markers → collect N values
    (file may not exist — treat as empty, no error)
-2. Read resolved.md → extract all "## Q-{NNNN}" headers → collect N values
+2. Read resolved.md → extract all "<!-- Q-NNNN -->" comment markers → collect N values
    (file may not exist — treat as empty, no error)
 3. maxN = Math.max(0, ...allNValues)
 4. assignedId = "Q-" + String(maxN + 1).padStart(4, "0")
@@ -417,106 +417,87 @@ Inside appendQuestion() — under MergeLock:
 8. Return the complete PendingQuestion with id = assignedId
 ```
 
-**Regex for parsing:** `/^## (Q-\d{4})$/m` — matches question section headers.
+**Regex for parsing:** `/<!--\s*Q-(\d{4,})\s*-->/g` — matches comment-marker block boundaries.
 
 ### 5.2 pending.md Parse Rules
 
-A question entry is the block from `## Q-{NNNN}` to (but not including) the next `## Q-{NNNN}` or end of file.
+A question entry is the block between consecutive `\n---\n` separators that contains a `<!-- Q-{NNNN} -->` comment marker. The file is split on `\n---\n` and each segment is inspected for the comment marker.
 
-**Answer detection:** An answer is present when there is non-whitespace content between the marker line `<!-- Write your answer below this line -->` and the next `---` separator (or end of block).
+**Answer detection:** An answer is present when the content after `**Answer:**\n` is non-whitespace and not equal to the sentinel `"(blank until answered)"`.
 
 ```typescript
-function extractAnswer(entryBlock: string): string | null {
-  const markerIdx = entryBlock.indexOf("<!-- Write your answer below this line -->");
-  if (markerIdx === -1) return null;
-  const afterMarker = entryBlock.slice(markerIdx + "<!-- Write your answer below this line -->".length);
-  const sepIdx = afterMarker.indexOf("\n---");
-  const raw = sepIdx === -1 ? afterMarker : afterMarker.slice(0, sepIdx);
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
+// Answer section regex: content after **Answer:** to end of block
+const answerSection = /\*\*Answer:\*\*\n([\s\S]*)$/m.exec(block);
+const answerRaw = answerSection ? answerSection[1].trim() : "";
+const answer = answerRaw.length > 0 && answerRaw !== "(blank until answered)" ? answerRaw : null;
 ```
 
-**Discord message ID extraction:** Read the table row `| **Discord Message ID** | {value} |` from the entry.
+**Discord message ID extraction:** Read the bold-label line `**Discord Message ID:** {value}` from the entry block.
 
 ### 5.3 pending.md File Format (serialization)
 
 When creating a new entry:
 
 ```markdown
-## Q-0001
-
-| Field | Value |
-|-------|-------|
-| **Agent** | {agentId} |
-| **Thread** | {threadName} |
-| **Thread ID** | {threadId} |
-| **Asked** | {askedAt.toISOString()} |
-| **Discord Message ID** |  |
+<!-- Q-0001 -->
+**ID:** Q-0001
+**Agent:** {agentId}
+**Thread:** {threadName}
+**Thread ID:** {threadId}
+**Asked:** {askedAt.toISOString()}
+**Discord Message ID:**
 
 **Question:**
-
 {questionText}
 
 **Answer:**
-
-<!-- Write your answer below this line -->
-
+(blank until answered)
 
 ---
 
 ```
 
-When updating Discord message ID: read the file, replace the `| **Discord Message ID** |  |` row for the target question with `| **Discord Message ID** | {messageId} |`, write back.
+When updating Discord message ID: split the file on `\n---\n`, find the segment containing `<!-- {questionId} -->`, replace the `**Discord Message ID:** ` line with `**Discord Message ID:** {messageId}`, rejoin with `\n---\n`, write back.
 
-When updating answer: read the file, find the block for the target question ID, replace content after `<!-- Write your answer below this line -->` up to the next `---` with the answer text followed by `\n\n`, write back.
+When updating answer: split the file on `\n---\n`, find the segment containing `<!-- {questionId} -->`, replace content after `**Answer:**\n` to end of segment with the answer text followed by `\n`, rejoin with `\n---\n`, write back.
 
-**Standard file header** (created if file is absent):
+**Standard file header** (prepended when file is created from empty):
 ```markdown
 # Pending Questions
-
-<!-- Ptah managed file — do not modify the structure. Write your answer in the Answer field. -->
-
----
 
 ```
 
 ### 5.4 resolved.md File Format (serialization)
 
-When archiving (resolved entries differ from pending in three ways: no Discord Message ID field, no answer marker comment, includes Answered timestamp):
+When archiving (resolved entries include an `Answered` timestamp and retain `Discord Message ID` for post-restart reply handling — see PQ-R9):
 
 ```markdown
-## Q-0001
-
-| Field | Value |
-|-------|-------|
-| **Agent** | {agentId} |
-| **Thread** | {threadName} |
-| **Thread ID** | {threadId} |
-| **Asked** | {askedAt.toISOString()} |
-| **Answered** | {resolvedAt.toISOString()} |
+<!-- Q-0001 -->
+**ID:** Q-0001
+**Agent:** {agentId}
+**Thread:** {threadName}
+**Thread ID:** {threadId}
+**Asked:** {askedAt.toISOString()}
+**Answered:** {resolvedAt.toISOString()}
+**Discord Message ID:** {discordMessageId}
 
 **Question:**
-
 {questionText}
 
 **Answer:**
-
 {answer}
 
 ---
 
 ```
 
-**Standard file header** (created if file is absent):
+**Standard file header** (prepended when file is created from empty):
 ```markdown
 # Resolved Questions
 
-<!-- Ptah managed file — archived question/answer pairs. -->
-
----
-
 ```
+
+**Note on `Discord Message ID` in resolved entries:** The field is retained (even though the question is resolved) so that on restart, `discordMessageIdMap` can be seeded from both `pending.md` and `resolved.md`. This enables the Orchestrator to reply "already been resolved" to Discord replies that arrive after a restart for questions resolved before the restart (PQ-R9).
 
 ### 5.5 Pattern B Context Assembly (`PatternBContextBuilder.build`)
 
