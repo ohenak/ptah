@@ -90,6 +90,9 @@ export class StartCommand {
     // 8. Return cleanup function
     return {
       cleanup: async () => {
+        if (this.orchestrator) {
+          await this.orchestrator.shutdown();
+        }
         await this.discord.disconnect();
         this.logger.info("Disconnected from Discord.");
       },
