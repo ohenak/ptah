@@ -21,6 +21,9 @@ import { AsyncMutex } from "../src/orchestrator/merge-lock.js";
 import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer.js";
 import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
 import { InMemoryMessageDeduplicator } from "../src/orchestrator/message-deduplicator.js";
+import { DefaultQuestionStore } from "../src/orchestrator/question-store.js";
+import { DefaultQuestionPoller } from "../src/orchestrator/question-poller.js";
+import { DefaultPatternBContextBuilder } from "../src/orchestrator/pattern-b-context-builder.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -94,27 +97,35 @@ async function main(): Promise<void> {
 
       // Build Claude Code client
       const claudeCodeInvokeFn: ClaudeCodeInvokeFn = async (options) => {
-        const { query } = await import("@anthropic-ai/claude-code");
-        const messages = await query({
+        const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+        // Forward the AbortSignal to a new AbortController for the SDK
+        const abortController = new AbortController();
+        options.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+
+        const queryIterable = query({
           prompt: options.userMessage,
-          systemPrompt: options.systemPrompt,
-          cwd: options.cwd,
-          allowedTools: options.allowedTools,
-          abortController: new AbortController(),
+          options: {
+            systemPrompt: options.systemPrompt,
+            cwd: options.cwd,
+            allowedTools: options.allowedTools,
+            abortController,
+            model: config.agents.model,
+            permissionMode: "acceptEdits",
+          },
         });
 
-        // Extract text from the last assistant message
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && typeof lastMessage === "object" && "content" in lastMessage) {
-          const content = lastMessage.content;
-          if (Array.isArray(content)) {
-            return content
-              .filter((block: { type: string }) => block.type === "text")
-              .map((block: { text: string }) => block.text)
-              .join("\n");
-          }
-          if (typeof content === "string") {
-            return content;
+        // Iterate the async stream and return the final result text
+        for await (const message of queryIterable) {
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            (message as { type: string }).type === "result" &&
+            "result" in message &&
+            typeof (message as { result: unknown }).result === "string"
+          ) {
+            return (message as { result: string }).result;
           }
         }
         return "";
@@ -135,7 +146,25 @@ async function main(): Promise<void> {
       const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
       const messageDeduplicator = new InMemoryMessageDeduplicator();
 
-      const orchestrator = new DefaultOrchestrator({
+      // Phase 5: Question pipeline (closure-capture for circular construction)
+      const questionStore = new DefaultQuestionStore(
+        fs,
+        git,
+        mergeLock,
+        logger,
+        "docs/open-questions/pending.md",
+        "docs/open-questions/resolved.md",
+      );
+      let orchestrator: DefaultOrchestrator;
+      const questionPoller = new DefaultQuestionPoller(
+        questionStore,
+        (q) => orchestrator.resumeWithPatternB(q),
+        30_000, // 30s poll interval
+        logger,
+      );
+      const patternBContextBuilder = new DefaultPatternBContextBuilder(fs, tokenCounter, logger);
+
+      orchestrator = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
         contextAssembler,
@@ -149,6 +178,10 @@ async function main(): Promise<void> {
         artifactCommitter,
         agentLogWriter,
         messageDeduplicator,
+        // Phase 5 additions:
+        questionStore,
+        questionPoller,
+        patternBContextBuilder,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {

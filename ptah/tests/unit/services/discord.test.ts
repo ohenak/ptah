@@ -627,4 +627,215 @@ describe("DiscordJsClient", () => {
       });
     });
   });
+
+  // Task 39: postChannelMessage()
+  describe("postChannelMessage", () => {
+    it("fetches channel, calls send() with content, and returns message ID", async () => {
+      const mockMessage = { id: "channel-msg-1" };
+      const mockChannel = {
+        id: "channel-1",
+        send: vi.fn().mockResolvedValue(mockMessage),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      const messageId = await discordClient.postChannelMessage("channel-1", "Hello, world!");
+
+      expect((stubClient as any).channels.fetch).toHaveBeenCalledWith("channel-1");
+      expect(mockChannel.send).toHaveBeenCalledWith({ content: "Hello, world!" });
+      expect(messageId).toBe("channel-msg-1");
+    });
+  });
+
+  // Task 40: onChannelMessage()
+  describe("onChannelMessage", () => {
+    function createStubChannelMessage(options: {
+      id?: string;
+      channelId?: string;
+      content?: string;
+      authorId?: string;
+      authorName?: string;
+      authorBot?: boolean;
+      isThread?: boolean;
+      createdAt?: Date;
+      reference?: { messageId: string } | null;
+    } = {}) {
+      return {
+        id: options.id ?? "msg-1",
+        channelId: options.channelId ?? "channel-1",
+        content: options.content ?? "test message",
+        createdAt: options.createdAt ?? new Date("2026-03-09T12:00:00Z"),
+        author: {
+          id: options.authorId ?? "user-1",
+          displayName: options.authorName ?? "TestUser",
+          bot: options.authorBot ?? false,
+        },
+        channel: {
+          isThread: () => options.isThread ?? false,
+        },
+        reference: options.reference !== undefined ? options.reference : null,
+      } as unknown as import("discord.js").Message;
+    }
+
+    it("registers a messageCreate listener", () => {
+      const handler = vi.fn();
+      const onSpy = vi.spyOn(stubClient, "on");
+      discordClient.onChannelMessage("channel-1", handler);
+      expect(onSpy).toHaveBeenCalledWith("messageCreate", expect.any(Function));
+    });
+
+    it("ignores bot messages", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const botMsg = createStubChannelMessage({ authorBot: true, channelId: "channel-1" });
+      (stubClient as any).emit("messageCreate", botMsg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("ignores thread messages (channel.isThread() === true)", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const threadMsg = createStubChannelMessage({ isThread: true, channelId: "channel-1" });
+      (stubClient as any).emit("messageCreate", threadMsg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("ignores messages from a different channel ID", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const wrongChannel = createStubChannelMessage({ channelId: "channel-other" });
+      (stubClient as any).emit("messageCreate", wrongChannel);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("routes matching non-bot non-thread message from correct channel to handler", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const validMsg = createStubChannelMessage({
+        channelId: "channel-1",
+        authorBot: false,
+        isThread: false,
+      });
+      (stubClient as any).emit("messageCreate", validMsg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("passes correct ChannelMessage shape to handler", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const ts = new Date("2026-03-10T09:00:00Z");
+      const validMsg = createStubChannelMessage({
+        id: "msg-99",
+        channelId: "channel-1",
+        content: "user question",
+        authorId: "user-42",
+        authorName: "Alice",
+        authorBot: false,
+        isThread: false,
+        createdAt: ts,
+        reference: null,
+      });
+      (stubClient as any).emit("messageCreate", validMsg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+      const channelMsg = handler.mock.calls[0][0];
+      expect(channelMsg).toEqual({
+        id: "msg-99",
+        channelId: "channel-1",
+        authorId: "user-42",
+        authorName: "Alice",
+        isBot: false,
+        content: "user question",
+        replyToMessageId: null,
+        timestamp: ts,
+      });
+    });
+
+    it("sets replyToMessageId to null when message has no reference", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const msg = createStubChannelMessage({
+        channelId: "channel-1",
+        reference: null,
+      });
+      (stubClient as any).emit("messageCreate", msg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler.mock.calls[0][0].replyToMessageId).toBeNull();
+    });
+
+    it("sets replyToMessageId when message.reference.messageId exists", async () => {
+      const handler = vi.fn();
+      discordClient.onChannelMessage("channel-1", handler);
+
+      const msg = createStubChannelMessage({
+        channelId: "channel-1",
+        reference: { messageId: "orig-msg-5" },
+      });
+      (stubClient as any).emit("messageCreate", msg);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(handler.mock.calls[0][0].replyToMessageId).toBe("orig-msg-5");
+    });
+  });
+
+  // Task 41: addReaction()
+  describe("addReaction", () => {
+    it("fetches channel, fetches message, and calls react(emoji)", async () => {
+      const mockMessage = {
+        id: "msg-5",
+        react: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockChannel = {
+        id: "channel-1",
+        messages: {
+          fetch: vi.fn().mockResolvedValue(mockMessage),
+        },
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      await discordClient.addReaction("channel-1", "msg-5", "✅");
+
+      expect((stubClient as any).channels.fetch).toHaveBeenCalledWith("channel-1");
+      expect(mockChannel.messages.fetch).toHaveBeenCalledWith("msg-5");
+      expect(mockMessage.react).toHaveBeenCalledWith("✅");
+    });
+  });
+
+  // Task 42: replyToMessage()
+  describe("replyToMessage", () => {
+    it("fetches channel, fetches message, and calls reply({ content })", async () => {
+      const mockMessage = {
+        id: "msg-7",
+        reply: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockChannel = {
+        id: "channel-1",
+        messages: {
+          fetch: vi.fn().mockResolvedValue(mockMessage),
+        },
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+
+      await discordClient.replyToMessage("channel-1", "msg-7", "Your answer has been received.");
+
+      expect((stubClient as any).channels.fetch).toHaveBeenCalledWith("channel-1");
+      expect(mockChannel.messages.fetch).toHaveBeenCalledWith("msg-7");
+      expect(mockMessage.reply).toHaveBeenCalledWith({ content: "Your answer has been received." });
+    });
+  });
 });

@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 11, 2026 |
-| **Version** | 1.7 |
+| **Version** | 1.8 |
 | **Status** | Draft |
 
 ---
@@ -39,7 +39,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02], [US-05] | [REQ-DI-04] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-06] | Pending Spec | P1 | 7 | Pending Spec |
-| [US-03] | [REQ-DI-07] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
+| [US-03] | [REQ-DI-07] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-02], [US-07] | [REQ-DI-08] | Pending Spec | P0 | 6 | Pending Spec |
 | [US-02], [US-04] | [REQ-DI-09] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-04] | [REQ-CB-01] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
@@ -49,15 +49,15 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-04] | [REQ-CB-05] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-04] | [REQ-CB-06] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P1 | 3 | FSPEC Complete |
 | [US-02], [US-04] | [REQ-RP-01] | [FSPEC-RP-02](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-03], [US-04] | [REQ-RP-02] | [FSPEC-RPB-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
+| [US-03], [US-04] | [REQ-RP-02] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-02], [US-04] | [REQ-RP-03] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-RP-04] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02], [US-07] | [REQ-RP-05] | Pending Spec | P0 | 6 | Pending Spec |
-| [US-03] | [REQ-PQ-01] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
-| [US-03] | [REQ-PQ-02] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
-| [US-03] | [REQ-PQ-03] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
-| [US-03] | [REQ-PQ-04] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
-| [US-03] | [REQ-PQ-05] | [FSPEC-PQ-02](../specifications/005-FSPEC-ptah-user-questions.md) | P0 | 5 | FSPEC Complete |
+| [US-03] | [REQ-PQ-01] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
+| [US-03] | [REQ-PQ-02] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
+| [US-03] | [REQ-PQ-03] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
+| [US-03] | [REQ-PQ-04] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
+| [US-03] | [REQ-PQ-05] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-04], [US-06] | [REQ-SI-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-SI-02] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-SI-03] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
@@ -115,7 +115,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-DI-04] | Post colour-coded embeds | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-DI-05] | Create one thread per coordination task | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-DI-06] | Archive threads on resolution signal | 0 | Pending |
-| [REQ-DI-07] | @mention user in #open-questions | 1 | FSPEC'd ([FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
+| [REQ-DI-07] | @mention user in #open-questions | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-DI-08] | Post system message at max-turns limit | 0 | Pending |
 | [REQ-DI-09] | Route by routing signal only | 1 | FSPEC'd ([FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-CB-01] | Three-layer context model | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
@@ -125,15 +125,15 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-CB-05] | Token budget enforcement | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-CB-06] | Task splitting on budget overflow | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-01] | Pattern A — Agent-to-agent answer | 1 | FSPEC'd ([FSPEC-RP-02](../specifications/FSPEC-ptah-skill-routing.md)) |
-| [REQ-RP-02] | Pattern B — User answer resume | 1 | FSPEC'd ([FSPEC-RPB-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
+| [REQ-RP-02] | Pattern B — User answer resume | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-RP-03] | Pattern C — Review loop | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-04] | Final review instruction at Turn 3 | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-05] | Block fifth turn in review threads | 0 | Pending |
-| [REQ-PQ-01] | Write to pending.md | 1 | FSPEC'd ([FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
-| [REQ-PQ-02] | Poll pending.md | 1 | FSPEC'd ([FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
-| [REQ-PQ-03] | Resume on user answer | 1 | FSPEC'd ([FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
-| [REQ-PQ-04] | Archive to resolved.md | 1 | FSPEC'd ([FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md)) |
-| [REQ-PQ-05] | Discord reply writeback to pending.md | 1 | FSPEC'd ([FSPEC-PQ-02](../specifications/005-FSPEC-ptah-user-questions.md)) |
+| [REQ-PQ-01] | Write to pending.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
+| [REQ-PQ-02] | Poll pending.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
+| [REQ-PQ-03] | Resume on user answer | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
+| [REQ-PQ-04] | Archive to resolved.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
+| [REQ-PQ-05] | Discord reply writeback to pending.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-SI-01] | Stateless Skill invocation | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-02] | Skill output format | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-03] | Two-iteration rule in Skill prompts | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
@@ -232,15 +232,15 @@ This matrix provides full traceability from user scenarios through requirements 
 
 ### Phase 5 — User Questions
 
-| Requirement | FSPEC | Specification | Priority | User Scenarios |
-|-------------|-------|---------------|----------|----------------|
-| [REQ-DI-07] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
-| [REQ-RP-02] | [FSPEC-RPB-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03], [US-04] |
-| [REQ-PQ-01] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
-| [REQ-PQ-02] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
-| [REQ-PQ-03] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
-| [REQ-PQ-04] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
-| [REQ-PQ-05] | [FSPEC-PQ-02](../specifications/005-FSPEC-ptah-user-questions.md) | Pending TSPEC | P0 | [US-03] |
+| Requirement | FSPEC | Specification | Plan | Priority | User Scenarios |
+|-------------|-------|---------------|------|----------|----------------|
+| [REQ-DI-07] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
+| [REQ-RP-02] | [FSPEC-RPB-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03], [US-04] |
+| [REQ-PQ-01] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
+| [REQ-PQ-02] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
+| [REQ-PQ-03] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
+| [REQ-PQ-04] | [FSPEC-PQ-01](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
+| [REQ-PQ-05] | [FSPEC-PQ-02](../specifications/005-FSPEC-ptah-user-questions.md) | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) v1.1 | [005-PLAN-TSPEC-ptah-user-questions](../plans/005-PLAN-TSPEC-ptah-user-questions.md) | P0 | [US-03] |
 
 ### Phase 6 — Guardrails
 
@@ -296,6 +296,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 1.5 | March 10, 2026 | Product Manager | Added FSPEC mappings for all 6 Phase 4 requirements. 3 FSPECs created: FSPEC-AC-01, FSPEC-AC-02, FSPEC-AC-03. Phase 4 view updated with FSPEC column. Coverage: 9 TSPEC'd + 21 Phase 3 FSPEC'd + 6 Phase 4 FSPEC'd = 36 of 54 requirements specified (18 pending). |
 | 1.6 | March 11, 2026 | Product Manager | Added FSPEC mappings for all 7 Phase 5 requirements. 3 FSPECs created: FSPEC-PQ-01, FSPEC-PQ-02, FSPEC-RPB-01. Phase 5 view updated with FSPEC column. Coverage: 9 TSPEC'd + 21 Phase 3 FSPEC'd + 6 Phase 4 FSPEC'd + 7 Phase 5 FSPEC'd = 43 of 54 requirements specified (11 pending). |
 | 1.7 | March 11, 2026 | Product Manager | 005-FSPEC-ptah-user-questions v1.1 approved for engineering handoff. Phase 5 FSPECs revised to address backend-engineer review (9 findings). TSPEC authoring may begin. |
+| 1.8 | March 11, 2026 | Backend Engineer | Phase 5 TSPEC (005-TSPEC-ptah-user-questions v1.1) approved after PM + TE reviews (F-01/F-02 addressed). Execution plan (005-PLAN-TSPEC-ptah-user-questions, 65 tasks) approved after TE review. Phase 5 requirements updated to "Specified"; Phase 5 view updated with TSPEC + Plan columns. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) = 43 of 54 specified (11 pending). |
 
 ---
 

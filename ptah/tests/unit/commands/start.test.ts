@@ -255,6 +255,38 @@ describe("StartCommand", () => {
     });
   });
 
+  // Task 63: Cleanup ordering — shutdown before disconnect
+  describe("cleanup ordering — shutdown before disconnect (Task 63)", () => {
+    it("calls orchestrator.shutdown() before discord.disconnect()", async () => {
+      const callOrder: string[] = [];
+
+      const fakeOrchestrator = {
+        handleMessage: async () => {},
+        startup: async () => {},
+        shutdown: async () => { callOrder.push("shutdown"); },
+        resumeWithPatternB: async () => {},
+      };
+
+      const origDisconnect = discord.disconnect.bind(discord);
+      discord.disconnect = async () => {
+        callOrder.push("disconnect");
+        return origDisconnect();
+      };
+
+      discord.channels.set("agent-debug", "debug-channel-id");
+
+      const cmd = new StartCommand(configLoader, discord, logger, {
+        orchestrator: fakeOrchestrator,
+        checkClaudeCode: async () => {},
+      });
+
+      const result = await cmd.execute();
+      await result.cleanup();
+
+      expect(callOrder).toEqual(["shutdown", "disconnect"]);
+    });
+  });
+
   // Task 137: Claude Code availability check
   describe("claude code validation", () => {
     it("throws with guidance when Claude Code SDK is not available", async () => {

@@ -205,7 +205,7 @@ POLLING LOOP (runs as a background interval within the Orchestrator process):
 | PQ-R6 | The `#open-questions` notification is a courtesy — `pending.md` is the source of truth. If Discord is down, the question is still in `pending.md` and the user can answer by editing the file directly. | Resilience to Discord outages. The file-based flow works independently of Discord. |
 | PQ-R7 | The pause embed is posted to the *agent thread*, not to `#open-questions`. | The thread participants (other agents reading the thread) need to know the thread is paused. The `#open-questions` channel is for the user's attention. |
 | PQ-R8 | Git commits for question writes and archival use the `[ptah] System:` prefix, not an agent prefix. | Question routing is an Orchestrator-level (system) action, not an agent action. This distinguishes system housekeeping commits from agent artifact commits. |
-| PQ-R9 | If the Orchestrator restarts, it reads both `pending.md` and `resolved.md` on startup to: (1) reconstruct the set of pending questions (from `pending.md`), (2) reconstruct the Discord message ID → question ID mapping for reply matching (from the `Discord Message ID` field in `pending.md`), and (3) determine the next available question ID (from the highest Q-{NNNN} found across both files — see PQ-R1). No other in-memory state is required to survive restarts. | Both files together form the durable store. The polling loop, registered question set, reply matching map, and ID counter are all derived from the files on startup. |
+| PQ-R9 | If the Orchestrator restarts, it reads both `pending.md` and `resolved.md` on startup to: (1) reconstruct the set of pending questions (from `pending.md`), (2) reconstruct the Discord message ID → question ID mapping for reply matching — seeding from **both** `pending.md` (for still-pending questions) and `resolved.md` (for already-resolved questions, enabling "already been resolved" replies after restart), and (3) determine the next available question ID (from the highest Q-{NNNN} found across both files — see PQ-R1). No other in-memory state is required to survive restarts. | Both files together form the durable store. The polling loop, registered question set, reply matching map, and ID counter are all derived from the files on startup. Seeding the reply map from `resolved.md` ensures the Orchestrator can respond gracefully to Discord replies about pre-restart-resolved questions. |
 | PQ-R10 | The Orchestrator maintains an in-memory set of paused thread IDs. When a new human message arrives for a thread in this set, the message is silently dropped — no Skill invocation, no Discord response, no log entry beyond a debug-level note. The thread ID is removed from the paused set only when a Pattern B resume completes successfully (Step 7f). | Prevents the routing loop from re-executing against stale state while a thread is waiting for a user answer. Without this guard, a user posting a follow-up message in a paused thread could trigger an unintended agent invocation. |
 | PQ-R11 | Pattern B resumes are enqueued to the `ThreadQueue` for the originating thread ID, not dispatched directly. When multiple questions for the same thread are answered simultaneously, the ThreadQueue serializes their resumes in question ID order. | The `ThreadQueue` already serializes all operations per thread ID. Routing Pattern B resumes through it ensures no two Pattern B resumes for the same thread can race on the worktree or Discord. |
 | PQ-R12 | The polling loop must be stopped as part of Orchestrator shutdown before the Discord client disconnects. Any in-progress poll tick must complete or be cancelled before disconnect proceeds. | A live poll interval firing after Discord disconnects would produce confusing errors. Shutdown must be clean. |
@@ -226,6 +226,8 @@ POLLING LOOP (runs as a background interval within the Orchestrator process):
 
 ### 3.6 File Format — pending.md
 
+> **Format note (v1.2 update):** The implemented format uses HTML comment markers (`<!-- Q-NNNN -->`) for block boundaries and bold-label lines for metadata fields, replacing the table-row layout shown in earlier versions. The `(blank until answered)` placeholder marks unanswered questions in the file. The PM notes this placeholder is less instructive than an explicit comment directive; a more instructive form (e.g., `<!-- write your answer here -->`) is a recommended future UX improvement to the implementation.
+
 ```markdown
 # Pending Questions
 
@@ -233,55 +235,45 @@ POLLING LOOP (runs as a background interval within the Orchestrator process):
 
 ---
 
-## Q-0001
-
-| Field | Value |
-|-------|-------|
-| **Agent** | pm-agent |
-| **Thread** | auth — define requirements |
-| **Thread ID** | 1234567890 |
-| **Asked** | 2026-03-11T14:30:00Z |
-| **Discord Message ID** | 987654321098765432 |
+<!-- Q-0001 -->
+**ID:** Q-0001
+**Agent:** pm-agent
+**Thread:** auth — define requirements
+**Thread ID:** 1234567890
+**Asked:** 2026-03-11T14:30:00Z
+**Discord Message ID:** 987654321098765432
 
 **Question:**
-
 Should OAuth use Google or GitHub as the identity provider?
 
 **Answer:**
-
-<!-- Write your answer below this line -->
-
 Use Google as the primary provider. We can add GitHub later.
 
 ---
 
-## Q-0002
-
-| Field | Value |
-|-------|-------|
-| **Agent** | dev-agent |
-| **Thread** | auth — technical specification |
-| **Thread ID** | 1234567891 |
-| **Asked** | 2026-03-11T15:00:00Z |
-| **Discord Message ID** | 987654321098765433 |
+<!-- Q-0002 -->
+**ID:** Q-0002
+**Agent:** dev-agent
+**Thread:** auth — technical specification
+**Thread ID:** 1234567891
+**Asked:** 2026-03-11T15:00:00Z
+**Discord Message ID:** 987654321098765433
 
 **Question:**
-
 Should the token expiry be 1 hour or 24 hours?
 
 **Answer:**
-
-<!-- Write your answer below this line -->
-
+(blank until answered)
 
 ---
 ```
 
 **Parsing rules:**
-- A question entry starts with `## Q-{NNNN}`
+- Each question entry begins with an HTML comment marker `<!-- Q-{NNNN} -->` (ID extraction regex: `/<!--\s*Q-(\d{4,})\s*-->/g`)
+- Metadata fields use bold-label inline format: `**Field:** value` — one field per line
 - The `Discord Message ID` field stores the ID of the bot's notification message posted in `#open-questions`. This field is written immediately after the notification is posted (Step 3b) and is used to match Discord replies to their question (FSPEC-PQ-02). It survives Orchestrator restarts.
-- The Answer field is non-empty when there is non-whitespace content between `<!-- Write your answer below this line -->` and the next `---` separator (or end of file)
-- The Orchestrator reads the full content between the answer marker and the next separator as the verbatim answer
+- The Answer field is non-empty when there is content after `**Answer:**\n` that is non-whitespace and is not the literal sentinel string `(blank until answered)`
+- The Orchestrator reads the full content after `**Answer:**` as the verbatim answer (trimmed)
 
 ### 3.7 File Format — resolved.md
 
@@ -292,22 +284,19 @@ Should the token expiry be 1 hour or 24 hours?
 
 ---
 
-## Q-0001
-
-| Field | Value |
-|-------|-------|
-| **Agent** | pm-agent |
-| **Thread** | auth — define requirements |
-| **Thread ID** | 1234567890 |
-| **Asked** | 2026-03-11T14:30:00Z |
-| **Answered** | 2026-03-11T14:45:00Z |
+<!-- Q-0001 -->
+**ID:** Q-0001
+**Agent:** pm-agent
+**Thread:** auth — define requirements
+**Thread ID:** 1234567890
+**Asked:** 2026-03-11T14:30:00Z
+**Answered:** 2026-03-11T14:45:00Z
+**Discord Message ID:** 987654321098765432
 
 **Question:**
-
 Should OAuth use Google or GitHub as the identity provider?
 
 **Answer:**
-
 Use Google as the primary provider. We can add GitHub later.
 
 ---
@@ -315,7 +304,8 @@ Use Google as the primary provider. We can add GitHub later.
 
 **Differences from pending.md:**
 - Includes an `**Answered**` timestamp field
-- The answer marker comment is removed (the answer is final)
+- Includes the `**Discord Message ID**` field (preserved from the pending entry). This enables the Orchestrator to respond "This question has already been resolved." to Discord replies that arrive after a restart for questions resolved before the restart — see PQ-R9.
+- The `(blank until answered)` placeholder is never present — the answer is final
 - Entries are append-only — resolved questions are never modified
 
 ### 3.8 Acceptance Tests
@@ -712,6 +702,7 @@ THEN:  The answer is included in Layer 3 exactly as written in pending.md
 |---------|------|--------|---------|
 | 1.0 | March 11, 2026 | Product Manager | Initial functional specification for Phase 5 — 3 FSPECs covering all 7 requirements |
 | 1.1 | March 11, 2026 | Product Manager | Revised in response to backend-engineer review. Added §2.4 (new Discord capabilities), §2.5 (engineering notes). Clarified file path convention (config.docs.root relative). Added Discord Message ID field to pending.md format. Specified thread pause enforcement mechanism (PQ-R10). Clarified Pattern B resume sequencing via ThreadQueue (PQ-R11). Specified polling loop shutdown (§3.3, PQ-R12). Updated PQ-R1 with ID generation algorithm covering both files. Updated PQ-R9 with full restart recovery scope. Added FSPEC-RPB-01 classification ownership note and RPB-R6. |
+| 1.2 | March 11, 2026 | Test Engineer | Post-implementation spec alignment (TE review M-03/M-04, PM-approved). §3.6: Updated pending.md format example to match implemented comment-marker + bold-label layout; updated parsing rules to reflect `(blank until answered)` sentinel and comment-marker ID extraction. §3.7: Updated resolved.md format example to comment-marker layout; added `Discord Message ID` field with rationale. PQ-R9: Updated to specify that discordMessageIdMap seeding covers both `pending.md` and `resolved.md` on restart. |
 
 ---
 
