@@ -200,7 +200,7 @@ export class DefaultOrchestrator implements Orchestrator {
 
     // Phase 5: silently drop messages for paused threads (PQ-R10)
     if (this.pausedThreadIds.has(message.threadId)) {
-      this.logger.debug(`Dropping message for paused thread ${message.threadId}`);
+      this.logger.info(`Dropping message for paused thread ${message.threadId}`);
       return;
     }
 
