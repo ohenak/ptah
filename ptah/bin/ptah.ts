@@ -97,27 +97,35 @@ async function main(): Promise<void> {
 
       // Build Claude Code client
       const claudeCodeInvokeFn: ClaudeCodeInvokeFn = async (options) => {
-        const { query } = await import("@anthropic-ai/claude-code");
-        const messages = await query({
+        const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+        // Forward the AbortSignal to a new AbortController for the SDK
+        const abortController = new AbortController();
+        options.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+
+        const queryIterable = query({
           prompt: options.userMessage,
-          systemPrompt: options.systemPrompt,
-          cwd: options.cwd,
-          allowedTools: options.allowedTools,
-          abortController: new AbortController(),
+          options: {
+            systemPrompt: options.systemPrompt,
+            cwd: options.cwd,
+            allowedTools: options.allowedTools,
+            abortController,
+            model: config.agents.model,
+            permissionMode: "acceptEdits",
+          },
         });
 
-        // Extract text from the last assistant message
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage && typeof lastMessage === "object" && "content" in lastMessage) {
-          const content = lastMessage.content;
-          if (Array.isArray(content)) {
-            return content
-              .filter((block: { type: string }) => block.type === "text")
-              .map((block: { text: string }) => block.text)
-              .join("\n");
-          }
-          if (typeof content === "string") {
-            return content;
+        // Iterate the async stream and return the final result text
+        for await (const message of queryIterable) {
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            (message as { type: string }).type === "result" &&
+            "result" in message &&
+            typeof (message as { result: unknown }).result === "string"
+          ) {
+            return (message as { result: string }).result;
           }
         }
         return "";

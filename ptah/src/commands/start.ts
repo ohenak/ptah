@@ -12,11 +12,11 @@ export interface StartCommandOptions {
 async function defaultClaudeCodeCheck(): Promise<void> {
   try {
     // Use a variable to prevent Vite/bundler from statically analyzing the import
-    const pkg = "@anthropic-ai/claude-code";
+    const pkg = "@anthropic-ai/claude-agent-sdk";
     await import(/* @vite-ignore */ pkg);
   } catch {
     throw new Error(
-      "Claude Code SDK not available. Install it with: npm install @anthropic-ai/claude-code",
+      "Claude Agent SDK not available. Install it with: npm install @anthropic-ai/claude-agent-sdk",
     );
   }
 }
