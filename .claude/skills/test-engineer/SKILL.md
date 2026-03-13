@@ -359,7 +359,7 @@ When deriving properties from specifications, follow these patterns:
 Each acceptance criterion maps to at least one functional property:
 ```
 Given: "When developer runs ptah start with valid config"
-Then:  "Bot connects to Discord and listens on #agent-updates"
+Then:  "Bot connects to Discord and listens on #ptah-updates"
 → PROP: StartCommand must connect to Discord, resolve the updates channel,
   and register a message listener when config and env var are valid
 ```
