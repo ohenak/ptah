@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE6 |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -164,6 +164,7 @@ When a Skill invocation fails (for any reason — API error, timeout, unexpected
 | GR-R6 | A malformed routing signal (missing or unparseable `ROUTE_TO_*` tag in Skill output) counts as a transient failure and is retried once. If the second attempt also returns a malformed signal, it is treated as unrecoverable. | A single malformed output may be a fluke. Two consecutive malformed outputs indicate a systematic Skill problem that retrying cannot fix. |
 | GR-R7 | The retry counter resets to 0 after a successful invocation. Each Skill invocation for a thread starts with a fresh retry budget. | Retry budgets are per-invocation, not per-thread. A thread that succeeds after 2 retries on one turn gets a fresh 3-retry budget on the next turn. |
 | GR-R8 | The Orchestrator logs every retry attempt and exhaustion event to `#agent-debug`. The thread count and retry counts are logged so the developer can identify systemic failures. | Observability is critical for diagnosing whether failures are isolated or systemic. |
+| GR-R9 (partial-commit) | If the Phase 4 artifact commit succeeded but posting the response embed subsequently fails (the post-commit error path in §3.4 last row), the Orchestrator posts an error embed with the body: "⛔ Agent Error — {agentId} completed its task and committed artifacts to Git, but failed to post its response. Artifacts may be in a partially committed state. A developer should inspect the Git log. Error: {short error description}. See #agent-debug for details." The full error and the Git commit SHA are logged to #agent-debug. | The error embed body must distinguish the "artifacts committed, response not posted" case from a total invocation failure so the developer knows to check Git rather than assume no work was done. The commit SHA in the debug log enables the developer to find and inspect the partial state. |
 
 ### 3.4 Edge Cases
 
@@ -245,6 +246,33 @@ THEN:  1. I retry once (GR-R6 — first malformed output is transient)
        2. PM Agent returns output with no ROUTE_TO_* tag on attempt 2
        3. I treat attempt 2's malformed output as unrecoverable
        4. I post the error embed and do not retry further
+```
+
+**AT-GR-17: Phase 4 artifact committed but response embed post fails — partial-commit error embed**
+
+```
+WHO:   As the Orchestrator
+GIVEN: Dev Agent's Skill invocation completed successfully
+       and the Phase 4 artifact commit pipeline ran and produced a commit
+       with SHA "abc1234"
+       and the subsequent attempt to post Dev Agent's response embed to Discord
+       fails with a Discord API error
+WHEN:  I handle the response-posting failure
+THEN:  1. I do NOT retry the response post (the artifact is already committed —
+          retrying the invocation would duplicate the commit)
+       2. I post an error embed to Dev Agent's thread with body:
+          "⛔ Agent Error — dev-agent completed its task and committed
+           artifacts to Git, but failed to post its response. Artifacts
+           may be in a partially committed state. A developer should inspect
+           the Git log. Error: [short Discord error description].
+           See #agent-debug for details."
+       3. I log to #agent-debug:
+          "[ptah] ERROR: Post-commit response embed failed for dev-agent
+           in thread {threadName}. Artifact commit SHA: abc1234.
+           Error: {full Discord error}. Developer action required."
+       4. I clean up the worktree
+       5. I release the thread from the ThreadQueue
+       6. The Orchestrator continues running
 ```
 
 ### 3.6 Dependencies
@@ -387,26 +415,29 @@ A fifth turn means neither agent issued `ROUTE_TO_DONE` — the loop is stalled.
 
 ### 4.7 Acceptance Tests
 
-**AT-GR-06: General max-turns limit fires at turn 10**
+**AT-GR-06: General max-turns limit fires after the 10th invocation**
 
 ```
 WHO:   As the Orchestrator
-GIVEN: Thread "auth — define requirements" has processed 9 turns
-       (maxTurnsPerThread = 10)
-WHEN:  A 10th message arrives in the thread
-THEN:  1. I check: turn_count (9) + 1 = 10 >= maxTurnsPerThread (10) — limit reached
+GIVEN: Thread "auth — define requirements" has processed 10 turns
+       (turn_count = 10, maxTurnsPerThread = 10)
+WHEN:  An 11th message arrives in the thread
+THEN:  1. I check: turn_count (10) >= maxTurnsPerThread (10) — limit reached
        2. I post an orange "🔒 Thread Closed — Maximum Turns Reached" embed
        3. I log the closure to #agent-debug
        4. I do NOT invoke any Skill
        5. The thread is marked CLOSED
 ```
 
+Note: `maxTurnsPerThread = 10` means **10 Skill invocations are permitted** (turns 1–10 proceed normally). The limit fires when the 11th routing event arrives. The behavioral flow in §4.3 is authoritative: the check `turn_count >= maxTurnsPerThread` runs *before* incrementing, so an already-incremented count of 10 triggers the block.
+
 **AT-GR-07: Subsequent messages after CLOSED are silently dropped**
 
 ```
 WHO:   As the Orchestrator
 GIVEN: Thread "auth — define requirements" is marked CLOSED
-WHEN:  An 11th message arrives in the thread
+       (the 11th message triggered the limit and the close embed was posted)
+WHEN:  A 12th message arrives in the thread
 THEN:  The message is silently dropped
        No embed is posted
        No Skill is invoked
@@ -551,6 +582,7 @@ The goal is to exit without losing work. Commits that were in progress are allow
 | GR-R19 | SIGINT and SIGTERM both trigger the same shutdown sequence. There is no "fast" vs "slow" shutdown — the sequence is always the same. | Simplicity. Two code paths for shutdown would be harder to test and maintain. |
 | GR-R20 | A second SIGINT or SIGTERM received during shutdown (e.g., the developer presses Ctrl+C twice) force-exits immediately (Step 7 with code 1) without waiting. | Respect the developer's intent. If they send the signal twice, they want out now. |
 | GR-R21 | The Discord `#agent-debug` embed posted in Step 2d is best-effort only. If Discord is unavailable, the Orchestrator still proceeds with the shutdown sequence. | Shutdown must succeed even if Discord is the reason the Orchestrator is being shut down. |
+| GR-R22 | The shutdown commit step (§5.2 Step 4a) discovers active worktrees from the Orchestrator's in-memory worktree registry — the same registry maintained by FSPEC-AC-01 when worktrees are created and destroyed. It does NOT scan the filesystem or invoke `git worktree list`. Worktrees not in the registry (e.g., leftover from a previous crashed run) are not touched. | The registry is the canonical source of truth for active worktrees. Filesystem scanning risks touching worktrees that are already in a clean or committed state from prior runs. Registry-based enumeration is deterministic and testable. |
 
 ### 5.4 Edge Cases
 
@@ -636,6 +668,24 @@ THEN:  git add -A is run across all worktrees and the main working directory
        The Git repository is in a clean state before disconnect
 ```
 
+**AT-GR-16: SIGINT cancels backoff wait — retry not started — error embed posted**
+
+```
+WHO:   As a developer
+GIVEN: A Skill invocation failed on attempt 1 and the Orchestrator is waiting
+       4 seconds before retry 2 (retryBaseDelayMs = 2000 → Retry 2 delay = 4000ms)
+       and 2 seconds of the 4-second backoff have elapsed
+WHEN:  I send SIGINT
+THEN:  1. The shutdown flag is set immediately
+       2. The remaining 2 seconds of backoff wait are cancelled — not waited out
+       3. Retry 2 is NOT attempted (no new invocation starts)
+       4. A red "⛔ Agent Error" embed IS posted to the thread
+          (the first attempt's failure is treated as the final result)
+       5. The worktree is cleaned up
+       6. The shutdown sequence continues from Step 3 onward (§5.2)
+       7. The Orchestrator exits with code 0 (no other in-flight invocations)
+```
+
 ### 5.6 Dependencies
 
 - Depends on: [FSPEC-SI-01] (ThreadQueue active-invocation tracking — shutdown checks this)
@@ -661,7 +711,7 @@ THEN:  git add -A is run across all worktrees and the main working directory
 
 | # | Question | Options | Recommendation |
 |---|----------|---------|----------------|
-| — | None | — | All product decisions resolved in requirements phase |
+| — | None | — | All product decisions resolved. Test Engineer cross-review feedback addressed in v1.1. |
 
 ---
 
@@ -670,6 +720,7 @@ THEN:  git add -A is run across all worktrees and the main working directory
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 6 — 3 FSPECs covering all 6 requirements |
+| 1.1 | March 13, 2026 | Product Manager | Addressed Test Engineer cross-review feedback: (F-01) Fixed AT-GR-06/07 to be consistent with §4.3 behavioral flow — `maxTurnsPerThread = 10` means 10 invocations proceed, blocked on the 11th; (F-02) Added AT-GR-16 for retry-in-backoff-period-at-shutdown edge case; (F-03) Added GR-R9 (partial-commit embed body) and AT-GR-17 covering the post-commit response-posting failure; (Q-02) Added GR-R22 clarifying worktree registry as the authoritative source for shutdown commit step |
 
 ---
 
