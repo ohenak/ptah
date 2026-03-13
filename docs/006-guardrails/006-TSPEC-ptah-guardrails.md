@@ -6,7 +6,7 @@
 | **Functional Specifications** | [FSPEC-GR-01], [FSPEC-GR-02], [FSPEC-GR-03] — [006-FSPEC-ptah-guardrails](./006-FSPEC-ptah-guardrails.md) |
 | **Analysis** | Inline — FSPEC contains full behavioral specification; codebase analysis performed inline |
 | **Date** | March 13, 2026 |
-| **Status** | Draft |
+| **Status** | Draft — v1.1 (TE review findings addressed) |
 
 ---
 
@@ -94,13 +94,19 @@ export interface InvocationGuardParams {
   config: PtahConfig;
   /** Set when the Orchestrator enters shutdown mode — cancels backoff delays. */
   shutdownSignal: AbortSignal;
+  /**
+   * Channel ID for the #agent-debug channel. May be null if the channel was
+   * not found during startup. Passed at invocation time (not stored on the guard)
+   * to avoid mutable guard state.
+   */
+  debugChannelId: string | null;
 }
 
 export type GuardResult =
   | { status: "success"; invocationResult: InvocationResult; commitResult: CommitResult }
-  | { status: "exhausted" }    // error embed already posted; worktree cleaned up
+  | { status: "exhausted" }     // error embed already posted; worktree cleaned up
   | { status: "unrecoverable" } // same as exhausted but 0 retries were attempted
-  | { status: "shutdown" };    // aborted mid-backoff; no embed posted
+  | { status: "shutdown" };     // aborted mid-backoff; error embed posted; worktree cleaned up
 
 export interface InvocationGuard {
   invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult>;
@@ -223,7 +229,7 @@ export interface ThreadQueue {
 
 ```
 Dependencies: SkillInvoker, ArtifactCommitter, GitClient, DiscordClient, Logger
-Constructor params: all five as protocol types + debugChannelId: string | null
+Constructor params: all five as protocol types (no debugChannelId — received via InvocationGuardParams at invocation time)
 ```
 
 Implements the full retry algorithm from §5.1. Maintains `malformedSignalCount: number` per invocation to enforce GR-R6 (two-strike rule for missing routing signals). Uses `vi.useFakeTimers()` in tests to control backoff delays deterministically.
@@ -264,7 +270,8 @@ const invocationGuard = new DefaultInvocationGuard(
   gitClient,
   discordClient,
   logger,
-  null, // debugChannelId — resolved in orchestrator.startup() and injected post-construction
+  // No debugChannelId here — it is resolved in orchestrator.startup() and
+  // passed via InvocationGuardParams at each invocation call site.
 );
 ```
 
@@ -317,6 +324,10 @@ LOOP:
      commitResult = await artifactCommitter.commitAndMerge(...)
      If commitResult.mergeStatus === "conflict":
        category = "unrecoverable"        → skip to EXHAUSTION
+     If commitResult.mergeStatus === "commit-error" | "lock-timeout" | "merge-error":
+       category = "transient"            → skip to step 6 (retry-count check)
+       (These statuses are RETURNED by commitAndMerge(), not thrown. The algorithm
+        must explicitly branch here to avoid falling through to SUCCESS.)
 
   4. SUCCESS: return { status: "success", invocationResult: result, commitResult }
 
@@ -339,7 +350,13 @@ LOOP:
        {agentId} in thread {threadName} — retrying in {delay}ms. Error: {message}"
 
      Try to await delay (cancellable via shutdownSignal):
-       If shutdownSignal fires during delay → return { status: "shutdown" }
+       If shutdownSignal fires during delay:
+         → Post error embed to thread (same as EXHAUSTION steps 9–10 below,
+           treating the last attempt's failure as the final result — per AT-GR-16)
+         → Clean up worktree (removeWorktree + deleteBranch)
+         → return { status: "shutdown" }
+         (The orchestrator simply deregisters the worktree on receiving this status;
+          no further embed is posted by the orchestrator.)
 
      Reset worktree to clean state:
        git -C {worktreePath} reset --hard HEAD
@@ -402,7 +419,7 @@ This path is handled in `orchestrator.ts`, NOT in `InvocationGuard`. After `guar
 
 2. Check general turn limit: manager.checkAndIncrementTurn(threadId, maxTurnsPerThread)
    If "limit-reached":
-     → If status is already "closed": silently return (GR-R10)
+     → If status is already "closed": silently return (GR-R11)
      → Else:
         postCloseEmbed (orange, "🔒 Thread Closed — Maximum Turns Reached",
           body per FSPEC §4.3 Step 3a)
@@ -445,7 +462,7 @@ The `createShutdownHandler` function in `shutdown.ts` is rewritten to implement 
 SIGINT/SIGTERM received:
 
 Step 1: Guard against double-signal
-  If shuttingDown flag is true: process.exit(1) immediately (GR-R20)
+  If shuttingDown flag is true: process.exit(1) immediately (GR-R21)
   Set shuttingDown = true
 
 Step 2: Enter shutdown mode
@@ -455,7 +472,7 @@ Step 2: Enter shutdown mode
   c. Best-effort: post embed to #agent-debug:
      "[ptah] System shutting down. Active threads will complete their current
       invocation. No new messages will be processed."
-     (On failure: log to console, continue — GR-R21)
+     (On failure: log to console, continue — GR-R22)
 
 Step 3: Wait for in-flight invocations
   a. startTime = now
@@ -491,9 +508,9 @@ A single `AbortController` is created at the composition root and shared with:
 - `DefaultOrchestrator` (passed through to each `InvocationGuard.invokeWithRetry()` call)
 - `createShutdownHandler` (calls `abort()` in Step 2a)
 
-When `abort()` fires during a retry backoff delay, the `InvocationGuard` returns `{ status: "shutdown" }`. The orchestrator receives this result, deregisters the worktree from the registry, and exits the routing loop without posting an error embed. The shutdown sequence continues.
+When `abort()` fires during a retry backoff delay, the `InvocationGuard` posts an error embed to the originating thread (per AT-GR-16 — the aborted attempt's last failure is treated as the final result), cleans up the worktree, and returns `{ status: "shutdown" }`. The orchestrator receives this result, deregisters the worktree from the registry, and exits the routing loop. No additional embed is posted by the orchestrator. The shutdown sequence continues.
 
-When `abort()` fires during an active Skill invocation (not a backoff wait), the invocation runs to completion (GR-R16). `AbortSignal` is only checked at the backoff delay — not passed to `SkillInvoker.invoke()`.
+When `abort()` fires during an active Skill invocation (not a backoff wait), the invocation runs to completion (GR-R17). `AbortSignal` is only checked at the backoff delay — not passed to `SkillInvoker.invoke()`.
 
 ---
 
@@ -508,13 +525,14 @@ When `abort()` fires during an active Skill invocation (not a backoff wait), the
 | `RoutingParseError` on 2nd consecutive | Unrecoverable (GR-R6) | Error embed; no further retry | — |
 | Empty Skill output (no content) | Transient (GR-R6) | Same as malformed signal | — |
 | `CommitResult.mergeStatus === "conflict"` | Unrecoverable | Skip retries; error embed immediately | — |
-| `CommitResult.mergeStatus === "commit-error"` | Transient | Retry the full invocation + commit | — |
-| `CommitResult.mergeStatus === "lock-timeout"` | Transient | Retry the full invocation + commit | — |
+| `CommitResult.mergeStatus === "commit-error"` | Transient | Retry the full invocation + commit (returned, not thrown — §5.1 Step 3 handles) | — |
+| `CommitResult.mergeStatus === "lock-timeout"` | Transient | Retry the full invocation + commit (returned, not thrown — §5.1 Step 3 handles) | — |
+| `CommitResult.mergeStatus === "merge-error"` | Transient | Retry the full invocation + commit (returned, not thrown — §5.1 Step 3 handles) | — |
 | Error posting error embed (Step 10 of exhaustion) | Non-blocking | Log to console; continue cleanup | — |
 | Thread at general turn limit | N/A | Post orange "🔒" close embed; drop message | — |
-| Thread already CLOSED | N/A | Silently drop message (GR-R10) | — |
+| Thread already CLOSED | N/A | Silently drop message (GR-R11) | — |
 | Review thread at 4-turn limit | N/A | Post red "🚨" stall embed; drop message | — |
-| Review thread already STALLED | N/A | Silently drop message (GR-R10) | — |
+| Review thread already STALLED | N/A | Silently drop message (GR-R11) | — |
 | `maxTurnsPerThread` < 5 on startup | Configuration | Log startup warning; continue | — |
 | Graceful shutdown, no in-flight | Clean | Complete < 2s; process.exit(0) | 0 |
 | Graceful shutdown, in-flight completes in time | Clean | Wait for completion; process.exit(0) | 0 |
@@ -543,9 +561,11 @@ class FakeInvocationGuard implements InvocationGuard {
   results: GuardResult[] = [];  // returned in order; last result repeats if list exhausted
   callCount = 0;
   lastParams: InvocationGuardParams | null = null;
+  lastShutdownSignal: AbortSignal | null = null;  // captured for shutdown propagation assertions
 
   async invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult> {
     this.lastParams = params;
+    this.lastShutdownSignal = params.shutdownSignal;
     const result = this.results[this.callCount] ?? this.results[this.results.length - 1];
     this.callCount++;
     return result;
@@ -561,6 +581,10 @@ class FakeThreadStateManager implements ThreadStateManager {
   reviewTurnResults = new Map<string, "allowed" | "stalled">();
   reviewThreadIds = new Set<string>();
   turnCounts = new Map<string, number>();
+  openThreadIdSet = new Set<string>();  // populated by tests for monitoring assertions
+
+  // openThreadIds() required by protocol — returns threads explicitly registered as open
+  openThreadIds(): string[] { return Array.from(this.openThreadIdSet); }
   // ... full protocol implementation with test-injectable outcomes
 }
 ```
@@ -576,18 +600,25 @@ class FakeWorktreeRegistry implements WorktreeRegistry {
 }
 ```
 
-**`FakeDiscordClient` extension (add `postChannelMessageCalls`):**
-Already exists; add a `debugChannelMessages: string[]` field to capture #agent-debug posts.
+**`FakeDiscordClient` extension:**
+Already exists; add a `debugChannelMessages: string[]` field to capture `#agent-debug` posts.
+Note: this field is named `debugChannelMessages` and is separate from any existing
+`postChannelMessageCalls` field to avoid confusion between debug-channel posts and
+general channel posts.
 
-**`FakeGitClient` extension (add `hasUncommittedChanges` and `resetHardCalls`):**
-Add: `hasUncommittedChangesResult = false`, `resetHardCalls: string[] = []`.
+**`FakeGitClient` extension (Phase 6 additions):**
+Add:
+- `hasUncommittedChangesResult = false` — return value for `hasUncommittedChanges()`
+- `resetHardCalls: string[] = []` — captures worktree paths passed to reset-hard
+- `addAllCalls: string[] = []` — captures worktree paths for `git add -A` (shutdown commit step)
+- `commitCalls: Array<{ path: string; message: string }> = []` — captures shutdown commit invocations
 
 ### 7.3 Test Categories
 
 | Category | File | Focus |
 |----------|------|-------|
-| InvocationGuard unit | `tests/unit/orchestrator/invocation-guard.test.ts` | Retry count, backoff delays (fake timers), failure classification, GR-R6 two-strike rule, worktree reset before retry, exhaustion embed, shutdown abort |
-| ThreadStateManager unit | `tests/unit/orchestrator/thread-state-manager.test.ts` | Turn count increments, CLOSED/STALLED state transitions, review thread limit (fixed 4), lazy reconstruction, GR-R11 (review limit checked first), GR-R10 (silent drop) |
+| InvocationGuard unit | `tests/unit/orchestrator/invocation-guard.test.ts` | Retry count, backoff delays (fake timers), failure classification, GR-R6 two-strike rule, worktree reset before retry, exhaustion embed, shutdown abort (error embed posted per AT-GR-16), CommitResult transient statuses ("commit-error"/"lock-timeout"/"merge-error") trigger retry path |
+| ThreadStateManager unit | `tests/unit/orchestrator/thread-state-manager.test.ts` | Turn count increments, CLOSED/STALLED state transitions, review thread limit (fixed 4), lazy reconstruction, GR-R12 (review limit checked first), GR-R11 (silent drop) |
 | WorktreeRegistry unit | `tests/unit/orchestrator/worktree-registry.test.ts` | Register, deregister, getAll snapshot |
 | ThreadQueue unit (updated) | `tests/unit/orchestrator/thread-queue.test.ts` | `activeCount()` reflects processing + queued state |
 | Orchestrator unit (updated) | `tests/unit/orchestrator/orchestrator.test.ts` | Turn limit integration, guard result handling, post-commit error path (GR-R9), worktree registry wiring |
@@ -648,9 +679,9 @@ A startup validation warning is logged if `max_turns_per_thread < 5` (FSPEC §4.
 
 Phase 6 requires posting structured log messages to `#agent-debug` (not just to the originating thread). The existing `DiscordClient.postChannelMessage(channelId, content)` (added in Phase 5 for `#open-questions`) is reused for this purpose.
 
-The `debugChannelId` is resolved in `DefaultOrchestrator.startup()` (already done today — the channel is found but the ID is not stored). Phase 6 stores it as `private debugChannelId: string | null` and passes it to `DefaultInvocationGuard` post-construction via a `setDebugChannelId(id: string)` method, or alternatively via the `OrchestratorDeps` constructor pattern.
+The `debugChannelId` is resolved in `DefaultOrchestrator.startup()`. Phase 6 stores it as `private debugChannelId: string | null` on the orchestrator. It is **NOT** stored on `DefaultInvocationGuard` as a constructor field; instead it is passed at invocation time via `InvocationGuardParams.debugChannelId`. This avoids mutable guard state and makes the injection testable (tests can assert the field is populated correctly in params).
 
-The simpler approach: store `debugChannelId` on the orchestrator and add a helper:
+The orchestrator adds a helper:
 
 ```typescript
 private async postToDebugChannel(message: string): Promise<void> {
@@ -663,12 +694,11 @@ private async postToDebugChannel(message: string): Promise<void> {
 }
 ```
 
-This is called from:
+This helper is called from:
 - `DefaultOrchestrator.processMessage()` when posting close/stall embeds (FSPEC-GR-02)
-- `DefaultInvocationGuard` for retry logs and exhaustion logs (FSPEC-GR-01)
 - `createShutdownHandler` for the shutdown notification embed (FSPEC-GR-03 Step 2d)
 
-`DefaultInvocationGuard` receives `debugChannelId` as a constructor parameter (may be `null`).
+`DefaultInvocationGuard` accesses `debugChannelId` from `params.debugChannelId` and posts directly to the Discord client for retry logs and exhaustion/shutdown-abort logs (FSPEC-GR-01). It does NOT use a `postToDebugChannel` helper (that helper lives on the orchestrator, not the guard).
 
 ---
 
@@ -677,7 +707,8 @@ This is called from:
 | # | Question | Options | Decision |
 |---|----------|---------|----------|
 | Q-01 | **Lazy vs eager turn count reconstruction.** The FSPEC (AT-GR-10) implies the Orchestrator reconstructs turn counts on startup. Eager reconstruction would require enumerating all active threads on startup (no Discord API for this without channel history). Lazy (first message triggers reconstruction) is simpler and correct. | Lazy: reconstruct on first message after restart. Eager: requires thread enumeration. | **Decision: Lazy.** Matches AT-GR-10 semantics: the count is correct before the next routing event, which is all that matters. Requires that the first message after restart is treated as "turn N+1" where N is reconstructed from history. |
-| Q-02 | **`setDebugChannelId` vs constructor injection.** The `debugChannelId` is only known after `startup()`. Pass as a mutable setter, or use a wrapper/closure. | Setter method on the guard; constructor injection via late-set field. | **Decision: Store on orchestrator; pass to guard at invocation time via `InvocationGuardParams`.** Avoids mutable state on the guard. The `debugChannelId` field is on `DefaultOrchestrator` and included in `InvocationGuardParams`. |
+| Q-02 | **`setDebugChannelId` vs constructor injection.** The `debugChannelId` is only known after `startup()`. Pass as a mutable setter, or use a wrapper/closure. | Setter method on the guard; constructor injection via late-set field; `InvocationGuardParams`. | **Decision: Via `InvocationGuardParams`.** Avoids mutable state on the guard. The `debugChannelId` field is on `DefaultOrchestrator` and included in `InvocationGuardParams` at each invocation call site. This is now reflected consistently throughout the TSPEC (§4.2.1, §4.3, §9.5). |
+| Q-03 | **Does `ArtifactCommitter.commitAndMerge()` throw or return for transient commit failures (`"commit-error"`, `"lock-timeout"`)?** This determines whether §5.1 Step 3 needs an explicit branch for these statuses, or whether they are caught by Step 5's exception classifier. | Throws → Step 5 catches as `InvocationError` (no algorithm change). Returns → Step 3 must branch explicitly. | **Decision: RETURNS (confirmed by codebase inspection of `artifact-committer.ts`).** `"commit-error"` is returned when `addInWorktree()` or `commitInWorktree()` raises. `"lock-timeout"` is returned when `MergeLockTimeoutError` is caught. `"merge-error"` is also returned (merge step non-conflict failure). All three are now handled explicitly in §5.1 Step 3 and listed as transient in §6. |
 
 ---
 
@@ -686,6 +717,7 @@ This is called from:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Backend Engineer | Initial technical specification for Phase 6 — guardrails |
+| 1.1 | March 13, 2026 | Backend Engineer | TE review findings resolved: (M-01) Shutdown-aborted backoff now posts error embed per FSPEC AT-GR-16; (M-02) §5.1 Step 3 extended to handle CommitResult transient statuses returned by commitAndMerge() — "commit-error", "lock-timeout", "merge-error" now correctly routed to retry path; "merge-error" added to §6 error table; (M-03) GR-R numbering corrected throughout — 6 locations updated to match FSPEC v1.2; (M-04) debugChannelId injection standardised to Option A (via InvocationGuardParams) — §4.2.1, §4.3, §4.4, §9.5, §10 Q-02 updated for consistency; minor test double improvements: FakeInvocationGuard captures shutdownSignal, FakeThreadStateManager implements openThreadIds(), FakeGitClient adds addAllCalls/commitCalls |
 
 ---
 
