@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 13, 2026 |
-| **Version** | 1.9 |
+| **Version** | 2.0 |
 | **Status** | Draft |
 
 ---
@@ -79,6 +79,14 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-01], [US-05] | [REQ-NF-06] | [TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md) | P0 | 1 | Specified |
 | [US-04], [US-06] | [REQ-NF-07] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-08] | [REQ-NF-08] | Pending Spec | P1 | 7 | Pending Spec |
+| [US-09] | [REQ-AF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-02] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-03] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-04] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-05] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-06] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-07] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-09] | [REQ-AF-NF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
 
 ---
 
@@ -96,6 +104,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-06] | Agent Produces and Commits Artifacts | 11 | Partial (10 of 11 FSPEC'd — Phase 3 + Phase 4 requirements) |
 | [US-07] | System Handles Failures Gracefully | 7 | Partial (6 of 7 FSPEC'd — REQ-SI-09 in Phase 4; REQ-SI-07, REQ-SI-08, REQ-SI-10, REQ-NF-02 in Phase 6) |
 | [US-08] | New Agent is Added to the System | 1 | No (0 of 1 specified) |
+| [US-09] | Developer Starts a New Feature Without Manual Folder Setup | 8 | Yes (8 of 8 FSPEC'd) |
 
 ### 3.2 Requirement Coverage
 
@@ -155,6 +164,14 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-NF-06] | Security | 1 | Specified ([TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md)) |
 | [REQ-NF-07] | Portability | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-NF-08] | Extensibility | 0 | Pending |
+| [REQ-AF-01] | Feature folder existence check | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-02] | NNN prefix extraction from thread name | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-03] | NNN auto-assignment for unnumbered threads | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-04] | Feature slug derivation from thread name | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-05] | Feature folder creation | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-06] | overview.md synthesis and creation | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-07] | Idempotency — skip if folder exists | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-AF-NF-01] | Bootstrap is synchronous and precedes Phase 1 | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
 
 ### 3.3 Orphan Check
 
@@ -165,7 +182,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 5 of 54 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phases 2, 7: 5 pending)
+- 5 of 62 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phases 2, 7: 5 pending)
 
 ---
 
@@ -260,6 +277,19 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-DI-06] | Pending | P1 | [US-02] |
 | [REQ-NF-08] | Pending | P1 | [US-08] |
 
+### Phase 9 — Auto Feature Bootstrap
+
+| Requirement | FSPEC | Specification | Priority | User Scenarios |
+|-------------|-------|---------------|----------|----------------|
+| [REQ-AF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-02] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-03] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-04] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-05] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-06] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-07] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+| [REQ-AF-NF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
+
 ---
 
 ## 5. Document References
@@ -280,6 +310,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | FSPEC — ptah artifact commits | [FSPEC-ptah-artifact-commits](../specifications/004-FSPEC-ptah-artifact-commits.md) | Functional specification for Phase 4 (Artifact Commits) — 3 FSPECs |
 | FSPEC — ptah user questions | [FSPEC-ptah-user-questions](../specifications/005-FSPEC-ptah-user-questions.md) | Functional specification for Phase 5 (User Questions) — 3 FSPECs |
 | Specifications (Phases 6-7) | Pending | Detailed specifications for remaining phases |
+| Requirements — Phase 9 | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | Phase 9 (Auto Feature Bootstrap) requirements — 8 requirements |
+| FSPEC — auto feature bootstrap | [009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Functional specification for Phase 9 — 1 FSPEC (FSPEC-AF-01) |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -298,6 +330,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 1.7 | March 11, 2026 | Product Manager | 005-FSPEC-ptah-user-questions v1.1 approved for engineering handoff. Phase 5 FSPECs revised to address backend-engineer review (9 findings). TSPEC authoring may begin. |
 | 1.8 | March 11, 2026 | Backend Engineer | Phase 5 TSPEC (005-TSPEC-ptah-user-questions v1.1) approved after PM + TE reviews (F-01/F-02 addressed). Execution plan (005-PLAN-TSPEC-ptah-user-questions, 65 tasks) approved after TE review. Phase 5 requirements updated to "Specified"; Phase 5 view updated with TSPEC + Plan columns. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) = 43 of 54 specified (11 pending). |
 | 1.9 | March 13, 2026 | Product Manager | Added FSPEC mappings for all 6 Phase 6 requirements. 3 FSPECs created: FSPEC-GR-01 (retry/failure), FSPEC-GR-02 (turn limits), FSPEC-GR-03 (graceful shutdown). Phase 6 view updated with FSPEC column. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) + 6 FSPEC'd (Phase 6) = 49 of 54 specified (5 pending — Phases 2 and 7). |
+| 2.0 | March 13, 2026 | Product Manager | Added Phase 9 (Auto Feature Bootstrap). New user story US-09. 8 requirements added (REQ-AF-01 through REQ-AF-07, REQ-AF-NF-01). 1 FSPEC created: FSPEC-AF-01 (Feature Folder Bootstrap). Phase 9 view added. Total requirements: 62. Coverage: 49 of 54 original + 8 of 8 Phase 9 FSPEC'd = 57 of 62 specified (5 pending — Phases 2 and 7). |
 
 ---
 

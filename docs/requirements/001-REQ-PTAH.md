@@ -6,8 +6,8 @@
 |-------|--------|
 | **Document ID** | REQ-PTAH |
 | **Parent Document** | [PTAH_PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 2.0 |
-| **Date** | March 10, 2026 |
+| **Version** | 2.1 |
+| **Date** | March 13, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 | **Approval Date** | Pending |
@@ -92,6 +92,15 @@ Each user story describes a real-world situation that the product must support. 
 | **Goals** | Maintain system uptime despite transient failures. Provide visibility into errors without requiring manual log inspection. |
 | **Pain points** | Single failures crashing the entire Orchestrator. Silent failures with no notification. No retry mechanism forcing manual re-invocation. |
 | **Key needs** | Configurable retry with exponential backoff, error embeds in Discord, debug logging, crash-resistant Orchestrator. |
+
+### US-09: Developer Starts a New Feature Without Manual Folder Setup
+
+| Attribute | Detail |
+|-----------|--------|
+| **Description** | A developer creates a Discord thread named after a new feature and @mentions the PM skill to start work. They have not manually created the `docs/{NNN}-{feature-name}/` folder or `overview.md`. |
+| **Goals** | The PM skill creates the feature folder and a brief `overview.md` automatically before proceeding with Phase 1 (Discovery), so the developer can start a feature directly from Discord without any filesystem setup. |
+| **Pain points** | Creating `docs/{NNN}-{feature-name}/overview.md` before every feature is pure friction — repetitive, error-prone, and provides no creative value. Forgetting it causes context-assembly warnings on every invocation. |
+| **Key needs** | Automatic folder and `overview.md` creation from thread name and initial message. Idempotency when folder already exists. Correct NNN prefix assignment for both numbered and unnumbered thread names. |
 
 ### US-08: New Agent is Added to the System
 
@@ -193,8 +202,9 @@ Detailed requirements for each phase are in their own documents. Each phase docu
 | **Phase 5 — User Questions** | [005-REQ-PTAH-user-questions](005-REQ-PTAH-user-questions.md) | 7 (DI, RP, PQ domains) | Pending specification |
 | **Phase 6 — Guardrails** | [006-REQ-PTAH-guardrails](006-REQ-PTAH-guardrails.md) | 6 (DI, RP, SI, NF domains) | Pending specification |
 | **Phase 7 — Polish** | [007-REQ-PTAH-polish](007-REQ-PTAH-polish.md) | 2 (DI, NF domains) | Pending specification |
+| **Phase 9 — Auto Feature Bootstrap** | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | 8 (AF domain) | All FSPEC'd ([009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)); TSPEC pending |
 
-**Total:** 54 requirements across 7 phases.
+**Total:** 62 requirements across 8 phases (Phases 1–7 + Phase 9).
 
 ### Domain Key
 
@@ -207,6 +217,7 @@ Detailed requirements for each phase are in their own documents. Each phase docu
 | PQ | Pending Questions — User question routing and polling |
 | SI | Skill Invocation — Skill execution, commits, and guardrails |
 | NF | Non-Functional |
+| AF | Auto Feature Bootstrap — PM skill folder bootstrap |
 
 ---
 
@@ -281,6 +292,7 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 | 1.3 | March 8, 2026 | Product Manager | Added REQ-IN-07 (scaffold ptah/ runtime directory with placeholder Skills) and REQ-IN-08 (pre-create agent log files and open-questions files). Updated REQ-IN-06 to clarify no-op commit behavior when all files are skipped. P0 count updated from 49 to 51. Phase 1 count updated from 7 to 9. |
 | 1.4 | March 9, 2026 | Product Manager | Updated REQ-IN-07: `ptah init` now copies existing `.claude/skills/` Claude Code skill files as the scaffolded agent Skill definitions instead of creating placeholder files. Mapping: `product-manager` → `pm-agent`, `backend-engineer` → `dev-agent`, `frontend-engineer` → `frontend-agent`, `test-engineer` → `test-agent`. Falls back to placeholder if source skill not found. Added Frontend Agent as fourth active agent — updated Purpose (Section 1), Scope (Section 3.1), Assumption A-06, REQ-IN-07, and REQ-IN-08. |
 | 2.0 | March 10, 2026 | Product Manager | **Split into per-phase documents.** Master document now serves as index with shared context (user stories, scope, assumptions, constraints, success metrics, risks, open questions). Detailed requirements moved to 7 phase documents: 001-REQ-PTAH-init, 002-REQ-PTAH-discord-bot, 003-REQ-PTAH-skill-routing, 004-REQ-PTAH-artifact-commits, 005-REQ-PTAH-user-questions, 006-REQ-PTAH-guardrails, 007-REQ-PTAH-polish. |
+| 2.1 | March 13, 2026 | Product Manager | Added Phase 9 (Auto Feature Bootstrap). Added US-09. Added Phase 9 to phase documents table. Added AF domain code. Total requirements updated from 54 to 62. FSPEC complete: 009-FSPEC-ptah-auto-feature-bootstrap. |
 
 ---
 
