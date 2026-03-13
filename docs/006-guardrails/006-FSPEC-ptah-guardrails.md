@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE6 |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -57,11 +57,11 @@ All Phase 6 behavioral parameters are read from `ptah.config.json`. The engineer
 
 | Key | Type | Default | Used By |
 |-----|------|---------|---------|
-| `orchestrator.maxTurnsPerThread` | integer | 10 | FSPEC-GR-02 (general turn limit) |
-| `orchestrator.retryAttempts` | integer | 3 | FSPEC-GR-01 (max retries per invocation) |
-| `orchestrator.retryBaseDelayMs` | integer | 2000 | FSPEC-GR-01 (backoff base delay in milliseconds) |
-| `orchestrator.retryMaxDelayMs` | integer | 30000 | FSPEC-GR-01 (backoff cap in milliseconds) |
-| `orchestrator.shutdownTimeoutMs` | integer | 60000 | FSPEC-GR-03 (force-exit timeout on shutdown) |
+| `orchestrator.max_turns_per_thread` | integer | 10 | FSPEC-GR-02 (general turn limit) |
+| `orchestrator.retry_attempts` | integer | 3 | FSPEC-GR-01 (max retries per invocation) |
+| `orchestrator.retry_base_delay_ms` | integer | 2000 | FSPEC-GR-01 (backoff base delay in milliseconds) |
+| `orchestrator.retry_max_delay_ms` | integer | 30000 | FSPEC-GR-01 (backoff cap in milliseconds) |
+| `orchestrator.shutdown_timeout_ms` | integer | 60000 | FSPEC-GR-03 (force-exit timeout on shutdown) |
 
 The review-thread turn limit (4 turns) is **not configurable** — it is a fixed product rule tied to the Pattern C review loop structure defined in FSPEC-RP-03. The review loop has a known structure: Request (Turn 1), Review (Turn 2), Revision (Turn 3), Final Review (Turn 4). A fifth turn means the loop failed to converge and must be escalated to the user.
 
@@ -164,7 +164,7 @@ When a Skill invocation fails (for any reason — API error, timeout, unexpected
 | GR-R6 | A malformed routing signal (missing or unparseable `ROUTE_TO_*` tag in Skill output) counts as a transient failure and is retried once. If the second attempt also returns a malformed signal, it is treated as unrecoverable. | A single malformed output may be a fluke. Two consecutive malformed outputs indicate a systematic Skill problem that retrying cannot fix. |
 | GR-R7 | The retry counter resets to 0 after a successful invocation. Each Skill invocation for a thread starts with a fresh retry budget. | Retry budgets are per-invocation, not per-thread. A thread that succeeds after 2 retries on one turn gets a fresh 3-retry budget on the next turn. |
 | GR-R8 | The Orchestrator logs every retry attempt and exhaustion event to `#agent-debug`. The thread count and retry counts are logged so the developer can identify systemic failures. | Observability is critical for diagnosing whether failures are isolated or systemic. |
-| GR-R9 (partial-commit) | If the Phase 4 artifact commit succeeded but posting the response embed subsequently fails (the post-commit error path in §3.4 last row), the Orchestrator posts an error embed with the body: "⛔ Agent Error — {agentId} completed its task and committed artifacts to Git, but failed to post its response. Artifacts may be in a partially committed state. A developer should inspect the Git log. Error: {short error description}. See #agent-debug for details." The full error and the Git commit SHA are logged to #agent-debug. | The error embed body must distinguish the "artifacts committed, response not posted" case from a total invocation failure so the developer knows to check Git rather than assume no work was done. The commit SHA in the debug log enables the developer to find and inspect the partial state. |
+| GR-R9 | If the Phase 4 artifact commit succeeded but posting the response embed subsequently fails (the post-commit error path in §3.4 last row), the Orchestrator posts an error embed with the body: "⛔ Agent Error — {agentId} completed its task and committed artifacts to Git, but failed to post its response. Artifacts may be in a partially committed state. A developer should inspect the Git log. Error: {short error description}. See #agent-debug for details." The full error and the Git commit SHA are logged to #agent-debug. | The error embed body must distinguish the "artifacts committed, response not posted" case from a total invocation failure so the developer knows to check Git rather than assume no work was done. The commit SHA in the debug log enables the developer to find and inspect the partial state. |
 
 ### 3.4 Edge Cases
 
@@ -396,12 +396,12 @@ A fifth turn means neither agent issued `ROUTE_TO_DONE` — the loop is stalled.
 
 | Rule ID | Rule | Rationale |
 |---------|------|-----------|
-| GR-R9 | Turn counts are maintained in-memory and reconstructed from thread history on Orchestrator restart. The Orchestrator must count the number of routing-engine invocations from the thread's message history on startup to restore the turn count correctly. | The turn count is not persisted to disk. On restart, the Orchestrator re-derives it from the existing Discord thread messages to avoid restarting the count at 0. |
-| GR-R10 | A CLOSED or STALLED thread silently drops all further incoming messages. No additional system embeds are posted after the initial close/stall message. | Repeated "this thread is closed" embeds are noisy. The initial message is sufficient. |
-| GR-R11 | The general turn limit and the review-thread turn limit are independent. A review thread's 4-turn limit is checked first, before the general 10-turn limit. In practice, a review thread should never reach 10 turns if the 4-turn limit is working correctly. | Defence in depth — the general limit is a backstop in case the review-thread limit logic has a bug. |
-| GR-R12 | The review-thread stall does NOT propagate to the parent thread. The parent thread remains open and operational. | The parent thread may have other work to do. Stalling the review sub-thread is a localized failure, not a global one. |
-| GR-R13 | A `ROUTE_TO_DONE` signal received on Turn 4 of a review thread is valid. The stall only triggers when a fifth message arrives without `ROUTE_TO_DONE` having been received on any of Turns 1–4. | Turn 4 is the intended final turn. `ROUTE_TO_DONE` on Turn 4 is the happy path. |
-| GR-R14 | The review-thread turn limit is not configurable. It is fixed at 4. The Pattern C review loop is a structured protocol with a fixed number of roles (requester → reviewer → requester → reviewer). Allowing configuration would decouple the limit from the protocol. | Business rule, not a configuration parameter. |
+| GR-R10 | Turn counts are maintained in-memory and reconstructed from thread history on Orchestrator restart. The Orchestrator must count the number of routing-engine invocations from the thread's message history on startup to restore the turn count correctly. | The turn count is not persisted to disk. On restart, the Orchestrator re-derives it from the existing Discord thread messages to avoid restarting the count at 0. |
+| GR-R11 | A CLOSED or STALLED thread silently drops all further incoming messages. No additional system embeds are posted after the initial close/stall message. | Repeated "this thread is closed" embeds are noisy. The initial message is sufficient. |
+| GR-R12 | The general turn limit and the review-thread turn limit are independent. A review thread's 4-turn limit is checked first, before the general 10-turn limit. In practice, a review thread should never reach 10 turns if the 4-turn limit is working correctly. | Defence in depth — the general limit is a backstop in case the review-thread limit logic has a bug. |
+| GR-R13 | The review-thread stall does NOT propagate to the parent thread. The parent thread remains open and operational. | The parent thread may have other work to do. Stalling the review sub-thread is a localized failure, not a global one. |
+| GR-R14 | A `ROUTE_TO_DONE` signal received on Turn 4 of a review thread is valid. The stall only triggers when a fifth message arrives without `ROUTE_TO_DONE` having been received on any of Turns 1–4. | Turn 4 is the intended final turn. `ROUTE_TO_DONE` on Turn 4 is the happy path. |
+| GR-R15 | The review-thread turn limit is not configurable. It is fixed at 4. The Pattern C review loop is a structured protocol with a fixed number of roles (requester → reviewer → requester → reviewer). Allowing configuration would decouple the limit from the protocol. | Business rule, not a configuration parameter. |
 
 ### 4.6 Edge Cases
 
@@ -409,7 +409,7 @@ A fifth turn means neither agent issued `ROUTE_TO_DONE` — the loop is stalled.
 |-----------|-------------------|
 | Thread reaches turn 10 exactly when a Skill returns `ROUTE_TO_DONE` | `ROUTE_TO_DONE` is processed normally (the thread closes successfully). The max-turns limit fires only when a new routing event *arrives*, not when a Skill response is being processed. |
 | Orchestrator restarts and cannot reconstruct turn count from thread history (e.g., messages were deleted from Discord) | Default to turn_count = 0 for the affected thread. Log a warning to #agent-debug. The thread operates as if fresh. This is a rare edge case with no good recovery option. |
-| A review thread receives a human message (not a bot routing signal) after stalling | The message is silently dropped (GR-R10). The thread is already stalled. |
+| A review thread receives a human message (not a bot routing signal) after stalling | The message is silently dropped (GR-R11). The thread is already stalled. |
 | The parent thread posts a `ROUTE_TO_AGENT` signal to re-enter the stalled review thread directly | `ROUTE_TO_AGENT` routes to the agent in the parent thread, not in the stalled review sub-thread. A new review sub-thread would be created if Pattern C restarts. The stalled sub-thread remains closed. |
 | `maxTurnsPerThread` is configured to a value lower than 4 | This would close all threads before the review-thread limit applies. This is a misconfiguration. The Orchestrator should log a startup warning if `maxTurnsPerThread` < 5. |
 
@@ -575,14 +575,14 @@ The goal is to exit without losing work. Commits that were in progress are allow
 
 | Rule ID | Rule | Rationale |
 |---------|------|-----------|
-| GR-R15 | The "shutting down" flag is set synchronously as the first action in Step 2. No new message processing begins after this flag is set, even if messages arrive concurrently. | Prevents a race condition where a new message starts being processed after shutdown begins, potentially leaving work in a partially started state. |
-| GR-R16 | In-flight invocations are allowed to complete normally — including Phase 4 artifact commits and response posting. The shutdown does not cancel in-flight invocations. | Cancelling a mid-commit artifact pipeline could leave the repository in an inconsistent state. Completing the invocation ensures the Git log is coherent. |
-| GR-R17 | The shutdown commit (Step 4) uses the message `"[ptah] System: shutdown commit — uncommitted changes preserved"`. It is a fallback for edge cases. In normal operation, Phase 4's artifact commit pipeline handles all commits. If Step 4 commits anything, it should be investigated. | The commit message signals to developers that this was a system-managed cleanup commit, not a normal artifact commit. |
-| GR-R18 | If `shutdownTimeoutMs` is exceeded, the Orchestrator exits with code 1. The incomplete invocations are logged to console. The worktrees from those invocations are left on disk and must be manually cleaned up by a developer. | The Orchestrator must not hang indefinitely. Force-exiting with a non-zero exit code allows process managers (systemd, Docker) to detect the abnormal exit. |
-| GR-R19 | SIGINT and SIGTERM both trigger the same shutdown sequence. There is no "fast" vs "slow" shutdown — the sequence is always the same. | Simplicity. Two code paths for shutdown would be harder to test and maintain. |
-| GR-R20 | A second SIGINT or SIGTERM received during shutdown (e.g., the developer presses Ctrl+C twice) force-exits immediately (Step 7 with code 1) without waiting. | Respect the developer's intent. If they send the signal twice, they want out now. |
-| GR-R21 | The Discord `#agent-debug` embed posted in Step 2d is best-effort only. If Discord is unavailable, the Orchestrator still proceeds with the shutdown sequence. | Shutdown must succeed even if Discord is the reason the Orchestrator is being shut down. |
-| GR-R22 | The shutdown commit step (§5.2 Step 4a) discovers active worktrees from the Orchestrator's in-memory worktree registry — the same registry maintained by FSPEC-AC-01 when worktrees are created and destroyed. It does NOT scan the filesystem or invoke `git worktree list`. Worktrees not in the registry (e.g., leftover from a previous crashed run) are not touched. | The registry is the canonical source of truth for active worktrees. Filesystem scanning risks touching worktrees that are already in a clean or committed state from prior runs. Registry-based enumeration is deterministic and testable. |
+| GR-R16 | The "shutting down" flag is set synchronously as the first action in Step 2. No new message processing begins after this flag is set, even if messages arrive concurrently. | Prevents a race condition where a new message starts being processed after shutdown begins, potentially leaving work in a partially started state. |
+| GR-R17 | In-flight invocations are allowed to complete normally — including Phase 4 artifact commits and response posting. The shutdown does not cancel in-flight invocations. | Cancelling a mid-commit artifact pipeline could leave the repository in an inconsistent state. Completing the invocation ensures the Git log is coherent. |
+| GR-R18 | The shutdown commit (Step 4) uses the message `"[ptah] System: shutdown commit — uncommitted changes preserved"`. It is a fallback for edge cases. In normal operation, Phase 4's artifact commit pipeline handles all commits. If Step 4 commits anything, it should be investigated. | The commit message signals to developers that this was a system-managed cleanup commit, not a normal artifact commit. |
+| GR-R19 | If `shutdown_timeout_ms` is exceeded, the Orchestrator exits with code 1. The incomplete invocations are logged to console. The worktrees from those invocations are left on disk and must be manually cleaned up by a developer. | The Orchestrator must not hang indefinitely. Force-exiting with a non-zero exit code allows process managers (systemd, Docker) to detect the abnormal exit. |
+| GR-R20 | SIGINT and SIGTERM both trigger the same shutdown sequence. There is no "fast" vs "slow" shutdown — the sequence is always the same. | Simplicity. Two code paths for shutdown would be harder to test and maintain. |
+| GR-R21 | A second SIGINT or SIGTERM received during shutdown (e.g., the developer presses Ctrl+C twice) force-exits immediately (Step 7 with code 1) without waiting. | Respect the developer's intent. If they send the signal twice, they want out now. |
+| GR-R22 | The Discord `#agent-debug` embed posted in Step 2d is best-effort only. If Discord is unavailable, the Orchestrator still proceeds with the shutdown sequence. | Shutdown must succeed even if Discord is the reason the Orchestrator is being shut down. |
+| GR-R23 | The shutdown commit step (§5.2 Step 4a) discovers active worktrees from the Orchestrator's in-memory worktree registry — the same registry maintained by FSPEC-AC-01 when worktrees are created and destroyed. It does NOT scan the filesystem or invoke `git worktree list`. Worktrees not in the registry (e.g., leftover from a previous crashed run) are not touched. | The registry is the canonical source of truth for active worktrees. Filesystem scanning risks touching worktrees that are already in a clean or committed state from prior runs. Registry-based enumeration is deterministic and testable. |
 
 ### 5.4 Edge Cases
 
@@ -591,7 +591,7 @@ The goal is to exit without losing work. Commits that were in progress are allow
 | No invocations are in-flight when SIGINT arrives | The shutdown completes in < 1 second. Step 3 is skipped. Normal clean exit. |
 | An invocation is retrying (FSPEC-GR-01) during shutdown | The current retry attempt is allowed to complete. If the retry succeeds, the result is committed and posted. If the retry fails and all retries are exhausted, the error embed is posted. The Orchestrator does not start new retries after entering shutdown mode — if a retry is in the backoff wait period, it is cancelled, and the Orchestrator treats the current attempt as the final result. |
 | A Phase 5 question is pending when shutdown occurs | The question survives in `pending.md` (it was already committed per FSPEC-PQ-01 Step 2c). On the next restart, the Orchestrator reconstructs it via PQ-R9. No data is lost. |
-| Shutdown occurs while Phase 4 is committing artifacts (mid-commit) | The in-flight invocation is allowed to complete (GR-R16), including the Phase 4 commit. If the Git commit command itself is mid-execution and cannot be cleanly stopped, the shutdown waits. |
+| Shutdown occurs while Phase 4 is committing artifacts (mid-commit) | The in-flight invocation is allowed to complete (GR-R17), including the Phase 4 commit. If the Git commit command itself is mid-execution and cannot be cleanly stopped, the shutdown waits. |
 | The Git repository is in a locked state (`.git/index.lock` exists) | This is an existing filesystem issue, not a shutdown-specific one. Log to console and proceed. The shutdown commit step may fail; that is acceptable. |
 | `shutdownTimeoutMs` = 0 (configured to force-exit immediately) | Step 3 is effectively skipped. The Orchestrator exits immediately after setting the shutdown flag, without waiting for in-flight invocations. This is a valid but destructive configuration — document it as such. |
 
@@ -720,7 +720,8 @@ THEN:  1. The shutdown flag is set immediately
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 6 — 3 FSPECs covering all 6 requirements |
-| 1.1 | March 13, 2026 | Product Manager | Addressed Test Engineer cross-review feedback: (F-01) Fixed AT-GR-06/07 to be consistent with §4.3 behavioral flow — `maxTurnsPerThread = 10` means 10 invocations proceed, blocked on the 11th; (F-02) Added AT-GR-16 for retry-in-backoff-period-at-shutdown edge case; (F-03) Added GR-R9 (partial-commit embed body) and AT-GR-17 covering the post-commit response-posting failure; (Q-02) Added GR-R22 clarifying worktree registry as the authoritative source for shutdown commit step |
+| 1.1 | March 13, 2026 | Product Manager | Addressed Test Engineer cross-review feedback: (F-01) Fixed AT-GR-06/07 to be consistent with §4.3 behavioral flow — `max_turns_per_thread = 10` means 10 invocations proceed, blocked on the 11th; (F-02) Added AT-GR-16 for retry-in-backoff-period-at-shutdown edge case; (F-03) Added GR-R9 (partial-commit embed body) and AT-GR-17 covering the post-commit response-posting failure; (Q-02) Added GR-R22 clarifying worktree registry as the authoritative source for shutdown commit step |
+| 1.2 | March 13, 2026 | Product Manager | PM TSPEC cross-review corrections: (F-01) Resolved GR-R9 numbering conflict — §3.3 partial-commit rule retains GR-R9; §4.5 turn-limit rules renumbered GR-R10–GR-R15; §5.3 shutdown rules renumbered GR-R16–GR-R23; (F-03) Config key table updated to snake_case to match actual `ptah.config.json` schema convention |
 
 ---
 
