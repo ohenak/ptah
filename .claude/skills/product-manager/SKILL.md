@@ -449,7 +449,7 @@ PM Skill (Phase 1 - Discovery):
      - What are the failure modes and recovery expectations?
      - What is the deployment target (single machine, cloud)?
 
-User: "4 agents (PM, Dev, Frontend, Test). Bot watches #agent-updates
+User: "4 agents (PM, Dev, Frontend, Test). Bot watches #ptah-updates
        threads. Agents post to Discord via the bot. Human input via
        #open-questions channel. Retry 3 times then fail gracefully.
        Single machine for now."
