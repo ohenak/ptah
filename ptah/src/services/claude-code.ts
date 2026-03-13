@@ -12,7 +12,10 @@ export type ClaudeCodeInvokeFn = (options: {
   signal: AbortSignal;
 }) => Promise<string>;
 
-const DEFAULT_ALLOWED_TOOLS = ["Edit", "Read", "Write", "Glob", "Grep"];
+const DEFAULT_ALLOWED_TOOLS = [
+  "Edit", "Read", "Write", "Glob", "Grep",
+  "Bash", "WebSearch", "WebFetch", "Agent",
+];
 
 export class ClaudeCodeClient implements SkillClient {
   private invokeFn: ClaudeCodeInvokeFn;

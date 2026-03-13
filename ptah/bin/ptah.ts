@@ -111,7 +111,7 @@ async function main(): Promise<void> {
             allowedTools: options.allowedTools,
             abortController,
             model: config.agents.model,
-            permissionMode: "acceptEdits",
+            permissionMode: "bypassPermissions",
           },
         });
 
