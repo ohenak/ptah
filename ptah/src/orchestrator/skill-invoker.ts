@@ -41,7 +41,7 @@ export class DefaultSkillInvoker implements SkillInvoker {
     config: PtahConfig,
     worktreePath: string,
   ): Promise<InvocationResult> {
-    const timeoutMs = config.orchestrator.invocation_timeout_ms ?? 300_000;
+    const timeoutMs = config.orchestrator.invocation_timeout_ms ?? 900_000;
     const startTime = Date.now();
 
     try {
