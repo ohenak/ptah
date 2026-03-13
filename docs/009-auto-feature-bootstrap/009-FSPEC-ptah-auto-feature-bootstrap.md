@@ -7,7 +7,7 @@
 | **Version** | 1.0 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
-| **Status** | Draft |
+| **Status** | Ready for Engineering Review |
 
 ---
 
@@ -99,12 +99,16 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
    b. Replace any character that is not [a-z], [0-9], or [-] with a hyphen
    c. Collapse two or more consecutive hyphens into a single hyphen
    d. Strip any leading or trailing hyphens
-   e. Result is the feature-slug (may include a NNN prefix if thread was numbered)
+   e. If the result is an empty string, use the fallback slug "feature" and log a warning:
+      "[ptah:pm] Warning: thread name could not be slugified into a meaningful name.
+       Using fallback slug 'feature'. Please rename the Discord thread."
+   f. Result is the feature-slug (may include a NNN prefix if thread was numbered)
 
    Examples:
    "009-auto-feature-bootstrap"  → "009-auto-feature-bootstrap"  (no change)
    "My New Feature (v2)!"        → "my-new-feature-v2"           (spaces, parens, ! removed)
    "Auth -- Redesign"            → "auth-redesign"               (doubled hyphen collapsed)
+   "!!! "                        → "" → fallback "feature"       (all special chars, warning logged)
 
 3. CHECK FOR EXISTING FEATURE FOLDER
    a. Check if docs/{feature-slug}/ exists in the worktree filesystem
@@ -201,7 +205,7 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
 | Edge Case | Expected Behavior |
 |-----------|-------------------|
 | Thread name contains only a number prefix with no feature name (e.g., "009 — create FSPEC") | After slugification, the feature-slug is "009". The folder would be `docs/009/`. This is a degenerate but valid case — the PM creates the folder and proceeds. The developer should name threads more descriptively. No error is raised. |
-| Thread name has special characters that slugify to an empty string (e.g., "!!! — do stuff") | After stripping the task portion and slugifying, the result is "". Assign NNN prefix normally; the folder would be `docs/009-/` or similar. The PM should detect an empty feature-slug after slugification and use a fallback: derive the slug from the NNN alone (e.g., `docs/009-feature/`). Log a warning that the thread name could not be slugified into a meaningful name. |
+| Thread name has special characters that slugify to an empty string (e.g., "!!! — do stuff") | After stripping the task portion and slugifying, the result is "". Step 2f applies: the PM uses the fallback slug "feature" and logs a warning. Assign NNN prefix normally. The folder would be `docs/009-feature/` (numbered thread) or `docs/008-feature/` (unnumbered). The developer is expected to rename the thread; the warning message instructs them to do so. |
 | Thread name has no " — " separator (e.g., "create requirements for auth") | Strip the entire thread name (no separator found → use full name). Apply slugification → "create-requirements-for-auth". Assign NNN normally. This is unusual but valid. |
 | Two PM invocations run concurrently for different threads; both auto-assign NNN = "008" | Each runs in its own worktree. Both create `docs/008-{their-feature}/`. Both are committed via the Phase 4 pipeline. The first merge succeeds. The second merge succeeds (different folder names). No conflict. |
 | Two PM invocations run concurrently for the SAME thread (e.g., user accidentally double-invokes PM) | Both try to create the same folder. The second mkdir succeeds because the folder already exists (Step 6: race condition → treat as success). Both write `overview.md`. The artifact commit pipeline may produce a duplicate commit or a merge conflict on the same file. Engineering should note this in the TSPEC — idempotent mkdir prevents crashes, but concurrent writes to `overview.md` should be handled gracefully. |
@@ -361,6 +365,7 @@ THEN:  1. I extract: "001-custom-feature"
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 9 — 1 FSPEC covering all 8 requirements |
+| 1.1 | March 13, 2026 | Product Manager | Added Step 2f (empty-slug fallback to "feature") to behavioral flow; aligned edge case §3.6 row 2 with behavioral flow; updated status to Ready for Engineering Review |
 
 ---
 
