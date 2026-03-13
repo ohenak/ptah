@@ -48,7 +48,7 @@ After completing each phase, you request reviews from other skills to ensure you
 
 ### Requesting Reviews
 
-After each phase gate, **before asking for user approval**, prompt the user to route the deliverable for review:
+After each phase gate, **before asking for user approval**, route the deliverable to the appropriate reviewer using a `<routing>` tag:
 
 | Phase Completed | Review From | What They Review | Why |
 |----------------|-------------|------------------|-----|
@@ -62,23 +62,16 @@ After each phase gate, **before asking for user approval**, prompt the user to r
 
 **How to request a review:**
 
-When a phase is complete, prompt the user with the review request. Example:
+When a phase is complete, include a `<routing>` tag at the end of your response to hand off to the reviewer. Example:
 
 ```
-Phase 2 (Property Documentation) is complete. Before final approval,
-I recommend routing this for cross-skill review:
+Phase 2 (Property Documentation) is complete. Routing to product-manager for
+requirement coverage review of `docs/testing/in_review/002-PROPERTIES-{feature}.md`.
 
-> **product-manager**: Please review `docs/testing/in_review/002-PROPERTIES-{feature}.md`
-  to confirm the properties faithfully reflect the requirements and acceptance
-  criteria. Check that no requirement is missed or reinterpreted.
-> **backend-engineer**: Please review the properties for technical soundness,
-  appropriate test levels, and feasibility of the integration and performance
-  properties.
-
-Would you like to request these reviews?
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
 
-> **Note:** Currently, reviews are requested by prompting the user. In a future update, review requests will be routed automatically through the orchestrator to the Discord server.
+If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
 ### Handling Review Feedback
 
@@ -95,7 +88,7 @@ When you receive feedback from a reviewing skill:
    - Items accepted and how they were addressed
    - Items deferred and why
    - Clarification questions back to the reviewer if their feedback is unclear
-6. **Re-request review** if changes were substantial, or proceed to user approval if changes were minor.
+6. **Re-request review** if changes were substantial (route to the reviewer again via `<routing>`), or proceed to user approval if changes were minor.
 
 ### Receiving Review Requests (Incoming Reviews)
 
@@ -130,7 +123,7 @@ Other skills may request your review of their deliverables. When you receive a r
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with testability and coverage goals
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Prompt the user** to route your feedback back to the requesting skill.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag.
 
 ---
 
@@ -187,7 +180,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 - Gaps between spec and implementation (if implementation exists)
 - Preliminary count of properties identified
 
-**Review step:** Once the analysis summary is complete, request cross-skill reviews per the Cross-Skill Review Protocol (product-manager to validate your requirement interpretation; backend-engineer to validate your technical understanding). Address any feedback before proceeding.
+**Review step:** Once the analysis summary is complete, route to product-manager for requirement interpretation validation using a `<routing>` tag. They will route to backend-engineer as needed. Address any feedback before proceeding.
 
 **Gate:** User confirms the analysis scope is correct and cross-skill feedback is addressed before proceeding.
 
@@ -241,7 +234,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Properties document at `docs/testing/in_review/{NNN}-PROPERTIES-{feature-name}.md`.
 
-**Review step:** Once the properties document is complete, request cross-skill reviews per the Cross-Skill Review Protocol (product-manager for requirement coverage and product intent alignment; backend-engineer for technical soundness and test level appropriateness; frontend-engineer if UX-related properties exist). Address feedback and iterate before seeking user approval.
+**Review step:** Once the properties document is complete, route to product-manager for requirement coverage review using a `<routing>` tag. They will route to backend-engineer and frontend-engineer as needed. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the properties before proceeding to plan augmentation. Cross-skill feedback must be addressed before approval.
 
@@ -307,7 +300,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Review document and/or augmented execution plan.
 
-**Review step:** Once the review document and/or augmented plan is complete, request cross-skill reviews per the Cross-Skill Review Protocol (product-manager for product-impacting mismatches; backend-engineer for technical accuracy of findings and implementability of augmented test scripts). Address feedback and iterate before seeking user approval.
+**Review step:** Once the review document and/or augmented plan is complete, route to product-manager for product-impacting mismatch review using a `<routing>` tag. They will route to backend-engineer as needed. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the review findings. Cross-skill feedback must be addressed before approval.
 
@@ -506,15 +499,12 @@ Test Engineer (Phase 1 - Discovery):
      Identified 62 testable properties across 8 categories."
 
 Test Engineer (Phase 1 - Cross-Skill Review):
-  "Discovery analysis is ready. I recommend routing for review:
-   → product-manager: Please review my analysis summary to confirm I've
-     correctly interpreted the requirements and acceptance criteria scope.
-   → backend-engineer: Please review the technical assumptions and
-     integration boundaries I've identified.
-   Would you like to request these reviews?"
+  "Discovery analysis is ready. Routing to product-manager for requirement
+   interpretation validation.
 
-User: "Yes."
-  [User routes reviews to product-manager and backend-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
+
+  [PM reviews, then routes to backend-engineer, then routes back to test-engineer]
 
 PM review: "F-01 (Low): Your interpretation is correct. Minor note —
   REQ-DI-03 acceptance criterion 2 also implies historical message
@@ -541,17 +531,12 @@ Test Engineer (Phase 2 - Properties):
   Coverage matrix showing all 3 requirements and all TSPEC sections mapped.
 
 Test Engineer (Phase 2 - Cross-Skill Review):
-  "Properties document is ready. I recommend routing for review:
-   → product-manager: Please review `docs/testing/in_review/002-PROPERTIES-ptah-discord-bot.md`
-     to confirm the properties faithfully reflect the requirements and no
-     acceptance criteria have been missed or reinterpreted.
-   → backend-engineer: Please review the properties for technical soundness
-     and appropriate test levels, especially the integration and performance
-     properties.
-   Would you like to request these reviews?"
+  "Properties document is ready. Routing to product-manager for requirement
+   coverage review of `docs/testing/in_review/002-PROPERTIES-ptah-discord-bot.md`.
 
-User: "Yes."
-  [User routes reviews to product-manager and backend-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
+
+  [PM reviews, then routes to backend-engineer, then routes back to test-engineer]
 
 PM review: "Approved — all requirements are covered. Good catch on the
   message ordering property."
@@ -576,16 +561,13 @@ Test Engineer (Phase 3 - TSPEC Review):
   - Recommendation: Conditional approval — must fix signal handling tests
 
 Test Engineer (Phase 3 - Cross-Skill Review):
-  "Review document is ready. I recommend routing for review:
-   → product-manager: Please review the specification-implementation
-     mismatches — M-01 and M-03 may affect product-visible behavior.
-   → backend-engineer: Please review the review findings for technical
-     accuracy and confirm the untested properties assessment.
-   Would you like to request these reviews?"
+  "Review document is ready. Routing to product-manager for product-impacting
+   mismatch review — M-01 and M-03 may affect product-visible behavior.
 
-User: "Yes."
-  [Reviews come back — PM confirms M-01 is product-visible; BE agrees
-   with all findings]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
+
+  [PM reviews, confirms M-01 is product-visible, routes to backend-engineer;
+   BE agrees with all findings, routes back to test-engineer]
 
 User: "Review approved."
 
@@ -615,5 +597,6 @@ Test Engineer (incoming review):
       Positive: Protocol-based DI design is excellent for testability.
       Error injection pattern (errorField: Error | null) is clean and
       consistent. Recommendation: Approved with minor changes."
-  5. Prompts user to route feedback back to backend-engineer.
+  5. Routes feedback back to backend-engineer:
+     <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
 ```

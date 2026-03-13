@@ -189,7 +189,7 @@ The backend-engineer reviewed this document on 2026-03-11 and returned **Approve
 
 | BE Finding | Verdict | Action Taken |
 |------------|---------|--------------|
-| F-01 (Low): M-01 — add debug log | Implement fix | Added `this.logger.debug(\`Dropping message for paused thread ${message.threadId}\`)` at orchestrator.ts paused-thread guard. |
+| F-01 (Low): M-01 — add debug log | Implement fix | Added `this.logger.info(\`Dropping message for paused thread ${message.threadId}\`)` at orchestrator.ts paused-thread guard. Note: `logger.debug()` was specified in the original TSPEC §5.12, but the `Logger` protocol only exposes `info`/`warn`/`error` — no `debug` method. Updated TSPEC §5.12 to use `logger.info()` with explanatory note. |
 | F-02 (Low): M-02 — make Phase 5 deps required | Implement fix | Removed `?` from `OrchestratorDeps` Phase 5 fields; removed `!` non-null assertions from private fields; replaced conditional constructor assignment with direct assignment; removed `if (this.questionPoller)` guard in `shutdown()`; removed `if (this.questionStore && this.questionPoller)` guard in `startup()`; removed fallback branch in `handleRouteToUser()`; removed `if (this.questionPoller)` guard on `registerQuestion()`. |
 | F-03 (Medium — new): TSPEC §5.1–§5.4 outdated | Documentation update | Updated TSPEC §5.1 (regex), §5.2 (parse rules + answer detection), §5.3 (pending.md format), §5.4 (resolved.md format + Discord Message ID note). |
 | F-04 (Low): U-01 — add test recommendation | Documentation update | Added recommended test description to U-01 row in §3. |

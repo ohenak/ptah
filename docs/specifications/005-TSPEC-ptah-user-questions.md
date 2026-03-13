@@ -761,10 +761,12 @@ Insert after the dedup check (Step 1) and before the bot-message filter (Step 2)
 ```typescript
 // Phase 5: silently drop messages for paused threads (PQ-R10)
 if (this.pausedThreadIds.has(message.threadId)) {
-  this.logger.debug(`Dropping message for paused thread ${message.threadId}`);
+  this.logger.info(`Dropping message for paused thread ${message.threadId}`);
   return;
 }
 ```
+
+> **Note:** The original TSPEC specified `logger.debug()`, but the `Logger` protocol (§4.2 — existing Phase 1 interface) only exposes `info`, `warn`, and `error`. `logger.info()` is used instead. PQ-R10's intent ("no log entry beyond a debug-level note") is satisfied — this is the lowest-severity log level available.
 
 ---
 
@@ -1064,5 +1066,6 @@ export function createChannelMessage(overrides: Partial<ChannelMessage> = {}): C
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | March 12, 2026 | Test Engineer | TE review (F-03): Updated §5.1 regex to `/<!--\s*Q-(\d{4,})\s*-->/g`; §5.2 parse rules to `(blank until answered)` sentinel; §5.3 pending.md format to comment-marker + bold-label; §5.4 resolved.md format to include Discord Message ID with PQ-R9 note; §5.12 updated `logger.debug` → `logger.info` (Logger protocol has no `debug` method). |
 | 1.1 | March 11, 2026 | Backend Engineer | PM review (F-01, F-02) addressed: (F-02) removed `nextQuestionId()` from `QuestionStore` protocol; `appendQuestion()` now atomically assigns ID under `MergeLock`, takes `Omit<PendingQuestion, 'id'>`, returns `Promise<PendingQuestion>`; `readResolvedQuestions()` added. (F-01) added `discordMessageIdMap` to `DefaultOrchestrator`; seeded from both `pending.md` and `resolved.md` on startup; updated in `handleRouteToUser` after `updateDiscordMessageId()`; used in `handleOpenQuestionReply` for three-way distinction (not in map → ignore; in map + pending → proceed; in map + not pending → "already resolved"). OQ-01 closed. |
 | 1.0 | March 11, 2026 | Backend Engineer | Initial TSPEC for Phase 5 — 3 new modules, 4 new Discord protocol methods, Pattern B context assembly, ResumePattern extension |

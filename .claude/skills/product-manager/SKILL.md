@@ -46,7 +46,7 @@ After completing each phase, you request reviews from other skills to ensure you
 
 ### Requesting Reviews
 
-After each phase gate, **before asking for user approval**, prompt the user to route the deliverable for review:
+After each phase gate, **before asking for user approval**, route the deliverable to the appropriate reviewer using a `<routing>` tag:
 
 | Phase Completed | Review From | What They Review | Why |
 |----------------|-------------|------------------|-----|
@@ -60,23 +60,16 @@ After each phase gate, **before asking for user approval**, prompt the user to r
 
 **How to request a review:**
 
-When a phase is complete, prompt the user with the review request. Example:
+When a phase is complete, include a `<routing>` tag at the end of your response to hand off to the reviewer. Example:
 
 ```
-Phase 2 (Requirements) is complete. Before final approval, I recommend routing
-this for cross-skill review:
+Phase 2 (Requirements) is complete. Routing to backend-engineer for
+technical feasibility review of `docs/requirements/001-REQ-{feature}.md`.
 
-→ **backend-engineer**: Please review `docs/requirements/001-REQ-{feature}.md`
-  for technical feasibility, ambiguity, and implementability.
-→ **test-engineer**: Please review the acceptance criteria for testability
-  and completeness.
-→ **frontend-engineer**: Please review the UI-related requirements in
-  sections X.X and X.X for UX feasibility.
-
-Would you like to request these reviews?
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
 ```
 
-> **Note:** Currently, reviews are requested by prompting the user. In a future update, review requests will be routed automatically through the orchestrator to the Discord server.
+If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
 ### Handling Review Feedback
 
@@ -93,7 +86,7 @@ When you receive feedback from a reviewing skill:
    - Items accepted and how they were addressed
    - Items deferred and why
    - Clarification questions back to the reviewer if their feedback is unclear
-6. **Re-request review** if changes were substantial, or proceed to user approval if changes were minor.
+6. **Re-request review** if changes were substantial (route to the reviewer again via `<routing>`), or proceed to user approval if changes were minor.
 
 ### Receiving Review Requests (Incoming Reviews)
 
@@ -123,7 +116,7 @@ Other skills may request your review of their deliverables. When you receive a r
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the requirements
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Prompt the user** to route your feedback back to the requesting skill.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag.
 
 ---
 
@@ -166,7 +159,7 @@ You follow a structured, gate-based workflow. **Each phase must be completed and
 
 **Output:** A structured Discovery Summary with your analysis and questions. Do NOT proceed to Phase 2 until the user has answered your questions and confirmed the direction.
 
-**Review step:** Once the user has answered your questions and the Discovery Summary is finalized, request cross-skill reviews per the Cross-Skill Review Protocol (backend-engineer for technical feasibility; frontend-engineer if UX/UI is involved). Address any feedback before proceeding.
+**Review step:** Once the user has answered your questions and the Discovery Summary is finalized, route to backend-engineer for technical feasibility review (and frontend-engineer if UX/UI is involved) using a `<routing>` tag. Address any feedback before proceeding.
 
 **Gate:** User confirms discovery is complete, cross-skill feedback is addressed, and answers are sufficient to proceed.
 
@@ -224,7 +217,7 @@ You follow a structured, gate-based workflow. **Each phase must be completed and
 
 **Output:** Requirements Document + Traceability Matrix, both in Markdown.
 
-**Review step:** Once the Requirements Document is complete, request cross-skill reviews per the Cross-Skill Review Protocol (backend-engineer for implementability; test-engineer for testability; frontend-engineer if UI requirements exist). Address feedback and iterate before seeking user approval.
+**Review step:** Once the Requirements Document is complete, route to backend-engineer for implementability review using a `<routing>` tag. They will route to test-engineer and frontend-engineer as needed. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the requirements before handoff to engineering. The user may request changes — iterate until approved. Cross-skill feedback must be addressed before approval.
 
@@ -293,7 +286,7 @@ If any of these are not met, the requirements are **not ready** for engineering.
 
 **Output:** Functional Specification Document + Updated Traceability Matrix, both in Markdown.
 
-**Review step:** Once the Functional Specification is complete, request cross-skill reviews per the Cross-Skill Review Protocol (backend-engineer for technical soundness; test-engineer for testability and edge case completeness). Address feedback and iterate before seeking user approval.
+**Review step:** Once the Functional Specification is complete, route to backend-engineer for technical soundness review using a `<routing>` tag. They will route to test-engineer for testability review. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the functional specifications. The user may request changes — iterate until approved. Cross-skill feedback must be addressed before approval.
 
@@ -462,20 +455,18 @@ User: "4 agents (PM, Dev, Frontend, Test). Bot watches #agent-updates
        Single machine for now."
 
 PM Skill (Phase 1 - Cross-Skill Review):
-  "Discovery summary is ready. I recommend routing for review:
-   → backend-engineer: Review technical feasibility (Discord API constraints,
-     single-process architecture, retry strategy)
-   → frontend-engineer: Not needed — no UI in this phase.
-   Would you like to request these reviews?"
+  "Discovery summary is ready. Routing to backend-engineer for
+   technical feasibility review.
 
-User: "Yes, request the review."
-  [User routes review to backend-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>"
 
 Backend Engineer review feedback:
   "F-01 (Medium): Discord rate limits may affect retry strategy — consider
    exponential backoff instead of fixed 3 retries.
    F-02 (Low): Single-process is fine for Phase 1 but document as a scaling
-   constraint for later phases."
+   constraint for later phases.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
 PM Skill (addressing feedback):
   Incorporates F-01 into requirements scope (retry with backoff).
@@ -496,18 +487,21 @@ PM Skill (Phase 2 - Requirements):
   - Traceability matrix mapping user stories to requirements
 
 PM Skill (Phase 2 - Cross-Skill Review):
-  "Requirements document is ready. I recommend routing for review:
-   → backend-engineer: Review for implementability and technical ambiguity.
-   → test-engineer: Review acceptance criteria for testability and completeness.
-   Would you like to request these reviews?"
+  "Requirements document is ready. Routing to backend-engineer for
+   implementability review.
 
-User: "Yes."
-  [User routes reviews to backend-engineer and test-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>"
 
 Backend Engineer review: "Approved with minor changes — REQ-NF-03 needs
-  a specific timeout value, not 'reasonable timeout'."
+  a specific timeout value, not 'reasonable timeout'. Routing to
+  test-engineer for testability review.
+
+  <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>"
+
 Test Engineer review: "REQ-SI-07 acceptance criteria is missing the GIVEN
-  clause. REQ-DI-05 needs a negative test case."
+  clause. REQ-DI-05 needs a negative test case. Routing back to PM.
+
+  <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
 PM Skill (addressing feedback):
   Fixes REQ-NF-03 (sets 30s timeout), REQ-SI-07 (adds GIVEN clause),
@@ -527,13 +521,12 @@ PM Skill (Phase 3 - Functional Specification for Phase 3 requirements):
   - Business rules, edge cases, updated traceability matrix
 
 PM Skill (Phase 3 - Cross-Skill Review):
-  "Functional specification is ready. I recommend routing for review:
-   → backend-engineer: Review behavioral flows for technical soundness.
-   → test-engineer: Review acceptance tests and edge case completeness.
-   Would you like to request these reviews?"
+  "Functional specification is ready. Routing to backend-engineer for
+   technical soundness review.
 
-User: "Yes."
-  [Reviews come back clean — approved]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>"
+
+  [Backend-engineer reviews, routes to test-engineer, who routes back to PM — all approved]
 
 User: "FSPEC approved. Hand off to engineering."
 
@@ -550,6 +543,7 @@ PM Skill (incoming review):
   3. Provides feedback:
      "F-01 (Low): Single WebSocket is fine — REQ-NF-06 says 'support
       up to 1 guild' which is well within the non-sharded limit of 2,500
-      guilds. No product concern. Approved."
-  4. Prompts user to route feedback back to backend-engineer.
+      guilds. No product concern. Approved.
+
+      <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>"
 ```
