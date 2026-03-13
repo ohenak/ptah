@@ -279,11 +279,46 @@ No requirements are unaddressed.
 
 ---
 
+## 10. Re-Review: TSPEC v1.1 (Post-Resolution Verification)
+
+| Field | Detail |
+|-------|--------|
+| **Re-Review Date** | March 13, 2026 |
+| **Document Version Reviewed** | v1.1 |
+| **Verdict** | **Approved** — all four mismatches resolved; TSPEC is implementation-ready |
+
+### M-01 (High) — Resolved ✓
+`GuardResult.shutdown` comment now reads *"error embed already posted; worktree cleaned up"*. §5.1 Step 7 adds the full exhaustion-level error embed post (citing AT-GR-16) before returning `{ status: "shutdown" }`. Matches FSPEC AT-GR-16 exactly.
+
+### M-02 (Medium) — Resolved ✓
+§5.1 Step 3 now explicitly branches: `if commitResult.mergeStatus === "commit-error" | "lock-timeout" | "merge-error" → category = "transient" → skip to step 6`. The inline note confirms these are *returned* by `commitAndMerge()` (not thrown), which is why the Step 5 exception handler was insufficient. Q-02 is answered. `"merge-error"` also added to §6 error table.
+
+### M-03 (Medium) — Resolved ✓
+All six GR-R number references updated to match FSPEC v1.2: GR-R10→GR-R11 (silent drop, four locations in §5.2, §6, §7.3), GR-R11→GR-R12 (review limit checked first, §7.3), GR-R20→GR-R21 (double-SIGINT, §5.3), GR-R21→GR-R22 (best-effort embed, §5.3).
+
+### M-04 (Medium) — Resolved ✓
+Option A (via `InvocationGuardParams`) applied consistently throughout: `InvocationGuardParams` interface now includes `debugChannelId: string | null`; §4.3 constructor states "no debugChannelId — received via InvocationGuardParams"; §4.4 composition root is clean; §9.5 confirms guard uses `params.debugChannelId` directly.
+
+### Test double improvements — All addressed ✓
+- `FakeInvocationGuard`: `lastShutdownSignal: AbortSignal | null` added for shutdown propagation assertions
+- `FakeThreadStateManager`: `openThreadIds()` implemented with `openThreadIdSet`
+- `FakeGitClient`: `addAllCalls: string[]` and `commitCalls: Array<{ path: string; message: string }>` added
+
+### Previously untested properties (UP-01, UP-02, UP-03) — Now in scope ✓
+§7.3 `InvocationGuard` unit test scope now explicitly includes: "shutdown abort (error embed posted per AT-GR-16)" (UP-01) and "CommitResult transient statuses ('commit-error'/'lock-timeout'/'merge-error') trigger retry path" (UP-02, UP-03).
+
+### Deferred items (UP-04, UP-05) — Remain acceptable low-risk defers
+- **UP-04** (`maxTurnsPerThread < 5` startup warning test): mentioned in §9.4 but not in any test scope. Acceptable to add during implementation.
+- **UP-05** (WorktreeRegistry exclusivity — no filesystem scan): GR-R23 (FSPEC) pins the requirement; §5.3 Step 4 uses `worktreeRegistry.getAll()` correctly. An explicit "never calls `git worktree list`" assertion remains unspecified, but can be verified by inspection.
+
+---
+
 ## Change Log
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Test Engineer | Initial TSPEC review — 4 mismatches, 6 untested properties, 3 open questions |
+| 2.0 | March 13, 2026 | Test Engineer | Re-review of TSPEC v1.1 — all 4 mismatches resolved, test double improvements confirmed, UP-01/UP-02/UP-03 now in test scope. Verdict: Approved. |
 
 ---
 
