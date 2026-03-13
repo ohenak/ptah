@@ -7,7 +7,7 @@
 | **Version** | 1.2 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
-| **Status** | Draft |
+| **Status** | In Review |
 
 ---
 
