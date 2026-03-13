@@ -4,10 +4,10 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE6 |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
-| **Status** | In Review |
+| **Status** | Approved |
 
 ---
 
@@ -722,6 +722,7 @@ THEN:  1. The shutdown flag is set immediately
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 6 — 3 FSPECs covering all 6 requirements |
 | 1.1 | March 13, 2026 | Product Manager | Addressed Test Engineer cross-review feedback: (F-01) Fixed AT-GR-06/07 to be consistent with §4.3 behavioral flow — `max_turns_per_thread = 10` means 10 invocations proceed, blocked on the 11th; (F-02) Added AT-GR-16 for retry-in-backoff-period-at-shutdown edge case; (F-03) Added GR-R9 (partial-commit embed body) and AT-GR-17 covering the post-commit response-posting failure; (Q-02) Added GR-R22 clarifying worktree registry as the authoritative source for shutdown commit step |
 | 1.2 | March 13, 2026 | Product Manager | PM TSPEC cross-review corrections: (F-01) Resolved GR-R9 numbering conflict — §3.3 partial-commit rule retains GR-R9; §4.5 turn-limit rules renumbered GR-R10–GR-R15; §5.3 shutdown rules renumbered GR-R16–GR-R23; (F-03) Config key table updated to snake_case to match actual `ptah.config.json` schema convention |
+| 1.3 | March 13, 2026 | Product Manager | Approved — PM TSPEC cross-review complete; all 19 FSPEC behavioral constraints verified in TSPEC v1.1; status updated to Approved |
 
 ---
 
