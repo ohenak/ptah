@@ -73,11 +73,27 @@ requirement coverage review of `docs/{NNN}-{feature}/{NNN}-PROPERTIES-{feature}.
 
 If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
+### Review File Convention
+
+Review feedback and questions can be lengthy. To avoid exceeding context window limits when routing between agents, **always write your review feedback to a markdown file** in the feature folder before routing back.
+
+**File naming:** `docs/{NNN}-{feature-name}/CROSS-REVIEW-{your-skill-name}-{document-type}.md`
+
+Examples:
+- `docs/002-discord-bot/CROSS-REVIEW-test-engineer-TSPEC.md`
+- `docs/002-discord-bot/CROSS-REVIEW-test-engineer-REQ.md`
+
+**When providing a review:** Write all findings, questions, positive observations, and recommendations to the cross-review file. In your routing message, reference only the file path and include a brief summary (recommendation + count of findings/questions).
+
+**When receiving review feedback:** Read the cross-review file referenced in the routing message to get the full feedback details.
+
+These files are ephemeral working artifacts and are excluded from version control via `.gitignore`.
+
 ### Handling Review Feedback
 
 When you receive feedback from a reviewing skill:
 
-1. **Read the feedback carefully.** Understand every point raised — don't skim.
+1. **Read the cross-review file** referenced in the routing message. Understand every point raised — don't skim.
 2. **Research if needed.** Use web search to validate technical claims, investigate testing approaches suggested by reviewers, or find evidence for your testing decisions.
 3. **Categorize feedback** into:
    - **Must-fix:** Missing properties, incorrect requirement mapping, infeasible test levels — address before proceeding
@@ -118,12 +134,12 @@ Other skills may request your review of their deliverables. When you receive a r
 1. **Read the deliverable thoroughly** within your testing scope.
 2. **Cross-reference against existing test artifacts.** Check for consistency with approved properties documents, existing test patterns, and the project's test infrastructure.
 3. **Use web search** if you need to validate testing assumptions, research edge case patterns, or investigate tooling capabilities relevant to the review.
-4. **Provide structured feedback:**
+4. **Write structured feedback to a cross-review file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-test-engineer-{document-type}.md` containing:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with testability and coverage goals
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Route feedback back** to the requesting skill using a `<routing>` tag.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag, referencing the cross-review file path and a brief summary. If your recommendation is **Needs revision**, explicitly state that the requesting skill must address all must-fix items and route the updated deliverable back to you for re-review. If **Approved with minor changes**, the requesting skill may proceed after addressing the changes without re-routing.
 
 ---
 
@@ -300,9 +316,28 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Review document and/or augmented execution plan.
 
-**Review step:** Once the review document and/or augmented plan is complete, route to product-manager for product-impacting mismatch review using a `<routing>` tag. They will route to backend-engineer as needed. Address feedback and iterate before seeking user approval.
+**Review step:** Once the review document and/or augmented plan is complete, route to product-manager for product-impacting mismatch review using a `<routing>` tag. They will route to backend-engineer as needed. Address feedback and iterate.
 
-**Gate:** User reviews and approves the review findings. Cross-skill feedback must be addressed before approval.
+**Post-review routing:** Once cross-skill feedback is addressed, route the finalized review document directly to the owning engineer (backend-engineer or frontend-engineer) to action the findings. Include:
+- The review document path
+- A summary of must-fix items (mismatches, untested properties with High risk)
+- Open questions requiring engineer resolution (Q-01, Q-02, ...)
+- Your recommendation (approved / conditional approval / needs revision)
+
+Example:
+
+```
+Review complete. Routing to backend-engineer to action findings
+in `docs/{NNN}-{feature}/REVIEW-TSPEC-{feature}.md`.
+
+Must-fix: M-01 (missing guild name in log), 2 untested properties (PROP-DI-13, PROP-DI-14).
+Questions requiring resolution: Q-01 through Q-04.
+Recommendation: Conditional approval — signal handling tests required.
+
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+```
+
+If the recommendation is **Needs revision**, the owning engineer must address all must-fix items and route the updated TSPEC back to you for re-review. If **Conditional approval**, the engineer should address the conditions and you will verify during the next review cycle or implementation review.
 
 ---
 
@@ -568,7 +603,16 @@ Test Engineer (Phase 3 - Cross-Skill Review):
   [PM reviews, confirms M-01 is product-visible, routes to backend-engineer;
    BE agrees with all findings, routes back to test-engineer]
 
-User: "Review approved."
+Test Engineer (Phase 3 - Post-Review Routing):
+  "Review complete. Routing to backend-engineer to action findings
+   in `docs/002-discord-bot/REVIEW-TSPEC-ptah-discord-bot.md`.
+
+   Must-fix: M-02 (connect-after-disconnect guard).
+   Untested properties: PROP-DI-13, PROP-DI-14 (signal handling — High risk).
+   Questions requiring resolution: Q-01 through Q-04.
+   Recommendation: Conditional approval — signal handling tests required.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>"
 
 --- Incoming Review Example ---
 
@@ -595,7 +639,8 @@ Test Engineer (incoming review):
       implementation detail?
       Positive: Protocol-based DI design is excellent for testability.
       Error injection pattern (errorField: Error | null) is clean and
-      consistent. Recommendation: Approved with minor changes."
+      consistent. Recommendation: Approved with minor changes.
+      You may proceed after addressing F-01 and F-02 without re-routing."
   5. Routes feedback back to backend-engineer:
      <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
 ```

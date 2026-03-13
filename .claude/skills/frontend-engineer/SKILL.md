@@ -74,11 +74,27 @@ product alignment review of `docs/{NNN}-{feature}/{NNN}-TSPEC-{feature}.md`.
 
 If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
+### Review File Convention
+
+Review feedback and questions can be lengthy. To avoid exceeding context window limits when routing between agents, **always write your review feedback to a markdown file** in the feature folder before routing back.
+
+**File naming:** `docs/{NNN}-{feature-name}/CROSS-REVIEW-{your-skill-name}-{document-type}.md`
+
+Examples:
+- `docs/003-dashboard/CROSS-REVIEW-frontend-engineer-TSPEC.md`
+- `docs/003-dashboard/CROSS-REVIEW-frontend-engineer-REQ.md`
+
+**When providing a review:** Write all findings, questions, positive observations, and recommendations to the cross-review file. In your routing message, reference only the file path and include a brief summary (recommendation + count of findings/questions).
+
+**When receiving review feedback:** Read the cross-review file referenced in the routing message to get the full feedback details.
+
+These files are ephemeral working artifacts and are excluded from version control via `.gitignore`.
+
 ### Handling Review Feedback
 
 When you receive feedback from a reviewing skill:
 
-1. **Read the feedback carefully.** Understand every point raised — don't skim.
+1. **Read the cross-review file** referenced in the routing message. Understand every point raised — don't skim.
 2. **Research if needed.** Use web search to validate technical claims or investigate alternatives raised by reviewers.
 3. **Categorize feedback** into:
    - **Must-fix:** Spec-implementation mismatches, broken contracts, missing error handling, accessibility violations — address before proceeding
@@ -118,12 +134,12 @@ Other skills may request your review of their deliverables. When you receive a r
 1. **Read the deliverable thoroughly** within your frontend scope.
 2. **Cross-reference against the codebase.** Check for integration conflicts with existing components, shared contracts, and frontend patterns.
 3. **Use web search** if you need to validate UI/UX assumptions, check accessibility standards, research component library capabilities, or investigate alternatives.
-4. **Provide structured feedback:**
+4. **Write structured feedback to a cross-review file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-frontend-engineer-{document-type}.md` containing:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the frontend architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Route feedback back** to the requesting skill using a `<routing>` tag.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag, referencing the cross-review file path and a brief summary.
 
 ---
 

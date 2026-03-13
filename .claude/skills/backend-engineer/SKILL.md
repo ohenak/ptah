@@ -72,11 +72,27 @@ product alignment review of `docs/{NNN}-{feature-name}/002-TSPEC-{feature}.md`.
 
 If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
+### Review File Convention
+
+Review feedback and questions can be lengthy. To avoid exceeding context window limits when routing between agents, **always write your review feedback to a markdown file** in the feature folder before routing back.
+
+**File naming:** `docs/{NNN}-{feature-name}/CROSS-REVIEW-{your-skill-name}-{document-type}.md`
+
+Examples:
+- `docs/002-discord-bot/CROSS-REVIEW-backend-engineer-REQ.md`
+- `docs/002-discord-bot/CROSS-REVIEW-backend-engineer-FSPEC.md`
+
+**When providing a review:** Write all findings, questions, positive observations, and recommendations to the cross-review file. In your routing message, reference only the file path and include a brief summary (recommendation + count of findings/questions).
+
+**When receiving review feedback:** Read the cross-review file referenced in the routing message to get the full feedback details.
+
+These files are ephemeral working artifacts and are excluded from version control via `.gitignore`.
+
 ### Handling Review Feedback
 
 When you receive feedback from a reviewing skill:
 
-1. **Read the feedback carefully.** Understand every point raised — don't skim.
+1. **Read the cross-review file** referenced in the routing message. Understand every point raised — don't skim.
 2. **Research if needed.** Use web search to validate technical claims or investigate alternatives raised by reviewers.
 3. **Categorize feedback** into:
    - **Must-fix:** Spec-implementation mismatches, broken contracts, missing error handling — address before proceeding
@@ -113,12 +129,12 @@ Other skills may request your review of their deliverables. When you receive a r
 1. **Read the deliverable thoroughly** within your technical scope.
 2. **Cross-reference against the codebase.** Check for integration conflicts, existing patterns that should be reused, and architectural implications.
 3. **Use web search** if you need to validate technical assumptions, check library capabilities, or research alternatives.
-4. **Provide structured feedback:**
+4. **Write structured feedback to a cross-review file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-backend-engineer-{document-type}.md` containing:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Route feedback back** to the requesting skill using a `<routing>` tag.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag, referencing the cross-review file path and a brief summary.
 
 ---
 
@@ -751,13 +767,18 @@ PM Skill: "Requesting backend-engineer review of 003-REQ-skill-routing.md.
 Engineer (incoming review):
   1. Reads REQ-RP-03, cross-references against the current DiscordClient protocol
   2. Uses web search to check Discord thread message limits and API pagination
-  3. Provides feedback:
+  3. Writes feedback to docs/003-skill-routing/CROSS-REVIEW-backend-engineer-REQ.md:
      "F-01 (Low): 4-turn limit is feasible — we can track turn count via
       message metadata in the thread. No protocol changes needed.
       F-02 (Medium): REQ-RP-03 doesn't specify what happens after 4 turns.
-      Recommend adding an explicit escalation path (e.g., post to
-      #open-questions). Q-01: Is escalation to the user the intended behavior,
-      or should the orchestrator auto-approve? Approved with minor changes."
+      ...
+      Q-01: Is escalation to the user the intended behavior,
+      or should the orchestrator auto-approve?
+      Recommendation: Approved with minor changes."
   4. Routes feedback back to product-manager:
-      "<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
+     "Review written to docs/003-skill-routing/CROSS-REVIEW-backend-engineer-REQ.md.
+      2 findings (1 Medium, 1 Low), 1 question. Recommendation: Approved
+      with minor changes.
+
+      <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 ```
