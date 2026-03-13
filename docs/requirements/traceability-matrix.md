@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | March 11, 2026 |
-| **Version** | 1.8 |
+| **Date** | March 13, 2026 |
+| **Version** | 1.9 |
 | **Status** | Draft |
 
 ---
@@ -40,7 +40,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02] | [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-06] | Pending Spec | P1 | 7 | Pending Spec |
 | [US-03] | [REQ-DI-07] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
-| [US-02], [US-07] | [REQ-DI-08] | Pending Spec | P0 | 6 | Pending Spec |
+| [US-02], [US-07] | [REQ-DI-08] | [FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-02], [US-04] | [REQ-DI-09] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-04] | [REQ-CB-01] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-04] | [REQ-CB-02] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
@@ -52,7 +52,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-03], [US-04] | [REQ-RP-02] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-02], [US-04] | [REQ-RP-03] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-RP-04] | [FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-02], [US-07] | [REQ-RP-05] | Pending Spec | P0 | 6 | Pending Spec |
+| [US-02], [US-07] | [REQ-RP-05] | [FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-03] | [REQ-PQ-01] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-03] | [REQ-PQ-02] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-03] | [REQ-PQ-03] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
@@ -64,15 +64,15 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02], [US-03] | [REQ-SI-04] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-SI-05] | [FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
 | [US-06] | [REQ-SI-06] | [FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
-| [US-07] | [REQ-SI-07] | Pending Spec | P0 | 6 | Pending Spec |
-| [US-07] | [REQ-SI-08] | Pending Spec | P0 | 6 | Pending Spec |
+| [US-07] | [REQ-SI-07] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
+| [US-07] | [REQ-SI-08] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-06], [US-07] | [REQ-SI-09] | [FSPEC-AC-03](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
-| [US-05], [US-07] | [REQ-SI-10] | Pending Spec | P0 | 6 | Pending Spec |
+| [US-05], [US-07] | [REQ-SI-10] | [FSPEC-GR-03](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-02], [US-04], [US-06] | [REQ-SI-11] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-04], [US-06] | [REQ-SI-12] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-SI-13] | [FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
 | [US-04] | [REQ-NF-01] | [FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-07] | [REQ-NF-02] | Pending Spec | P0 | 6 | Pending Spec |
+| [US-07] | [REQ-NF-02] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-06] | [REQ-NF-03] | [FSPEC-AC-03](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
 | [US-04] | [REQ-NF-04] | [FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-06] | [REQ-NF-05] | [FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md), [FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
@@ -94,7 +94,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-04] | Orchestrator Assembles Context for Stateless Skill Invocation | 17 | Partial (15 of 17 FSPEC'd — Phase 3 requirements) |
 | [US-05] | Developer Launches and Monitors the Orchestrator | 5 | Partial (1 of 5 FSPEC'd — REQ-DI-04) |
 | [US-06] | Agent Produces and Commits Artifacts | 11 | Partial (10 of 11 FSPEC'd — Phase 3 + Phase 4 requirements) |
-| [US-07] | System Handles Failures Gracefully | 7 | Partial (1 of 7 FSPEC'd — REQ-SI-09 in Phase 4) |
+| [US-07] | System Handles Failures Gracefully | 7 | Partial (6 of 7 FSPEC'd — REQ-SI-09 in Phase 4; REQ-SI-07, REQ-SI-08, REQ-SI-10, REQ-NF-02 in Phase 6) |
 | [US-08] | New Agent is Added to the System | 1 | No (0 of 1 specified) |
 
 ### 3.2 Requirement Coverage
@@ -116,7 +116,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-DI-05] | Create one thread per coordination task | 1 | FSPEC'd ([FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-DI-06] | Archive threads on resolution signal | 0 | Pending |
 | [REQ-DI-07] | @mention user in #open-questions | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
-| [REQ-DI-08] | Post system message at max-turns limit | 0 | Pending |
+| [REQ-DI-08] | Post system message at max-turns limit | 1 | FSPEC'd ([FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
 | [REQ-DI-09] | Route by routing signal only | 1 | FSPEC'd ([FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-CB-01] | Three-layer context model | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-CB-02] | Layer 1 and Layer 3 never truncated | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
@@ -128,7 +128,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-RP-02] | Pattern B — User answer resume | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-RP-03] | Pattern C — Review loop | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-RP-04] | Final review instruction at Turn 3 | 1 | FSPEC'd ([FSPEC-RP-03](../specifications/FSPEC-ptah-skill-routing.md)) |
-| [REQ-RP-05] | Block fifth turn in review threads | 0 | Pending |
+| [REQ-RP-05] | Block fifth turn in review threads | 1 | FSPEC'd ([FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
 | [REQ-PQ-01] | Write to pending.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-PQ-02] | Poll pending.md | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
 | [REQ-PQ-03] | Resume on user answer | 1 | Specified ([005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md)) |
@@ -140,15 +140,15 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-SI-04] | Structured routing signal | 1 | FSPEC'd ([FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-05] | Commit artifact changes | 1 | FSPEC'd ([FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
 | [REQ-SI-06] | Append agent logs | 1 | FSPEC'd ([FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
-| [REQ-SI-07] | Retry with exponential backoff | 0 | Pending |
-| [REQ-SI-08] | Graceful failure handling | 0 | Pending |
+| [REQ-SI-07] | Retry with exponential backoff | 1 | FSPEC'd ([FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
+| [REQ-SI-08] | Graceful failure handling | 1 | FSPEC'd ([FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
 | [REQ-SI-09] | Idempotent message processing | 1 | FSPEC'd ([FSPEC-AC-03](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
-| [REQ-SI-10] | Graceful shutdown | 0 | Pending |
+| [REQ-SI-10] | Graceful shutdown | 1 | FSPEC'd ([FSPEC-GR-03](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
 | [REQ-SI-11] | Concurrent Skill invocations | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-12] | Per-agent worktree isolation | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-SI-13] | Worktree merge and cleanup | 1 | FSPEC'd ([FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
 | [REQ-NF-01] | Response latency | 1 | FSPEC'd ([FSPEC-SI-01](../specifications/FSPEC-ptah-skill-routing.md)) |
-| [REQ-NF-02] | Reliability | 0 | Pending |
+| [REQ-NF-02] | Reliability | 1 | FSPEC'd ([FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md)) |
 | [REQ-NF-03] | Idempotency | 1 | FSPEC'd ([FSPEC-AC-03](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
 | [REQ-NF-04] | Token efficiency | 1 | FSPEC'd ([FSPEC-CB-01](../specifications/FSPEC-ptah-skill-routing.md)) |
 | [REQ-NF-05] | Auditability | 2 | FSPEC'd ([FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md), [FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md)) |
@@ -165,7 +165,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 11 of 54 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phases 2, 6-7: 11 pending)
+- 5 of 54 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phases 2, 7: 5 pending)
 
 ---
 
@@ -244,14 +244,14 @@ This matrix provides full traceability from user scenarios through requirements 
 
 ### Phase 6 — Guardrails
 
-| Requirement | Specification | Priority | User Scenarios |
-|-------------|---------------|----------|----------------|
-| [REQ-DI-08] | Pending | P0 | [US-02], [US-07] |
-| [REQ-RP-05] | Pending | P0 | [US-02], [US-07] |
-| [REQ-SI-07] | Pending | P0 | [US-07] |
-| [REQ-SI-08] | Pending | P0 | [US-07] |
-| [REQ-SI-10] | Pending | P0 | [US-05], [US-07] |
-| [REQ-NF-02] | Pending | P0 | [US-07] |
+| Requirement | FSPEC | Specification | Priority | User Scenarios |
+|-------------|-------|---------------|----------|----------------|
+| [REQ-DI-08] | [FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-02], [US-07] |
+| [REQ-RP-05] | [FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-02], [US-07] |
+| [REQ-SI-07] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-07] |
+| [REQ-SI-08] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-07] |
+| [REQ-SI-10] | [FSPEC-GR-03](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-05], [US-07] |
+| [REQ-NF-02] | [FSPEC-GR-01](../006-guardrails/006-FSPEC-ptah-guardrails.md) | Pending TSPEC | P0 | [US-07] |
 
 ### Phase 7 — Polish
 
@@ -297,6 +297,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 1.6 | March 11, 2026 | Product Manager | Added FSPEC mappings for all 7 Phase 5 requirements. 3 FSPECs created: FSPEC-PQ-01, FSPEC-PQ-02, FSPEC-RPB-01. Phase 5 view updated with FSPEC column. Coverage: 9 TSPEC'd + 21 Phase 3 FSPEC'd + 6 Phase 4 FSPEC'd + 7 Phase 5 FSPEC'd = 43 of 54 requirements specified (11 pending). |
 | 1.7 | March 11, 2026 | Product Manager | 005-FSPEC-ptah-user-questions v1.1 approved for engineering handoff. Phase 5 FSPECs revised to address backend-engineer review (9 findings). TSPEC authoring may begin. |
 | 1.8 | March 11, 2026 | Backend Engineer | Phase 5 TSPEC (005-TSPEC-ptah-user-questions v1.1) approved after PM + TE reviews (F-01/F-02 addressed). Execution plan (005-PLAN-TSPEC-ptah-user-questions, 65 tasks) approved after TE review. Phase 5 requirements updated to "Specified"; Phase 5 view updated with TSPEC + Plan columns. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) = 43 of 54 specified (11 pending). |
+| 1.9 | March 13, 2026 | Product Manager | Added FSPEC mappings for all 6 Phase 6 requirements. 3 FSPECs created: FSPEC-GR-01 (retry/failure), FSPEC-GR-02 (turn limits), FSPEC-GR-03 (graceful shutdown). Phase 6 view updated with FSPEC column. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) + 6 FSPEC'd (Phase 6) = 49 of 54 specified (5 pending — Phases 2 and 7). |
 
 ---
 
