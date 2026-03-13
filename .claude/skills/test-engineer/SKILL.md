@@ -66,7 +66,7 @@ When a phase is complete, include a `<routing>` tag at the end of your response 
 
 ```
 Phase 2 (Property Documentation) is complete. Routing to product-manager for
-requirement coverage review of `docs/testing/in_review/002-PROPERTIES-{feature}.md`.
+requirement coverage review of `docs/{NNN}-{feature}/{NNN}-PROPERTIES-{feature}.md`.
 
 <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
@@ -142,13 +142,13 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **What you do:**
 
-1. **Read the requirements.** Locate and read the relevant requirement documents in `docs/requirements/`. Extract:
+1. **Read the requirements.** Locate and read the relevant requirement documents in `docs/{NNN}-{feature-name}/`. Extract:
    - Acceptance criteria (Who / Given / When / Then)
    - Functional requirements and their priorities (P0, P1, P2)
    - Non-functional requirements (performance, security, reliability)
    - Success metrics and targets
 
-2. **Read the specifications.** Locate and read the relevant technical specification documents in `docs/specifications/`. Extract:
+2. **Read the specifications.** Locate and read the relevant technical specification documents in `docs/{NNN}-{feature-name}/`. Extract:
    - Protocols (interfaces) and their behavioral contracts
    - Algorithms and step-by-step logic
    - Data models, types, and constraints
@@ -156,7 +156,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    - Test strategy already defined in the TSPEC (test doubles, test categories)
    - Acceptance tests already defined
 
-3. **Read the execution plan.** Locate and read the relevant plan in `docs/plans/`. Understand:
+3. **Read the execution plan.** Locate and read the relevant plan in `docs/{NNN}-{feature-name}/`. Understand:
    - Task breakdown and ordering
    - Integration points identified
    - Test files already referenced per task
@@ -219,7 +219,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    - Negative test cases (what should NOT happen)
    - Boundary conditions
 
-5. **Write the properties document.** Save it to `docs/testing/in_review/{NNN}-PROPERTIES-{feature-name}.md` using the standard template at `docs/templates/properties-template.md`. The template defines the complete structure including:
+5. **Write the properties document.** Save it to `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` using the standard template at `docs/templates/properties-template.md`. The template defines the complete structure including:
    - Metadata table (Document ID, linked requirements/specifications/plan, version, status)
    - Analysis summary from Phase 1 findings
    - Property summary table with counts by all 9 categories
@@ -232,7 +232,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
    **Important:** Only include category subsections that have properties — remove empty categories. Follow the template exactly for structure and field names to maintain consistency across all properties documents.
 
-**Output:** Properties document at `docs/testing/in_review/{NNN}-PROPERTIES-{feature-name}.md`.
+**Output:** Properties document at `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md`.
 
 **Review step:** Once the properties document is complete, route to product-manager for requirement coverage review using a `<routing>` tag. They will route to backend-engineer and frontend-engineer as needed. Address feedback and iterate before seeking user approval.
 
@@ -272,7 +272,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    - Handle error injection consistently (e.g., `errorField: Error | null` pattern)
    - Have dedicated tests for non-trivial logic
 
-5. **Write the review document.** Save it to `docs/testing/in_review/REVIEW-{document-type}-{feature-name}.md` containing:
+5. **Write the review document.** Save it to `docs/{NNN}-{feature-name}/REVIEW-{document-type}-{feature-name}.md` containing:
    - Summary of findings
    - Specification–implementation mismatches (numbered: M-01, M-02, ...)
    - Untested properties (numbered table)
@@ -405,15 +405,14 @@ This skill operates alongside the Backend Engineer, Frontend Engineer, and Produ
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Requirements | `docs/requirements/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
+| Requirements | `docs/{NNN}-{feature-name}/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
-| Technical Specs | `docs/specifications/{NNN}-TSPEC-{feature-name}.md` | How it will be built (protocols, algorithms, error handling) |
-| Analysis | `docs/specifications/ANALYSIS-{feature-name}.md` | Codebase analysis and open questions |
-| Execution Plans | `docs/plans/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown with test files |
+| Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (protocols, algorithms, error handling) |
+| Analysis | `docs/{NNN}-{feature-name}/ANALYSIS-{feature-name}.md` | Codebase analysis and open questions |
+| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown with test files |
 | Properties Template | `docs/templates/properties-template.md` | Standard format for all properties documents |
-| Test Properties (in review) | `docs/testing/in_review/{NNN}-PROPERTIES-*.md` | New properties documents (pending review) |
-| Test Properties (approved) | `docs/testing/{NNN}-PROPERTIES-*.md` | Approved properties documents |
-| TE Reviews | `docs/testing/in_review/REVIEW-*.md` | Review documents produced by this skill |
+| Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-*.md` | Properties documents (produced by this skill) |
+| TE Reviews | `docs/{NNN}-{feature-name}/REVIEW-*.md` | Review documents produced by this skill |
 
 ### ID Conventions
 
@@ -518,7 +517,7 @@ Test Engineer (addressing feedback):
 User: "Looks good. Proceed to properties."
 
 Test Engineer (Phase 2 - Properties):
-  Produces docs/testing/in_review/002-PROPERTIES-ptah-discord-bot.md:
+  Produces docs/002-discord-bot/002-PROPERTIES-ptah-discord-bot.md:
   - 15 Functional properties (startup orchestration, config loading, channel resolution)
   - 6 Contract properties (protocol compliance, type conformance, interface shape)
   - 12 Error Handling properties (ENOENT, invalid JSON, placeholder values, connect timeout)
@@ -532,7 +531,7 @@ Test Engineer (Phase 2 - Properties):
 
 Test Engineer (Phase 2 - Cross-Skill Review):
   "Properties document is ready. Routing to product-manager for requirement
-   coverage review of `docs/testing/in_review/002-PROPERTIES-ptah-discord-bot.md`.
+   coverage review of `docs/002-discord-bot/002-PROPERTIES-ptah-discord-bot.md`.
 
    <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
@@ -551,7 +550,7 @@ Test Engineer (addressing feedback):
 User: "Approved. Review the implementation."
 
 Test Engineer (Phase 3 - TSPEC Review):
-  Produces docs/testing/in_review/REVIEW-TSPEC-ptah-discord-bot.md:
+  Produces docs/002-discord-bot/REVIEW-TSPEC-ptah-discord-bot.md:
   - 3 specification–implementation mismatches (M-01: missing guild name in log,
     M-02: connect-after-disconnect guard, M-03: validation boundary ambiguity)
   - 5 untested properties (PROP-DI-13/14: signal handling, PROP-DI-47: shutdown guard,
