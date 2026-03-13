@@ -62,8 +62,10 @@ export class DefaultContextAssembler implements ContextAssembler {
 
     // Determine the base path for Layer 1/2 file reads
     // Phase 4: when worktreePath is provided, read from worktree; otherwise main repo
+    // config.docs.root is relative to ptah/ (e.g. "../docs"), but worktreePath is the
+    // repo root, so strip leading "../" segments to get the repo-relative path.
     const docsRoot = worktreePath
-      ? this.fs.joinPath(worktreePath, config.docs.root)
+      ? this.fs.joinPath(worktreePath, config.docs.root.replace(/^(?:\.\.\/)+/, ""))
       : config.docs.root;
 
     // Read role prompt (fatal if missing) — always from main repo
