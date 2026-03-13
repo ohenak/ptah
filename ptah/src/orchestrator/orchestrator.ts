@@ -214,12 +214,15 @@ export class DefaultOrchestrator implements Orchestrator {
 
     // Step 4: If no agent, post system message
     if (!agentId) {
+      this.logger.info(`No role mention found in message ${message.id} from ${message.authorName}`);
       await this.discord.postSystemMessage(
         message.threadId,
         "Please @mention a role to direct your message to a specific agent.",
       );
       return;
     }
+
+    this.logger.info(`Message received from ${message.authorName} in thread "${message.threadName}" → agent: ${agentId}`);
 
     // Step 5: Run the routing loop starting with the resolved agent
     await this.executeRoutingLoop(agentId, message);
@@ -256,6 +259,7 @@ export class DefaultOrchestrator implements Orchestrator {
       }
 
       // Create worktree (outer try — if this fails, no cleanup needed)
+      this.logger.info(`Creating worktree for ${currentAgentId} on branch ${branch}`);
       try {
         await this.gitClient.createWorktree(branch, worktreePath);
       } catch (error) {
@@ -276,6 +280,12 @@ export class DefaultOrchestrator implements Orchestrator {
         );
 
         // Assemble context (with worktreePath for Layer 2)
+        const agentLabel = formatAgentName(currentAgentId);
+        this.logger.info(`Assembling context for ${currentAgentId} (feature: "${triggerMessage.threadName}")`);
+        await this.responsePoster.postProgressEmbed(
+          triggerMessage.threadId,
+          `Assembling context for **${agentLabel}**...`,
+        );
         const bundle = await this.contextAssembler.assemble({
           agentId: currentAgentId,
           threadId: triggerMessage.threadId,
@@ -287,10 +297,23 @@ export class DefaultOrchestrator implements Orchestrator {
         });
 
         // Invoke skill (with worktreePath)
+        const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
+        this.logger.info(`Invoking ${currentAgentId} skill (timeout: ${timeoutSec}s)...`);
+        await this.responsePoster.postProgressEmbed(
+          triggerMessage.threadId,
+          `Invoking **${agentLabel}** skill (timeout: ${timeoutSec}s)...`,
+        );
         const result = await this.skillInvoker.invoke(bundle, this.config, worktreePath);
+        const durationLabel = result.durationMs >= 60000
+          ? `${Math.round(result.durationMs / 1000)}s`
+          : `${result.durationMs}ms`;
+        this.logger.info(`Skill ${currentAgentId} completed in ${durationLabel} (${result.artifactChanges.length} artifact changes)`);
+        await this.responsePoster.postProgressEmbed(
+          triggerMessage.threadId,
+          `**${agentLabel}** completed in ${durationLabel} — ${result.artifactChanges.length} file(s) changed.`,
+        );
 
         // Artifact commit & merge
-        const agentDisplayName = formatAgentName(currentAgentId);
         const commitResult = await this.artifactCommitter.commitAndMerge({
           agentId: currentAgentId,
           threadName: triggerMessage.threadName,
@@ -300,7 +323,7 @@ export class DefaultOrchestrator implements Orchestrator {
         });
 
         // Handle commit/merge error embeds
-        await this.handleCommitResult(commitResult, triggerMessage, worktreePath, branch, agentDisplayName);
+        await this.handleCommitResult(commitResult, triggerMessage, worktreePath, branch, agentLabel);
 
         // Cleanup worktree on no-changes path
         if (commitResult.mergeStatus === "no-changes") {
@@ -317,6 +340,7 @@ export class DefaultOrchestrator implements Orchestrator {
         );
 
         // Post agent response
+        this.logger.info(`Posting ${currentAgentId} response to thread "${triggerMessage.threadName}"`);
         await this.responsePoster.postAgentResponse({
           threadId: triggerMessage.threadId,
           agentId: currentAgentId,
@@ -332,6 +356,7 @@ export class DefaultOrchestrator implements Orchestrator {
         const decision = this.routingEngine.decide(signal, this.config);
 
         // Handle decision
+        this.logger.info(`Routing decision: ${decision.signal.type}${decision.targetAgentId ? ` → ${decision.targetAgentId}` : ""}`);
         if (decision.isTerminal) {
           await this.responsePoster.postCompletionEmbed(
             triggerMessage.threadId,
@@ -361,6 +386,11 @@ export class DefaultOrchestrator implements Orchestrator {
         }
 
         // ROUTE_TO_AGENT with reply — loop with new agent
+        const nextAgentLabel = formatAgentName(decision.targetAgentId!);
+        await this.responsePoster.postProgressEmbed(
+          triggerMessage.threadId,
+          `Routing to **${nextAgentLabel}**...`,
+        );
         currentAgentId = decision.targetAgentId!;
         // Continue the while loop
       } catch (error) {
@@ -379,9 +409,10 @@ export class DefaultOrchestrator implements Orchestrator {
         }
 
         if (error instanceof InvocationTimeoutError) {
+          const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
           await this.responsePoster.postErrorEmbed(
             triggerMessage.threadId,
-            "Skill invocation timed out (>90s)",
+            `Skill invocation timed out (>${timeoutSec}s)`,
           );
           return;
         }

@@ -701,6 +701,10 @@ export class FakeResponsePoster implements ResponsePoster {
     this.postedErrors.push({ threadId, errorMessage });
   }
 
+  async postProgressEmbed(_threadId: string, _message: string): Promise<void> {
+    // no-op in tests
+  }
+
   async createCoordinationThread(params: {
     channelId: string;
     featureName: string;
