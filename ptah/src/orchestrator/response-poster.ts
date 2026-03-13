@@ -13,6 +13,7 @@ export interface ResponsePoster {
 
   postCompletionEmbed(threadId: string, agentId: string, config: PtahConfig): Promise<void>;
   postErrorEmbed(threadId: string, errorMessage: string): Promise<void>;
+  postProgressEmbed(threadId: string, message: string): Promise<void>;
 
   createCoordinationThread(params: {
     channelId: string;
@@ -27,6 +28,7 @@ export interface ResponsePoster {
 const DEFAULT_COLOUR = 0x757575;
 const ERROR_COLOUR = 0x9E9E9E;
 const COMPLETION_COLOUR = 0x1B5E20;
+const PROGRESS_COLOUR = 0x424242;
 const MAX_EMBED_LENGTH = 4096;
 
 function parseHexColour(hex: string): number {
@@ -145,6 +147,22 @@ export class DefaultResponsePoster implements ResponsePoster {
     };
 
     await this.postEmbedWithRetry(embedOptions);
+  }
+
+  async postProgressEmbed(threadId: string, message: string): Promise<void> {
+    try {
+      await this.discord.postEmbed({
+        threadId,
+        title: "Progress",
+        description: message,
+        colour: PROGRESS_COLOUR,
+      });
+    } catch (error) {
+      // Best-effort — don't block the pipeline if progress posting fails
+      this.logger.warn(
+        `Progress embed failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async createCoordinationThread(params: {

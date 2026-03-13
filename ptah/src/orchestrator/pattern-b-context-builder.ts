@@ -54,7 +54,9 @@ export class DefaultPatternBContextBuilder implements PatternBContextBuilder {
     const featureName = this.extractFeatureName(question.threadName);
 
     // 2. Resolve docsRoot in the worktree
-    const docsRoot = this.fs.joinPath(worktreePath, config.docs.root);
+    // config.docs.root is relative to ptah/ (e.g. "../docs"), but worktreePath is the
+    // repo root, so strip leading "../" segments to get the repo-relative path.
+    const docsRoot = this.fs.joinPath(worktreePath, config.docs.root.replace(/^(?:\.\.\/)+/, ""));
 
     // 3. Build Layer 1: role prompt + overview.md + constants
     const layer1 = await this.buildLayer1(question.agentId, featureName, docsRoot, config);
