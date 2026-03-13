@@ -51,7 +51,7 @@ After completing key phases, you request reviews from other skills to catch prod
 
 ### Requesting Reviews
 
-After each phase gate, **before asking for user approval**, prompt the user to route the deliverable for review:
+After each phase gate, **before asking for user approval**, route the deliverable to the appropriate reviewer using a `<routing>` tag:
 
 | Phase Completed | Review From | What They Review | Why |
 |----------------|-------------|------------------|-----|
@@ -63,23 +63,16 @@ After each phase gate, **before asking for user approval**, prompt the user to r
 
 **How to request a review:**
 
-When a phase is complete, prompt the user with the review request. Example:
+When a phase is complete, include a `<routing>` tag at the end of your response to hand off to the reviewer. Example:
 
 ```
-Phase 2 (Technical Specification) is complete. Before final approval,
-I recommend routing this for cross-skill review:
+Phase 2 (Technical Specification) is complete. Routing to product-manager for
+product alignment review of `docs/specifications/003-TSPEC-{feature}.md`.
 
-→ **product-manager**: Please review `docs/specifications/003-TSPEC-{feature}.md`
-  to confirm the technical design faithfully realizes the requirements.
-→ **test-engineer**: Please review the component architecture, error handling,
-  and test strategy for testability and coverage completeness.
-→ **backend-engineer**: Please review the updated API contracts and shared
-  types for contract compatibility.
-
-Would you like to request these reviews?
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
 
-> **Note:** Currently, reviews are requested by prompting the user. In a future update, review requests will be routed automatically through the orchestrator to the Discord server.
+If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
 ### Handling Review Feedback
 
@@ -96,7 +89,7 @@ When you receive feedback from a reviewing skill:
    - Items accepted and how they were addressed
    - Items deferred and why
    - Clarification questions back to the reviewer if their feedback is unclear
-6. **Re-request review** if changes were substantial, or proceed to user approval if changes were minor.
+6. **Re-request review** if changes were substantial (route to the reviewer again via `<routing>`), or proceed to user approval if changes were minor.
 
 ### Receiving Review Requests (Incoming Reviews)
 
@@ -130,7 +123,7 @@ Other skills may request your review of their deliverables. When you receive a r
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the frontend architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Prompt the user** to route your feedback back to the requesting skill.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag.
 
 ---
 
@@ -190,7 +183,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** A structured Analysis Summary presenting your findings.
 
-**Review step:** Once the Analysis Summary is complete, request a cross-skill review per the Cross-Skill Review Protocol (product-manager to validate your understanding of the requirements). Address any feedback before proceeding.
+**Review step:** Once the Analysis Summary is complete, route to product-manager for requirements validation using a `<routing>` tag. Address any feedback before proceeding.
 
 **Gate:** User reviews the analysis, cross-skill feedback is addressed, and open questions are answered before proceeding to technical specification.
 
@@ -221,7 +214,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Technical Specification document.
 
-**Review step:** Once the TSPEC is complete, request cross-skill reviews per the Cross-Skill Review Protocol (product-manager for product alignment; test-engineer for testability; backend-engineer if shared contracts change). Address feedback and iterate before seeking user approval.
+**Review step:** Once the TSPEC is complete, route to product-manager for product alignment review using a `<routing>` tag. They will route to test-engineer and backend-engineer as needed. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the technical specification before proceeding to planning. Cross-skill feedback must be addressed before approval. The user may request changes — iterate until approved.
 
@@ -241,7 +234,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Execution plan document.
 
-**Review step:** Once the execution plan is complete, request a cross-skill review per the Cross-Skill Review Protocol (test-engineer for test coverage validation). Address feedback before seeking user approval.
+**Review step:** Once the execution plan is complete, route to test-engineer for test coverage validation using a `<routing>` tag. Address feedback before seeking user approval.
 
 **Gate:** User reviews and approves the execution plan before implementation begins. Cross-skill feedback must be addressed before approval.
 
@@ -562,14 +555,11 @@ Frontend Engineer (Phase 1 - Analysis):
   7. Writes Analysis Summary
 
 Frontend Engineer (Phase 1 - Cross-Skill Review):
-  "Analysis is ready. I recommend routing for review:
-   → product-manager: Please review the Analysis Summary to confirm
-     my understanding of the dashboard requirements is correct,
-     especially the assumptions about data freshness and layout priority.
-   Would you like to request this review?"
+  "Analysis is ready. Routing to product-manager to confirm
+   my understanding of the dashboard requirements is correct,
+   especially the assumptions about data freshness and layout priority.
 
-User: "Yes."
-  [User routes review to product-manager]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
 PM review feedback:
   "F-01 (Medium): Your assumption about refresh interval is correct but
@@ -595,17 +585,11 @@ Frontend Engineer (Phase 2 - Technical Specification):
   - Test strategy: mock services, React Testing Library
 
 Frontend Engineer (Phase 2 - Cross-Skill Review):
-  "TSPEC is ready. I recommend routing for review:
-   → product-manager: Please review 003-TSPEC-dashboard-layout.md to confirm
-     the component design faithfully realizes the requirements.
-   → test-engineer: Please review the component architecture, error handling,
-     and test strategy for testability and coverage completeness.
-   → backend-engineer: Please review the DashboardService protocol and
-     API response types for contract compatibility.
-   Would you like to request these reviews?"
+  "TSPEC is ready. Routing to product-manager for product alignment review
+   of 003-TSPEC-dashboard-layout.md. They will route to test-engineer and
+   backend-engineer as needed.
 
-User: "Yes."
-  [User routes reviews to product-manager, test-engineer, backend-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
 PM review: "Approved — component hierarchy maps well to the requirements."
 TE review: "F-01 (Medium): Test strategy is missing accessibility tests
@@ -629,12 +613,11 @@ Frontend Engineer (Phase 3 - Planning):
   - Task dependency graph
 
 Frontend Engineer (Phase 3 - Cross-Skill Review):
-  "Execution plan is ready. I recommend routing for review:
-   → test-engineer: Please review the task list and test file assignments
-     for coverage completeness.
-   Would you like to request this review?"
+  "Execution plan is ready. Routing to test-engineer for test coverage
+   validation of the task list and test file assignments.
 
-User: "Yes."
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>"
+
   [TE review comes back clean — approved]
 
 User: "Plan looks good. Proceed."
@@ -673,5 +656,7 @@ Frontend Engineer (incoming review):
       This affects our URL state management.
       Positive: Cursor-based pagination will improve performance for our
       real-time data feeds. Recommendation: Approved with minor changes."
-  4. Prompts user to route feedback back to backend-engineer.
+  4. Routes feedback back to backend-engineer:
+
+     <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
 ```

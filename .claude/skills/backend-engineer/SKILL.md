@@ -49,7 +49,7 @@ After completing key phases, you request reviews from other skills to catch prod
 
 ### Requesting Reviews
 
-After each phase gate, **before asking for user approval**, prompt the user to route the deliverable for review:
+After each phase gate, **before asking for user approval**, route the deliverable to the appropriate reviewer using a `<routing>` tag:
 
 | Phase Completed | Review From | What They Review | Why |
 |----------------|-------------|------------------|-----|
@@ -61,23 +61,16 @@ After each phase gate, **before asking for user approval**, prompt the user to r
 
 **How to request a review:**
 
-When a phase is complete, prompt the user with the review request. Example:
+When a phase is complete, include a `<routing>` tag at the end of your response to hand off to the reviewer. Example:
 
 ```
-Phase 2 (Technical Specification) is complete. Before final approval,
-I recommend routing this for cross-skill review:
+Phase 2 (Technical Specification) is complete. Routing to product-manager for
+product alignment review of `docs/specifications/002-TSPEC-{feature}.md`.
 
-→ **product-manager**: Please review `docs/specifications/002-TSPEC-{feature}.md`
-  to confirm the technical design faithfully realizes the requirements.
-→ **test-engineer**: Please review the protocols, error handling table, and
-  test strategy for testability and coverage completeness.
-→ **frontend-engineer**: Please review the updated DiscordClient protocol
-  and ThreadMessage types for contract compatibility.
-
-Would you like to request these reviews?
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
 
-> **Note:** Currently, reviews are requested by prompting the user. In a future update, review requests will be routed automatically through the orchestrator to the Discord server.
+If multiple reviewers are needed, route to the first reviewer. They will route to the next reviewer or back to you when done.
 
 ### Handling Review Feedback
 
@@ -94,7 +87,7 @@ When you receive feedback from a reviewing skill:
    - Items accepted and how they were addressed
    - Items deferred and why
    - Clarification questions back to the reviewer if their feedback is unclear
-6. **Re-request review** if changes were substantial, or proceed to user approval if changes were minor.
+6. **Re-request review** if changes were substantial (route to the reviewer again via `<routing>`), or proceed to user approval if changes were minor.
 
 ### Receiving Review Requests (Incoming Reviews)
 
@@ -125,7 +118,7 @@ Other skills may request your review of their deliverables. When you receive a r
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-5. **Prompt the user** to route your feedback back to the requesting skill.
+5. **Route feedback back** to the requesting skill using a `<routing>` tag.
 
 ---
 
@@ -186,7 +179,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Analysis document at `docs/specifications/ANALYSIS-{feature-name}.md`.
 
-**Review step:** Once the Analysis Document is complete, request a cross-skill review per the Cross-Skill Review Protocol (product-manager to validate your understanding of the requirements). Address any feedback before proceeding.
+**Review step:** Once the Analysis Document is complete, route to product-manager for requirements validation using a `<routing>` tag. Address any feedback before proceeding.
 
 **Gate:** User reviews the analysis, cross-skill feedback is addressed, and open questions are answered before proceeding to technical specification.
 
@@ -234,7 +227,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **Output:** Technical Specification document at `docs/specifications/{NNN}-TSPEC-{feature-name}.md`.
 
-**Review step:** Once the TSPEC is complete, request cross-skill reviews per the Cross-Skill Review Protocol (product-manager for product alignment; test-engineer for testability; frontend-engineer if shared contracts change). Address feedback and iterate before seeking user approval.
+**Review step:** Once the TSPEC is complete, route to product-manager for product alignment review using a `<routing>` tag. They will route to test-engineer and frontend-engineer as needed. Address feedback and iterate before seeking user approval.
 
 **Gate:** User reviews and approves the technical specification before proceeding to planning. Cross-skill feedback must be addressed before approval. The user may request changes — iterate until approved.
 
@@ -298,7 +291,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 **Output:** Execution plan document.
 
-**Review step:** Once the execution plan is complete, request a cross-skill review per the Cross-Skill Review Protocol (test-engineer for test coverage validation). Address feedback before seeking user approval.
+**Review step:** Once the execution plan is complete, route to test-engineer for test coverage validation using a `<routing>` tag. Address feedback before seeking user approval.
 
 **Gate:** User reviews and approves the execution plan before implementation begins. Cross-skill feedback must be addressed before approval.
 
@@ -652,14 +645,11 @@ Engineer (Phase 1 - Analysis):
   6. Writes ANALYSIS-ptah-discord-bot.md
 
 Engineer (Phase 1 - Cross-Skill Review):
-  "Analysis is ready. I recommend routing for review:
-   → product-manager: Please review ANALYSIS-ptah-discord-bot.md to confirm
-     my understanding of the requirements is correct, especially the assumptions
-     about thread lifecycle and message filtering.
-   Would you like to request this review?"
+  "Analysis is ready. Routing to product-manager to confirm my understanding
+   of the requirements is correct, especially the assumptions about thread
+   lifecycle and message filtering.
 
-User: "Yes."
-  [User routes review to product-manager]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
 PM review feedback:
   "F-01 (Medium): Your assumption about thread ownership is correct but
@@ -690,19 +680,17 @@ Engineer (Phase 2 - Technical Specification):
   - Requirement → technical component mapping
 
 Engineer (Phase 2 - Cross-Skill Review):
-  "TSPEC is ready. I recommend routing for review:
-   → product-manager: Please review 002-TSPEC-ptah-discord-bot.md to confirm
-     the technical design faithfully realizes REQ-DI-01/02/03. In particular,
-     we chose a single WebSocket connection — please confirm this aligns with
-     the product intent for single-guild support.
-   → test-engineer: Please review the protocols, error handling table, and
-     test strategy for testability and coverage completeness.
-   Would you like to request these reviews?"
+  "TSPEC is ready. Routing to product-manager to confirm the technical design
+   faithfully realizes REQ-DI-01/02/03. In particular, we chose a single
+   WebSocket connection — please confirm this aligns with the product intent
+   for single-guild support. PM will route to test-engineer and
+   frontend-engineer as needed.
 
-User: "Yes."
-  [User routes reviews to product-manager and test-engineer]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 
-PM review: "Approved — single WebSocket is fine for single-guild scope."
+PM review: "Approved — single WebSocket is fine for single-guild scope.
+  Routing to test-engineer for testability review.
+  <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>"
 TE review: "F-01 (Medium): Error handling table is missing the case where
   Discord token is valid but lacks required intents. Add this scenario.
   Otherwise approved."
@@ -722,13 +710,12 @@ Engineer (Phase 3 - Planning):
   - Integration points with Phase 1
 
 Engineer (Phase 3 - Cross-Skill Review):
-  "Execution plan is ready. I recommend routing for review:
-   → test-engineer: Please review the task list and test file assignments
-     for coverage completeness.
-   Would you like to request this review?"
+  "Execution plan is ready. Routing to test-engineer for test coverage
+   validation of the task list and test file assignments.
 
-User: "Yes."
-  [TE review comes back clean — approved]
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>"
+
+TE review comes back clean — approved.
 
 User: "Plan looks good. Proceed."
 
@@ -771,5 +758,6 @@ Engineer (incoming review):
       Recommend adding an explicit escalation path (e.g., post to
       #open-questions). Q-01: Is escalation to the user the intended behavior,
       or should the orchestrator auto-approve? Approved with minor changes."
-  4. Prompts user to route feedback back to product-manager.
+  4. Routes feedback back to product-manager:
+      "<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>"
 ```
