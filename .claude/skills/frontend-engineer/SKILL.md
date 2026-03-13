@@ -67,7 +67,7 @@ When a phase is complete, include a `<routing>` tag at the end of your response 
 
 ```
 Phase 2 (Technical Specification) is complete. Routing to product-manager for
-product alignment review of `docs/specifications/003-TSPEC-{feature}.md`.
+product alignment review of `docs/{NNN}-{feature}/{NNN}-TSPEC-{feature}.md`.
 
 <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
@@ -210,7 +210,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    |-------------|----------------------|-------------|
    | REQ-XX-01 | Component, hook, context | How this requirement is technically realized |
 
-3. **Write the Technical Specification Document.** Produce a document at `docs/specifications/{NNN}-TSPEC-{feature-name}.md`.
+3. **Write the Technical Specification Document.** Produce a document at `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md`.
 
 **Output:** Technical Specification document.
 
@@ -226,7 +226,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **What you do:**
 
-1. **Create the execution plan.** Produce a Markdown file at `docs/plans/{NNN}-PLAN-TSPEC-{feature-name}.md` with:
+1. **Create the execution plan.** Produce a Markdown file at `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` with:
    - Summary of the capability being implemented
    - Referenced technical specification and requirement IDs
    - Ordered task list with TDD test-first steps
@@ -444,12 +444,12 @@ test('displays results from search service', async () => {
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Requirements | `docs/requirements/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
+| Requirements | `docs/{NNN}-{feature-name}/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
-| Technical Specs | `docs/specifications/{NNN}-TSPEC-{feature-name}.md` | How it will be built (component architecture, state management) |
-| Execution Plans | `docs/plans/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown |
-| Test Properties | `docs/testing/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
-| TE Reviews | `docs/testing/in_review/REVIEW-*.md` | Test Engineer review feedback |
+| Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (component architecture, state management) |
+| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown |
+| Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
+| TE Reviews | `docs/{NNN}-{feature-name}/REVIEW-*.md` | Test Engineer review feedback |
 
 ### ID Conventions
 
@@ -538,7 +538,7 @@ Before marking Phase 5 as complete, verify:
 User: "Implement the dashboard layout from REQ-UI-01, REQ-UI-02, REQ-UI-03."
 
 Frontend Engineer (Phase 1 - Analysis):
-  1. Reads REQ-UI-01 through REQ-UI-03 from docs/requirements/
+  1. Reads REQ-UI-01 through REQ-UI-03 from docs/{NNN}-{feature}/
   2. Reviews API schema — checks backend API contracts for data the
      dashboard will consume
   3. Uses web search to compare layout approaches: CSS Grid vs Flexbox

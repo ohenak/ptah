@@ -65,7 +65,7 @@ When a phase is complete, include a `<routing>` tag at the end of your response 
 
 ```
 Phase 2 (Technical Specification) is complete. Routing to product-manager for
-product alignment review of `docs/specifications/002-TSPEC-{feature}.md`.
+product alignment review of `docs/{NNN}-{feature-name}/002-TSPEC-{feature}.md`.
 
 <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
 ```
@@ -152,7 +152,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **What you do:**
 
-1. **Read the requirements (and FSPECs if they exist).** Locate and thoroughly read the relevant requirement documents in `docs/requirements/`. If the PM produced functional specifications in `docs/specifications/FSPEC-*.md`, read those too — they define behavioral flows, decision trees, and business rules that your TSPEC must realize technically. Understand:
+1. **Read the requirements (and FSPECs if they exist).** Locate and thoroughly read the relevant requirement documents in `docs/{NNN}-{feature-name}/`. If the PM produced functional specifications in `docs/{NNN}-{feature-name}/FSPEC-*.md`, read those too — they define behavioral flows, decision trees, and business rules that your TSPEC must realize technically. Understand:
    - What the system must do (acceptance criteria in Who/Given/When/Then format)
    - Behavioral flows and business rules (from FSPECs, if present)
    - Edge cases, error scenarios, and constraints
@@ -171,13 +171,13 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    - Technically infeasible or requiring a design decision not covered by the requirements
    - A potential conflict with existing code or architecture
 
-4. **Write the Analysis Document.** Produce a structured analysis at `docs/specifications/ANALYSIS-{feature-name}.md` containing:
+4. **Write the Analysis Document.** Produce a structured analysis at `docs/{NNN}-{feature-name}/ANALYSIS-{feature-name}.md` containing:
    - Summary of requirements analyzed
    - Codebase review findings (integration points, existing patterns, shared utilities)
    - Open questions (numbered, with options and recommendations)
    - Risks identified
 
-**Output:** Analysis document at `docs/specifications/ANALYSIS-{feature-name}.md`.
+**Output:** Analysis document at `docs/{NNN}-{feature-name}/ANALYSIS-{feature-name}.md`.
 
 **Review step:** Once the Analysis Document is complete, route to product-manager for requirements validation using a `<routing>` tag. Address any feedback before proceeding.
 
@@ -211,7 +211,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    |-------------|----------------------|-------------|
    | REQ-XX-01 | Protocol, implementation, types | How this requirement is technically realized |
 
-4. **Write the Technical Specification Document.** Produce a complete document at `docs/specifications/{NNN}-TSPEC-{feature-name}.md` using the format established by the project (see existing TSPECs for reference). Key sections:
+4. **Write the Technical Specification Document.** Produce a complete document at `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` using the format established by the project (see existing TSPECs for reference). Key sections:
 
    - Metadata table (Requirements, Functional Specifications if applicable, Analysis, Date, Status)
    - Summary
@@ -225,7 +225,7 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
    - Integration Points
    - Open Questions
 
-**Output:** Technical Specification document at `docs/specifications/{NNN}-TSPEC-{feature-name}.md`.
+**Output:** Technical Specification document at `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md`.
 
 **Review step:** Once the TSPEC is complete, route to product-manager for product alignment review using a `<routing>` tag. They will route to test-engineer and frontend-engineer as needed. Address feedback and iterate before seeking user approval.
 
@@ -239,15 +239,15 @@ You follow a strict, phase-based workflow. **Each phase has a gate that requires
 
 **What you do:**
 
-1. **Create the execution plan.** Produce a Markdown file at `docs/plans/{NNN}-PLAN-TSPEC-{feature-name}.md` containing:
+1. **Create the execution plan.** Produce a Markdown file at `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` containing:
 
 ```markdown
 # Execution Plan: {Capability Title}
 
 | Field | Detail |
 |-------|--------|
-| **Technical Specification** | [{NNN}-TSPEC-{feature-name}](../specifications/{NNN}-TSPEC-{feature-name}.md) |
-| **Requirements** | [REQ-XX-XX](../requirements/{NNN}-REQ-{product}.md) |
+| **Technical Specification** | [{NNN}-TSPEC-{feature-name}]({NNN}-TSPEC-{feature-name}.md) |
+| **Requirements** | [REQ-XX-XX]({NNN}-REQ-{product}.md) |
 | **Date** | {Date} |
 | **Status** | Planning / In Progress / Complete |
 
@@ -552,14 +552,14 @@ This skill operates downstream of the Product Manager skill. The key documents t
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Requirements | `docs/requirements/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
-| Functional Specs | `docs/specifications/FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional — only for complex features) |
+| Requirements | `docs/{NNN}-{feature-name}/{NNN}-REQ-{product}.md` | What must be built (acceptance criteria) |
+| Functional Specs | `docs/{NNN}-{feature-name}/FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional — only for complex features) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
-| Analysis | `docs/specifications/ANALYSIS-{feature-name}.md` | Codebase analysis and open questions (produced by this skill) |
-| Technical Specs | `docs/specifications/{NNN}-TSPEC-{feature-name}.md` | How it will be built (produced by this skill) |
-| Execution Plans | `docs/plans/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown (produced by this skill) |
-| Test Properties | `docs/testing/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
-| TE Reviews | `docs/testing/in_review/REVIEW-*.md` | Test Engineer review feedback |
+| Analysis | `docs/{NNN}-{feature-name}/ANALYSIS-{feature-name}.md` | Codebase analysis and open questions (produced by this skill) |
+| Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (produced by this skill) |
+| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown (produced by this skill) |
+| Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
+| TE Reviews | `docs/{NNN}-{feature-name}/REVIEW-*.md` | Test Engineer review feedback |
 
 ### ID Conventions
 
@@ -629,7 +629,7 @@ Before marking Phase 5 as complete, verify:
 User: "Implement the Discord bot connection from REQ-DI-01, REQ-DI-02, REQ-DI-03."
 
 Engineer (Phase 1 - Analysis):
-  1. Reads REQ-DI-01 through REQ-DI-03 from docs/requirements/
+  1. Reads REQ-DI-01 through REQ-DI-03 from docs/002-discord-bot/
   2. Uses web search to compare Discord libraries: discord.js vs eris vs
      discord-api-types (API stability, community support, TypeScript types)
   3. Reviews existing codebase: Phase 1 project structure, existing protocols

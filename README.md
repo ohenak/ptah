@@ -10,13 +10,13 @@ Claude Code skills and documentation templates for an engineering team workflow.
   - `backend-engineer` — Backend features with TDD and spec-driven development
   - `test-engineer` — Test strategy, property documentation, and test plans
 - `docs/` — Feature-based documentation (each folder maps to a Discord thread feature name):
-  - `init/` — Phase 1: project scaffolding and `ptah init`
-  - `discord-bot/` — Phase 2: Discord.js client and message handling
-  - `skill-routing/` — Phase 3: orchestration loop and context assembly
-  - `artifact-commits/` — Phase 4: automatic git commits from skill output
-  - `user-questions/` — Phase 5: human-in-the-loop question escalation
-  - `guardrails/` — Phase 6: safety and resource controls
-  - `polish/` — Phase 7: logging, observability, and UX refinements
+  - `001-init/` — Phase 1: project scaffolding and `ptah init`
+  - `002-discord-bot/` — Phase 2: Discord.js client and message handling
+  - `003-skill-routing/` — Phase 3: orchestration loop and context assembly
+  - `004-artifact-commits/` — Phase 4: automatic git commits from skill output
+  - `005-user-questions/` — Phase 5: human-in-the-loop question escalation
+  - `006-guardrails/` — Phase 6: safety and resource controls
+  - `007-polish/` — Phase 7: logging, observability, and UX refinements
   - `requirements/` — Master requirements and traceability matrix
   - `templates/` — Markdown templates for requirements, specifications, plans, and traceability
 

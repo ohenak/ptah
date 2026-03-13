@@ -64,7 +64,7 @@ When a phase is complete, include a `<routing>` tag at the end of your response 
 
 ```
 Phase 2 (Requirements) is complete. Routing to backend-engineer for
-technical feasibility review of `docs/requirements/001-REQ-{feature}.md`.
+technical feasibility review of `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature}.md`.
 
 <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
 ```
@@ -211,7 +211,7 @@ You follow a structured, gate-based workflow. **Each phase must be completed and
 
 7. **Identify gaps.** Look for user stories that lack sufficient requirements, requirements that don't trace to any user story, and missing non-functional requirements (performance, security, reliability, etc.).
 
-8. **Write the Requirements Document.** Produce a complete document following the Requirements Document template (see `docs/templates/requirements-template.md`). Save it to `docs/requirements/{NNN}-REQ-{product-or-feature-name}.md`.
+8. **Write the Requirements Document.** Produce a complete document following the Requirements Document template (see `docs/templates/requirements-template.md`). Save it to `docs/{NNN}-{feature-name}/{NNN}-REQ-{product-or-feature-name}.md`.
 
 9. **Write or Update the Traceability Matrix.** Produce a mapping document that shows every user story linked to its requirements and their specification status (see `docs/templates/traceability-matrix-template.md`). Save it to `docs/requirements/traceability-matrix.md`.
 
@@ -282,7 +282,7 @@ If any of these are not met, the requirements are **not ready** for engineering.
 
 5. **Update the Traceability Matrix.** Extend it to include the REQ → FSPEC mapping where applicable, creating the chain: User Story → Requirement → Functional Specification (→ TSPEC, once engineering produces it).
 
-6. **Write the Functional Specification Document.** Save it to `docs/specifications/FSPEC-{feature-name}.md`.
+6. **Write the Functional Specification Document.** Save it to `docs/{NNN}-{feature-name}/FSPEC-{feature-name}.md`.
 
 **Output:** Functional Specification Document + Updated Traceability Matrix, both in Markdown.
 
@@ -353,18 +353,17 @@ When referencing other items within documents, use the ID directly in square bra
 
 ```
 docs/
+├── {NNN}-{feature-name}/                  # Feature-based folder (derived from Discord thread name)
+│   ├── {NNN}-REQ-{product-name}.md        # Requirements document
+│   ├── FSPEC-{feature-name}.md            # Functional specifications (PM-owned, optional)
+│   ├── ANALYSIS-{feature-name}.md         # Analysis documents (engineer-owned)
+│   ├── {NNN}-TSPEC-{feature-name}.md      # Technical specifications (engineer-owned)
+│   ├── {NNN}-PLAN-TSPEC-{feature}.md      # Execution plans (engineer-owned)
+│   ├── {NNN}-PROPERTIES-{feature}.md      # Test properties (TE-owned)
+│   └── REVIEW-{document-type}-{feature}.md # Review documents (TE-owned)
 ├── requirements/
-│   ├── {NNN}-REQ-{product-name}.md       # Requirements document
-│   └── traceability-matrix.md            # User Story → Requirement → Spec mapping
-├── specifications/
-│   ├── FSPEC-{feature-name}.md           # Functional specifications (PM-owned, optional)
-│   ├── ANALYSIS-{feature-name}.md        # Analysis documents (engineer-owned)
-│   └── {NNN}-TSPEC-{feature-name}.md     # Technical specifications (engineer-owned)
-├── plans/
-│   └── {NNN}-PLAN-TSPEC-{feature}.md     # Execution plans (engineer-owned)
-├── testing/
-│   ├── {NNN}-PROPERTIES-{feature}.md     # Approved test properties (TE-owned)
-│   └── in_review/                        # Documents pending review
+│   ├── 001-REQ-PTAH.md                    # Master requirements document
+│   └── traceability-matrix.md             # User Story → Requirement → Spec mapping
 └── templates/
     ├── requirements-template.md
     ├── specification-template.md
