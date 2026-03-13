@@ -45,15 +45,17 @@ describe("ClaudeCodeClient", () => {
 
   // Task 117: allowedTools defaults
   describe("allowedTools defaults", () => {
-    it("defaults to Edit, Read, Write, Glob, Grep — no Bash access", async () => {
+    it("defaults to full tool access including Bash, WebSearch, WebFetch, Agent", async () => {
       const invokeFn = vi.fn<ClaudeCodeInvokeFn>().mockResolvedValue("ok");
       const client = new ClaudeCodeClient(invokeFn);
 
       await client.invoke(makeRequest());
 
       const callArgs = invokeFn.mock.calls[0][0];
-      expect(callArgs.allowedTools).toEqual(["Edit", "Read", "Write", "Glob", "Grep"]);
-      expect(callArgs.allowedTools).not.toContain("Bash");
+      expect(callArgs.allowedTools).toEqual([
+        "Edit", "Read", "Write", "Glob", "Grep",
+        "Bash", "WebSearch", "WebFetch", "Agent",
+      ]);
     });
 
     it("uses custom allowedTools when provided", async () => {

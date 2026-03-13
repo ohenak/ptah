@@ -134,7 +134,16 @@ Full user story details are in the [master requirements document](001-REQ-PTAH.m
 | P0 | 6 | REQ-DI-08, REQ-RP-05, REQ-SI-07, REQ-SI-08, REQ-SI-10, REQ-NF-02 |
 | P1 | 0 | — |
 
-**Specification status:** All 6 requirements are pending specification (no FSPEC or TSPEC yet).
+**Specification status:** All 6 requirements are covered by FSPEC. See [006-FSPEC-ptah-guardrails.md](006-FSPEC-ptah-guardrails.md).
+
+| Requirement | FSPEC |
+|-------------|-------|
+| REQ-DI-08 | FSPEC-GR-02 |
+| REQ-RP-05 | FSPEC-GR-02 |
+| REQ-SI-07 | FSPEC-GR-01 |
+| REQ-SI-08 | FSPEC-GR-01 |
+| REQ-SI-10 | FSPEC-GR-03 |
+| REQ-NF-02 | FSPEC-GR-01 |
 
 ---
 
