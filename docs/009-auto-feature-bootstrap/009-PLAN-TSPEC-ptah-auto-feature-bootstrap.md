@@ -6,7 +6,7 @@
 | **Requirements** | [009-REQ-PTAH-auto-feature-bootstrap](./009-REQ-PTAH-auto-feature-bootstrap.md) |
 | **Functional Specification** | [009-FSPEC-ptah-auto-feature-bootstrap](./009-FSPEC-ptah-auto-feature-bootstrap.md) |
 | **Date** | March 14, 2026 |
-| **Status** | Draft |
+| **Status** | In Review |
 
 ---
 
