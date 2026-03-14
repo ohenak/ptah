@@ -228,16 +228,27 @@ export type MergeResult = "merged" | "conflict" | "merge-error";
 export interface CommitParams {
   worktreePath: string;
   branch: string;
+  featureBranch: string;
   artifactChanges: string[];
   agentId: string;
   threadName: string;
 }
 
+export type MergeStatus =
+  | MergeResult           // "merged" | "conflict" | "merge-error"
+  | "no-changes"
+  | "commit-error"
+  | "lock-timeout"
+  | "pull-error"
+  | "push-error";
+
 export interface CommitResult {
   commitSha: string | null;
-  mergeStatus: MergeResult | "no-changes" | "commit-error" | "lock-timeout";
+  mergeStatus: MergeStatus;
   branch: string;
   conflictMessage?: string;
+  conflictFiles?: string[];
+  retainedWorktreePath?: string;
 }
 
 export type LogStatus = "completed" | "completed (no changes)" | "conflict" | "error";

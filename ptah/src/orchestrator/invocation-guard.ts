@@ -16,6 +16,7 @@ export interface InvocationGuardParams {
   bundle: ContextBundle;
   worktreePath: string;
   branch: string;
+  featureBranch: string;
   config: PtahConfig;
   shutdownSignal: AbortSignal;
   debugChannelId: string | null;
