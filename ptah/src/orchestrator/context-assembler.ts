@@ -77,25 +77,35 @@ export class DefaultContextAssembler implements ContextAssembler {
     // Build Layer 1: system prompt
     let layer1 = this.buildLayer1(rolePrompt, overviewContent);
 
-    // Build Layer 3: user message
-    const layer3 = this.buildLayer3(
-      resumePattern,
-      agentId,
-      triggerMessage,
-      threadHistory,
-      config,
-    );
+    // Check for ACTION directive in thread history BEFORE building Layer 3.
+    // When an ACTION directive is found, we use a completely different context strategy:
+    // - Layer 3 = ONLY the ACTION message (no thread history, no prior agent work)
+    // - Layer 1 gets the directive injected at the top
+    // This prevents the agent from seeing its own prior work and getting confused.
+    const actionMessage = this.extractActionMessageFromThreadHistory(threadHistory);
+    let layer3: string;
 
-    // Scan thread history for ACTION directives from the most recent bot message(s).
-    // This is the authoritative source — it works regardless of Pattern A vs C detection.
-    const threadActionDirective = this.extractActionFromThreadHistory(threadHistory);
-    if (threadActionDirective) {
-      // Inject into system prompt (Layer 1) — highest priority, agent sees this first
+    if (actionMessage) {
+      const directive = this.extractActionDirective(actionMessage)!;
+      // Inject into system prompt (Layer 1) — highest priority
       layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
         `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
-        `**${threadActionDirective}**\n\n` +
+        `**${directive}**\n\n` +
         `You MUST perform this task. Do NOT review documents. Do NOT summarize prior work. ` +
         `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
+
+      // Layer 3 = ONLY the action message content (strip routing tags)
+      layer3 = actionMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
+      this.logger.info(`ACTION directive detected: "${directive}" — using action-only context (no thread history)`);
+    } else {
+      // No ACTION directive — use normal pattern-based context building
+      layer3 = this.buildLayer3(
+        resumePattern,
+        agentId,
+        triggerMessage,
+        threadHistory,
+        config,
+      );
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
@@ -311,6 +321,21 @@ export class DefaultContextAssembler implements ContextAssembler {
       if (!msg.isBot) continue;
       const directive = this.extractActionDirective(msg.content);
       if (directive) return directive;
+    }
+    return null;
+  }
+
+  /**
+   * Scans thread history (newest-first) for a bot message containing an ACTION directive.
+   * Returns the full message content (not just the ACTION line) so it can be used as Layer 3.
+   * The agent doesn't need to see its own prior work — only the ACTION message matters.
+   */
+  extractActionMessageFromThreadHistory(threadHistory: ThreadMessage[]): string | null {
+    for (let i = threadHistory.length - 1; i >= 0; i--) {
+      const msg = threadHistory[i];
+      if (!msg.isBot) continue;
+      const directive = this.extractActionDirective(msg.content);
+      if (directive) return msg.content;
     }
     return null;
   }

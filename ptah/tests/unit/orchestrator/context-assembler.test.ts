@@ -598,7 +598,7 @@ describe("DefaultContextAssembler", () => {
   });
 
   describe("Pattern A — Task Directive injection", () => {
-    it("prepends Task Directive section when routing message contains ACTION directive", async () => {
+    it("uses only ACTION message as Layer 3 (no thread history) when ACTION directive found", async () => {
       const featureName = "action-feature";
       fs.addExistingDir(`docs/${featureName}`);
 
@@ -634,13 +634,17 @@ describe("DefaultContextAssembler", () => {
         config,
       });
 
-      expect(result.userMessage).toContain("## Task Directive");
+      // Layer 3 should be ONLY the ACTION message content (routing tags stripped)
       expect(result.userMessage).toContain("ACTION: Create TSPEC");
-      expect(result.userMessage).toContain("do NOT review");
-      // Task Directive should appear before Task Reminder
-      const directiveIndex = result.userMessage.indexOf("## Task Directive");
-      const reminderIndex = result.userMessage.indexOf("## Task Reminder");
-      expect(directiveIndex).toBeLessThan(reminderIndex);
+      expect(result.userMessage).toContain("REQ and FSPEC are approved");
+      expect(result.userMessage).not.toContain("<routing>");
+      // Should NOT contain Pattern A sections (no thread history passed)
+      expect(result.userMessage).not.toContain("## Task Reminder");
+      expect(result.userMessage).not.toContain("## Question");
+      expect(result.userMessage).not.toContain("## Answer");
+      // Directive should be in system prompt instead
+      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
+      expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
     });
 
     it("injects ACTIVE TASK DIRECTIVE into system prompt when thread history contains ACTION", async () => {
@@ -781,6 +785,59 @@ describe("DefaultContextAssembler", () => {
       // the system prompt should still contain the ACTION directive from thread history
       expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
       expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
+    });
+
+    it("excludes agent's own prior work from Layer 3 when ACTION directive is present", async () => {
+      const featureName = "no-prior-work-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      // Simulate: eng already reviewed FSPEC (its own prior work), then PM sends ACTION: Create TSPEC
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Build the feature",
+          isBot: false,
+          authorId: "human-1",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "FSPEC review complete. Here is my detailed analysis of the FSPEC...",
+          isBot: true,
+          authorId: "dev-agent",  // Agent's own prior work
+        }),
+        createThreadMessage({
+          id: "msg-3",
+          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+      ];
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-4",
+        content: "Continue.",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: history,
+        triggerMessage,
+        config,
+      });
+
+      // Layer 3 should be ONLY the ACTION message — no prior agent work
+      expect(result.userMessage).toContain("ACTION: Create TSPEC");
+      expect(result.userMessage).not.toContain("FSPEC review complete");
+      expect(result.userMessage).not.toContain("detailed analysis");
+      expect(result.userMessage).not.toContain("Build the feature");
+      // No routing tags leaked
+      expect(result.userMessage).not.toContain("<routing>");
+      // System prompt has the directive
+      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
     });
   });
 
