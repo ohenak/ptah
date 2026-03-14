@@ -87,6 +87,22 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-09] | [REQ-AF-06] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
 | [US-09] | [REQ-AF-07] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
 | [US-09] | [REQ-AF-NF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
+| [US-10], [US-11] | [REQ-FB-01] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-10], [US-11], [US-12] | [REQ-FB-02] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-10] | [REQ-FB-03] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-10] | [REQ-FB-04] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11], [US-12] | [REQ-AB-01] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11], [US-12] | [REQ-AB-02] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11], [US-12] | [REQ-AB-03] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11], [US-12] | [REQ-AB-04] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11], [US-12] | [REQ-MG-01] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-11] | [REQ-MG-02] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-10], [US-11] | [REQ-MG-03] | Pending Spec | P1 | 10 | Pending Spec |
+| [US-10] | [REQ-SK-01] | Pending Spec | P0 | 10 | Pending Spec |
+| [US-10], [US-11] | [REQ-SK-02] | Pending Spec | P1 | 10 | Pending Spec |
+| [US-10], [US-11] | [REQ-PF-NF-01] | Pending Spec | P1 | 10 | Pending Spec |
+| [US-10], [US-11] | [REQ-PF-NF-02] | Pending Spec | P1 | 10 | Pending Spec |
+| [US-10], [US-11] | [REQ-PF-NF-03] | Pending Spec | P0 | 10 | Pending Spec |
 
 ---
 
@@ -105,6 +121,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-07] | System Handles Failures Gracefully | 7 | Partial (6 of 7 FSPEC'd — REQ-SI-09 in Phase 4; REQ-SI-07, REQ-SI-08, REQ-SI-10, REQ-NF-02 in Phase 6) |
 | [US-08] | New Agent is Added to the System | 1 | No (0 of 1 specified) |
 | [US-09] | Developer Starts a New Feature Without Manual Folder Setup | 8 | Yes (8 of 8 FSPEC'd) |
+| [US-10] | Developer Reviews Agent Work Before It Reaches Main | 10 | No (0 of 10 specified) |
+| [US-11] | Developer Runs Multiple Agents in Parallel on the Same Feature | 13 | No (0 of 13 specified) |
+| [US-12] | Developer Runs Different Agent Types in Parallel on the Same Feature | 8 | No (0 of 8 specified) |
 
 ### 3.2 Requirement Coverage
 
@@ -172,6 +191,22 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-AF-06] | overview.md synthesis and creation | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
 | [REQ-AF-07] | Idempotency — skip if folder exists | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
 | [REQ-AF-NF-01] | Bootstrap is synchronous and precedes Phase 1 | 1 | FSPEC'd ([FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)) |
+| [REQ-FB-01] | Feature branch creation | 0 | Pending |
+| [REQ-FB-02] | Feature branch reuse | 0 | Pending |
+| [REQ-FB-03] | Feature branch push to remote | 0 | Pending |
+| [REQ-FB-04] | No direct merge to main | 0 | Pending |
+| [REQ-AB-01] | Agent sub-branch naming | 0 | Pending |
+| [REQ-AB-02] | Agent sub-branch base | 0 | Pending |
+| [REQ-AB-03] | Concurrent agent isolation | 0 | Pending |
+| [REQ-AB-04] | Sub-branch cleanup | 0 | Pending |
+| [REQ-MG-01] | Serialized merge to feature branch | 0 | Pending |
+| [REQ-MG-02] | Merge conflict handling | 0 | Pending |
+| [REQ-MG-03] | Feature branch update before merge | 0 | Pending |
+| [REQ-SK-01] | Remove agent git checkout instructions | 0 | Pending |
+| [REQ-SK-02] | Agent awareness of worktree context | 0 | Pending |
+| [REQ-PF-NF-01] | Merge latency | 0 | Pending |
+| [REQ-PF-NF-02] | Worktree disk usage | 0 | Pending |
+| [REQ-PF-NF-03] | Backward compatibility | 0 | Pending |
 
 ### 3.3 Orphan Check
 
@@ -182,7 +217,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 5 of 62 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phases 2, 7: 5 pending)
+- 22 of 79 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phase 10: 17 pending; Phases 2, 7: 5 pending)
 
 ---
 
@@ -290,6 +325,27 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-AF-07] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
 | [REQ-AF-NF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Pending TSPEC | P0 | [US-09] |
 
+### Phase 10 — Parallel Feature Development
+
+| Requirement | Specification | Priority | User Scenarios |
+|-------------|---------------|----------|----------------|
+| [REQ-FB-01] | Pending | P0 | [US-10], [US-11] |
+| [REQ-FB-02] | Pending | P0 | [US-10], [US-11], [US-12] |
+| [REQ-FB-03] | Pending | P0 | [US-10] |
+| [REQ-FB-04] | Pending | P0 | [US-10] |
+| [REQ-AB-01] | Pending | P0 | [US-11], [US-12] |
+| [REQ-AB-02] | Pending | P0 | [US-11], [US-12] |
+| [REQ-AB-03] | Pending | P0 | [US-11], [US-12] |
+| [REQ-AB-04] | Pending | P0 | [US-11], [US-12] |
+| [REQ-MG-01] | Pending | P0 | [US-11], [US-12] |
+| [REQ-MG-02] | Pending | P0 | [US-11] |
+| [REQ-MG-03] | Pending | P1 | [US-10], [US-11] |
+| [REQ-SK-01] | Pending | P0 | [US-10] |
+| [REQ-SK-02] | Pending | P1 | [US-10], [US-11] |
+| [REQ-PF-NF-01] | Pending | P1 | [US-10], [US-11] |
+| [REQ-PF-NF-02] | Pending | P1 | [US-10], [US-11] |
+| [REQ-PF-NF-03] | Pending | P0 | [US-10], [US-11] |
+
 ---
 
 ## 5. Document References
@@ -312,6 +368,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | Specifications (Phases 6-7) | Pending | Detailed specifications for remaining phases |
 | Requirements — Phase 9 | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | Phase 9 (Auto Feature Bootstrap) requirements — 8 requirements |
 | FSPEC — auto feature bootstrap | [009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Functional specification for Phase 9 — 1 FSPEC (FSPEC-AF-01) |
+| Requirements — Phase 10 | [010-REQ-ptah-parallel-feature-development](../010-parallel-feature-development/010-REQ-ptah-parallel-feature-development.md) | Phase 10 (Parallel Feature Development) requirements — 17 requirements |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -331,6 +388,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 1.8 | March 11, 2026 | Backend Engineer | Phase 5 TSPEC (005-TSPEC-ptah-user-questions v1.1) approved after PM + TE reviews (F-01/F-02 addressed). Execution plan (005-PLAN-TSPEC-ptah-user-questions, 65 tasks) approved after TE review. Phase 5 requirements updated to "Specified"; Phase 5 view updated with TSPEC + Plan columns. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) = 43 of 54 specified (11 pending). |
 | 1.9 | March 13, 2026 | Product Manager | Added FSPEC mappings for all 6 Phase 6 requirements. 3 FSPECs created: FSPEC-GR-01 (retry/failure), FSPEC-GR-02 (turn limits), FSPEC-GR-03 (graceful shutdown). Phase 6 view updated with FSPEC column. Coverage: 9 TSPEC'd (Phase 1) + 21 FSPEC'd (Phase 3) + 6 FSPEC'd (Phase 4) + 7 Specified (Phase 5) + 6 FSPEC'd (Phase 6) = 49 of 54 specified (5 pending — Phases 2 and 7). |
 | 2.0 | March 13, 2026 | Product Manager | Added Phase 9 (Auto Feature Bootstrap). New user story US-09. 8 requirements added (REQ-AF-01 through REQ-AF-07, REQ-AF-NF-01). 1 FSPEC created: FSPEC-AF-01 (Feature Folder Bootstrap). Phase 9 view added. Total requirements: 62. Coverage: 49 of 54 original + 8 of 8 Phase 9 FSPEC'd = 57 of 62 specified (5 pending — Phases 2 and 7). |
+| 2.1 | March 14, 2026 | Product Manager | Added Phase 10 (Parallel Feature Development). 3 new user stories (US-10, US-11, US-12). 17 requirements added across 4 domains: FB (Feature Branching, 4 reqs), AB (Agent Branching, 4 reqs), MG (Merge Strategy, 3 reqs), SK (Skill Alignment, 2 reqs), plus 3 non-functional (PF-NF). Phase 10 view added. Total requirements: 79. Coverage: 57 of 62 prior + 0 of 17 Phase 10 = 57 of 79 specified (22 pending). |
 
 ---
 
