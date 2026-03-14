@@ -56,9 +56,13 @@ Every task you perform follows this git workflow. No exceptions.
 
 ### After Completing the Task
 
-3. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use clear, descriptive commit messages. **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
-4. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
-5. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
+> **⚠ HARD RULE: Every file you create MUST be committed and pushed before you output any routing tags or summary messages. If you skip this, the file only exists in your local workspace and no other agent can read it. This is the #1 cause of lost review artifacts.**
+
+3. **Write all artifacts to disk using the Write tool.** Do NOT just include document content in your response text — you must use the Write tool to create the file. Verify the file exists afterward.
+4. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use clear, descriptive commit messages. **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
+5. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
+6. **Verify the push succeeded** by running `git log --oneline -1` and confirming the commit is present.
+7. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
 
 ---
 
@@ -102,7 +106,7 @@ You support the following discrete tasks. Each invocation focuses on one task.
 9. **Define scope boundaries.** Explicitly state in scope, out of scope, and assumptions.
 10. **Write the Requirements Document.** Save to `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`. Mark the document status as **Draft**.
 11. **Write or Update the Traceability Matrix.** Save to `docs/requirements/traceability-matrix.md`.
-12. **Commit and push** following the git workflow.
+12. **CRITICAL — Commit and push BEFORE routing.** Stage the REQ document and traceability matrix, commit with `docs({NNN}): add requirements for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 13. **Route for review** — see Task 3.
 
 **Output:** Requirements Document (Draft) + Traceability Matrix.
@@ -137,7 +141,7 @@ You support the following discrete tasks. Each invocation focuses on one task.
    - **Open questions** — Unresolved product decisions (flag for user)
 7. **Update the Traceability Matrix** to include REQ → FSPEC mapping.
 8. **Write the Functional Specification Document.** Save to `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md`. Mark the document status as **Draft**.
-9. **Commit and push** following the git workflow.
+9. **CRITICAL — Commit and push BEFORE routing.** Stage the FSPEC document and traceability matrix, commit with `docs({NNN}): add FSPEC for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 10. **Route for review** — see Task 3.
 
 **Output:** Functional Specification Document (Draft) + Updated Traceability Matrix.
@@ -200,12 +204,19 @@ You support the following discrete tasks. Each invocation focuses on one task.
 2. **Read the deliverable thoroughly** within your product scope.
 3. **Cross-reference against your requirements and FSPECs.** Check for drift, reinterpretation, or gaps.
 4. **Use web search** if you need to validate product assumptions or research alternatives.
-5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-product-manager-{document-type}.md` containing:
+5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-product-manager-{document-type}.md` using the Write tool. You MUST use the Write tool to create this file on disk — do NOT just include the review content in your response text. The file must contain:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the requirements
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-6. **Commit and push** following the git workflow.
+6. **CRITICAL — Commit and push BEFORE routing.** Other agents cannot read your review unless it is committed and pushed. Do all of these in sequence:
+   1. Stage the cross-review file: `git add docs/{NNN}-{feature-name}/CROSS-REVIEW-product-manager-{document-type}.md`
+   2. Commit: `git commit -m "docs({NNN}): add product-manager cross-review of {document-type}"`
+   3. Push: `git push origin feat-{feature-name}`
+   4. Verify the commit landed: `git log --oneline -1` — confirm the commit message matches
+
+   **Do NOT proceed to step 7 until the push succeeds.** If the push fails, diagnose and fix before continuing.
+
 7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
 
    Example (when reviewing a TSPEC requested by backend-engineer):
