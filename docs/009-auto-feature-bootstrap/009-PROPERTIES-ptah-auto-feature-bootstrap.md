@@ -12,8 +12,8 @@
 | **Version** | 1.0 |
 | **Date** | March 14, 2026 |
 | **Author** | Test Engineer |
-| **Status** | Draft |
-| **Approval Date** | Pending |
+| **Status** | Approved |
+| **Approval Date** | March 14, 2026 |
 
 ---
 
@@ -223,11 +223,11 @@ Properties that define what the system must NOT do.
 |-------------|------------|----------|
 | [REQ-AF-01] Feature folder existence check | PROP-AF-01, PROP-AF-02, PROP-AF-03, PROP-AF-34 | Full |
 | [REQ-AF-02] NNN prefix extraction from numbered thread | PROP-AF-04, PROP-AF-19, PROP-AF-29, PROP-AF-44, PROP-AF-45 | Full |
-| [REQ-AF-03] NNN auto-assignment for unnumbered threads | PROP-AF-05, PROP-AF-06 | Full |
+| [REQ-AF-03] NNN auto-assignment for unnumbered threads | PROP-AF-05, PROP-AF-06, PROP-AF-46 | Full |
 | [REQ-AF-04] Feature slug derivation (slugification) | PROP-AF-07, PROP-AF-08, PROP-AF-09, PROP-AF-10, PROP-AF-11 | Full |
 | [REQ-AF-05] Feature folder creation | PROP-AF-12, PROP-AF-21, PROP-AF-22, PROP-AF-42, PROP-AF-43 | Full |
 | [REQ-AF-06] overview.md synthesis and creation | PROP-AF-13, PROP-AF-26, PROP-AF-27, PROP-AF-28, PROP-AF-30 | Full |
-| [REQ-AF-07] Idempotency — skip if folder exists | PROP-AF-34, PROP-AF-35, PROP-AF-48 | Full |
+| [REQ-AF-07] Idempotency — skip if folder exists | PROP-AF-34, PROP-AF-35, PROP-AF-36, PROP-AF-37, PROP-AF-48 | Full |
 | [REQ-AF-NF-01] Bootstrap completes before Phase 1 | PROP-AF-14, PROP-AF-24, PROP-AF-47 | Full |
 
 ### 5.2 Specification Coverage
@@ -306,7 +306,7 @@ All requirements are P0. Full coverage achieved.
 
 | Role | Name | Date | Status |
 |------|------|------|--------|
-| Product Owner | — | — | Pending |
+| Product Owner | Product Manager | March 14, 2026 | Approved |
 | Technical Lead | — | — | Pending |
 
 ---
@@ -316,6 +316,7 @@ All requirements are P0. Full coverage achieved.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Test Engineer | Initial properties document for Phase 9 — Auto Feature Bootstrap. 42 positive properties + 6 negative = 48 total. Covers all 8 requirements and all FSPEC-AF-01 business rules. |
+| 1.1 | March 14, 2026 | Test Engineer | Fixed §5.1 traceability gaps per PM cross-review (F-01, F-02). REQ-AF-07 row: added PROP-AF-36, PROP-AF-37. REQ-AF-03 row: added PROP-AF-46. Status updated to Approved. |
 
 ---
 
