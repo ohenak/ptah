@@ -77,11 +77,9 @@ export class DefaultContextAssembler implements ContextAssembler {
     // Build Layer 1: system prompt
     let layer1 = this.buildLayer1(rolePrompt, overviewContent);
 
-    // Check for ACTION directive in thread history BEFORE building Layer 3.
-    // When an ACTION directive is found, we use a completely different context strategy:
-    // - Layer 3 = ONLY the ACTION message (no thread history, no prior agent work)
-    // - Layer 1 gets the directive injected at the top
-    // This prevents the agent from seeing its own prior work and getting confused.
+    // Layer 3: always use ONLY the latest triggering message — never include thread history.
+    // All prior work is documented in feature files (Layer 2), so agents don't need history.
+    // For ACTION directives, use the ACTION message; otherwise use the trigger message.
     const actionMessage = this.extractActionMessageFromThreadHistory(threadHistory);
     let layer3: string;
 
@@ -98,14 +96,8 @@ export class DefaultContextAssembler implements ContextAssembler {
       layer3 = actionMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
       this.logger.info(`ACTION directive detected: "${directive}" — using action-only context (no thread history)`);
     } else {
-      // No ACTION directive — use normal pattern-based context building
-      layer3 = this.buildLayer3(
-        resumePattern,
-        agentId,
-        triggerMessage,
-        threadHistory,
-        config,
-      );
+      // No ACTION directive — use the trigger message as-is (the latest message that triggered this agent)
+      layer3 = triggerMessage.content;
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
@@ -232,74 +224,6 @@ export class DefaultContextAssembler implements ContextAssembler {
     return parts.join("\n\n");
   }
 
-  private buildLayer3(
-    pattern: ResumePattern,
-    agentId: string,
-    triggerMessage: ThreadMessage,
-    threadHistory: ThreadMessage[],
-    config: PtahConfig,
-  ): string {
-    if (pattern === "fresh") {
-      return triggerMessage.content;
-    }
-
-    if (pattern === "pattern_a") {
-      return this.buildPatternALayer3(agentId, triggerMessage, threadHistory);
-    }
-
-    return this.buildPatternCLayer3(agentId, threadHistory, config);
-  }
-
-  private buildPatternALayer3(
-    agentId: string,
-    triggerMessage: ThreadMessage,
-    threadHistory: ThreadMessage[],
-  ): string {
-    // Find the task reminder: look for routing metadata in thread history
-    // Fall back to thread's first message if not determinable
-    const taskReminder = threadHistory.length > 0
-      ? threadHistory[0].content
-      : triggerMessage.content;
-
-    // Find the question: consecutive messages from the asking agent (the bot that isn't us)
-    // The asking agent is the one whose routing signal targets us
-    const botMessages = threadHistory.filter((m) => m.isBot);
-    const lastBotMessage = botMessages[botMessages.length - 1];
-    const askingAgentId = lastBotMessage.authorId;
-
-    // Find consecutive messages from the asking agent at the end of bot messages
-    const questionParts: string[] = [];
-    for (let i = botMessages.length - 1; i >= 0; i--) {
-      if (botMessages[i].authorId === askingAgentId) {
-        questionParts.unshift(botMessages[i].content);
-      } else {
-        break;
-      }
-    }
-    const question = questionParts.join("\n\n");
-
-    // The answer is the trigger message (the response to the question)
-    const answer = triggerMessage.content;
-
-    const parts: string[] = [];
-
-    // Extract ACTION directive from the routing message and promote it to the top
-    const actionDirective = this.extractActionDirective(question);
-    if (actionDirective) {
-      parts.push(
-        `## Task Directive\n\n` +
-        `**⚠ The previous agent has assigned you a specific task. Perform this task — do NOT review or re-examine the input documents.**\n\n` +
-        `**${actionDirective}**`,
-      );
-    }
-
-    parts.push(`## Task Reminder\n\n${taskReminder}`);
-    parts.push(`## Question\n\n${question}`);
-    parts.push(`## Answer\n\n${answer}`);
-
-    return parts.join("\n\n");
-  }
-
   /**
    * Extracts an ACTION directive (e.g., "ACTION: Create TSPEC") from the routing message.
    * Returns the full ACTION line, or null if no directive is found.
@@ -340,44 +264,6 @@ export class DefaultContextAssembler implements ContextAssembler {
     return null;
   }
 
-  private buildPatternCLayer3(
-    agentId: string,
-    threadHistory: ThreadMessage[],
-    config: PtahConfig,
-  ): string {
-    // Collect all messages for context, counting only agent-posted embeds (bot messages)
-    // Human messages are included but don't affect turn count
-    const botTurns = threadHistory.filter((m) => m.isBot && m.authorId === agentId);
-    const turnNumber = botTurns.length + 1; // Current turn
-
-    // Collect prior turns and human context messages in order
-    const contextParts: string[] = [];
-    let currentTurnNumber = 0;
-
-    for (const msg of threadHistory) {
-      if (msg.isBot && msg.authorId === agentId) {
-        currentTurnNumber++;
-        contextParts.push(`## Turn ${currentTurnNumber}\n\n${msg.content}`);
-      } else if (!msg.isBot) {
-        contextParts.push(`## Human Feedback\n\n${msg.content}`);
-      }
-    }
-
-    // Determine if final-review instruction should be injected
-    // Inject at turn 3 only (not turn 4+)
-    const maxTurns = config.orchestrator.max_turns_per_thread;
-    const injectFinalReview = turnNumber === 3;
-
-    const parts = [...contextParts];
-
-    if (injectFinalReview) {
-      parts.push(
-        "## Final Review Instruction\n\nThis is your final review iteration. Ensure all feedback has been addressed and provide your final assessment.",
-      );
-    }
-
-    return parts.join("\n\n");
-  }
 
   private countTurns(
     agentId: string,
