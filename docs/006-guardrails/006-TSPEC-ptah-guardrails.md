@@ -6,7 +6,7 @@
 | **Functional Specifications** | [FSPEC-GR-01], [FSPEC-GR-02], [FSPEC-GR-03] — [006-FSPEC-ptah-guardrails](./006-FSPEC-ptah-guardrails.md) |
 | **Analysis** | Inline — FSPEC contains full behavioral specification; codebase analysis performed inline |
 | **Date** | March 13, 2026 |
-| **Status** | Draft — v1.1 (TE review findings addressed) |
+| **Status** | Approved |
 
 ---
 
