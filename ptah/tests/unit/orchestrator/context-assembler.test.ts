@@ -1146,4 +1146,46 @@ describe("DefaultContextAssembler", () => {
       expect(result.systemPrompt).toContain("Notes content.");
     });
   });
+
+  // Phase 9 — AF-R1 contract: locks down extractFeatureName() behavior that PM Phase 0 depends on.
+  // If extractFeatureName() changes, these tests break, signaling that SKILL.md must be updated.
+  describe("extractFeatureName — Phase 9 AF-R1 contract", () => {
+    // Case 1: Standard numbered thread — PM folder matches context-assembler path (happy path, AT-AF-01)
+    it("strips after em-dash for standard numbered thread name (AT-AF-01 path)", () => {
+      expect(
+        assembler.extractFeatureName(
+          "009-auto-feature-bootstrap \u2014 create FSPEC",
+        ),
+      ).toBe("009-auto-feature-bootstrap");
+      // PM slugification of "009-auto-feature-bootstrap" is a no-op (already lowercase alnum+hyphen)
+      // PM creates docs/009-auto-feature-bootstrap/ which context-assembler can find ✓
+    });
+
+    // Case 2: Unnumbered thread with em-dash — illustrates known AF-R8 mismatch (AT-AF-03 path)
+    it("strips after em-dash for unnumbered thread name (AT-AF-03 path)", () => {
+      expect(
+        assembler.extractFeatureName("auth redesign \u2014 define scope"),
+      ).toBe("auth redesign");
+      // PM slugifies "auth redesign" → "auth-redesign", auto-assigns NNN → "008-auth-redesign"
+      // context-assembler returns "auth redesign" (spaces, no NNN) — known mismatch per AF-R8
+    });
+
+    // Case 3: No em-dash separator — full name returned, known limitation AF-R8
+    it("returns full thread name when no em-dash separator present (known limitation AF-R8)", () => {
+      expect(
+        assembler.extractFeatureName("create requirements for auth"),
+      ).toBe("create requirements for auth");
+      // PM slugifies → "create-requirements-for-auth", prepends NNN
+      // context-assembler returns "create requirements for auth" with spaces — known mismatch per AF-R8
+      // Mitigation: developers should use NNN-slug — task description thread naming convention
+    });
+
+    // Case 4: Multiple em-dashes — strips at FIRST occurrence only (genuine new coverage)
+    it("strips correctly for thread names with multiple em-dashes (first occurrence only)", () => {
+      expect(
+        assembler.extractFeatureName("my-feature \u2014 create spec \u2014 v2"),
+      ).toBe("my-feature");
+      // Only strips at first " — " occurrence; subsequent em-dashes are ignored
+    });
+  });
 });
