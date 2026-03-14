@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE9 |
 | **Parent Document** | [009-REQ-PTAH-auto-feature-bootstrap](./009-REQ-PTAH-auto-feature-bootstrap.md) |
-| **Version** | 1.3 |
+| **Version** | 1.4 |
 | **Date** | March 14, 2026 |
 | **Author** | Product Manager |
 | **Status** | Approved |
@@ -432,6 +432,8 @@ THEN:  1. No " — " separator found → use full thread name: "create requireme
        6. I create: docs/008-create-requirements-for-auth/
        7. overview.md written and begins "# 008 Create Requirements For Auth"
        8. I proceed to Phase 1
+
+> **Known limitation (per AF-R8):** For threads with no `" — "` separator that are also unnumbered, the folder created by the PM may not match the path `extractFeatureName()` resolves. `extractFeatureName()` returns the raw thread name `"create requirements for auth"` (spaces preserved, no NNN prefix), so the context assembler would look for a path that does not match the PM-created folder. Developers should follow the `{NNN}-{feature-slug} — {task}` naming convention for full context-assembler compatibility.
 ```
 
 ### 3.8 Dependencies
@@ -468,6 +470,7 @@ THEN:  1. No " — " separator found → use full thread name: "create requireme
 | 1.1 | March 13, 2026 | Product Manager | Added Step 2f (empty-slug fallback to "feature") to behavioral flow; aligned edge case §3.6 row 2 with behavioral flow; updated status to Ready for Engineering Review |
 | 1.2 | March 13, 2026 | Product Manager | F-01: corrected em-dash description in Step 1b (was "hyphen-hyphen", now "em-dash U+2014"); F-02: corrected edge case §3.6 row 1 — bare-number thread slugs go through auto-NNN path, not `docs/009/`; Q-01: extended AF-R8 to document known slugification scope limitation for non-standard thread names; status updated to Approved |
 | 1.3 | March 14, 2026 | Product Manager | Addressed QA cross-review findings: F-TE-01: added AT-AF-08 (empty-slug fallback path); F-TE-02: updated Step 8 with explicit pre-write existence check (8a/8b) and added AT-AF-09 (race-condition overview.md skip); F-TE-03: added AT-AF-10 (NNN=001 base case — no numbered folders); F-TE-04: added AT-AF-11 (overview.md write failure halt); F-TE-05: removed "or similar" from AT-AF-04 title (deterministic output); F-TE-07: added AT-AF-12 (no separator thread name). Total ATs: 12. Status remains Approved. |
+| 1.4 | March 14, 2026 | Product Manager | PM cross-review (F-PM-01): added known-limitation note to AT-AF-12 re context-assembler mismatch for no-separator/unnumbered threads (extends AF-R8, consistent with §3.6 row 1). REQ document status updated to Approved. |
 
 ---
 
