@@ -28,6 +28,12 @@ export interface GitClient {
   hasUnmergedCommits(branch: string): Promise<boolean>;
   diffWorktreeIncludingUntracked(worktreePath: string): Promise<string[]>;
   branchExists(branch: string): Promise<boolean>;
+
+  // --- Phase 6 ---
+  hasUncommittedChanges(worktreePath: string): Promise<boolean>;
+  resetHardInWorktree(worktreePath: string): Promise<void>;
+  cleanInWorktree(worktreePath: string): Promise<void>;
+  addAllInWorktree(worktreePath: string): Promise<void>;
 }
 
 export class NodeGitClient implements GitClient {
@@ -276,6 +282,29 @@ export class NodeGitClient implements GitClient {
     } catch {
       return false;
     }
+  }
+
+  // --- Phase 6 ---
+
+  async hasUncommittedChanges(worktreePath: string): Promise<boolean> {
+    try {
+      const { stdout } = await execFileAsync("git", ["-C", worktreePath, "status", "--porcelain"], {});
+      return stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async resetHardInWorktree(worktreePath: string): Promise<void> {
+    await execFileAsync("git", ["-C", worktreePath, "reset", "--hard", "HEAD"], {});
+  }
+
+  async cleanInWorktree(worktreePath: string): Promise<void> {
+    await execFileAsync("git", ["-C", worktreePath, "clean", "-fd"], {});
+  }
+
+  async addAllInWorktree(worktreePath: string): Promise<void> {
+    await execFileAsync("git", ["-C", worktreePath, "add", "-A"], {});
   }
 }
 
