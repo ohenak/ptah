@@ -57,9 +57,9 @@ Every task you perform follows this git workflow. No exceptions.
 
 ### After Completing the Task
 
-3. **Commit changes in logical commits.** Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `test`, `docs`, `chore`).
-4. **Push to the remote branch:** `git push origin feat-{feature-name}`
-5. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing after pushing.
+3. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `test`, `docs`, `chore`). **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
+4. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
+5. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
 
 ---
 
@@ -309,7 +309,7 @@ Examples:
 
 **When receiving review feedback:** Read the cross-review file referenced in the routing message to get the full feedback details.
 
-These files are ephemeral working artifacts and are excluded from version control via `.gitignore`.
+These files are committed and pushed to the feature branch so that other agents can read them when routed.
 
 ---
 
