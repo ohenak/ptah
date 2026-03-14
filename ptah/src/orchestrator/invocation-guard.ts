@@ -43,7 +43,7 @@ export class DefaultInvocationGuard implements InvocationGuard {
 
   async invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult> {
     const {
-      agentId, threadId, threadName, bundle, worktreePath, branch,
+      agentId, threadId, threadName, bundle, worktreePath, branch, featureBranch,
       config, shutdownSignal, debugChannelId,
     } = params;
 
@@ -117,7 +117,7 @@ export class DefaultInvocationGuard implements InvocationGuard {
       let commitResult: CommitResult;
       try {
         commitResult = await this.artifactCommitter.commitAndMerge({
-          agentId, threadName, worktreePath, branch,
+          agentId, threadName, worktreePath, branch, featureBranch,
           artifactChanges: invocationResult.artifactChanges,
         });
       } catch (error) {
