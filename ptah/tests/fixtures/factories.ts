@@ -183,6 +183,32 @@ export class FakeGitClient implements GitClient {
   addAllCalls: string[] = [];
   commitCalls: Array<{ path: string; message: string }> = [];
 
+  // Phase 10 state
+  createWorktreeFromBranchCalls: Array<{newBranch: string; path: string; baseBranch: string}> = [];
+  createWorktreeFromBranchError: Error | null = null;
+
+  checkoutBranchInWorktreeCalls: Array<{branch: string; path: string}> = [];
+  checkoutBranchInWorktreeError: Error | null = null;
+
+  createBranchFromRefCalls: Array<{branch: string; ref: string}> = [];
+  createBranchFromRefError: Error | null = null;
+
+  pullInWorktreeCalls: Array<{worktreePath: string; remote: string; branch: string}> = [];
+  pullInWorktreeError: Error | null = null;
+
+  mergeInWorktreeResult: MergeResult = "merged";
+  mergeInWorktreeCalls: Array<{worktreePath: string; branch: string}> = [];
+  mergeInWorktreeError: Error | null = null;
+
+  abortMergeInWorktreeCalls: string[] = [];
+  abortMergeInWorktreeError: Error | null = null;
+
+  getConflictedFilesResult: string[] = [];
+  getConflictedFilesCalls: string[] = [];
+
+  pushInWorktreeCalls: Array<{worktreePath: string; remote: string; branch: string}> = [];
+  pushInWorktreeError: Error | null = null;
+
   async hasUncommittedChanges(_worktreePath: string): Promise<boolean> {
     return this.hasUncommittedChangesResult;
   }
@@ -194,6 +220,53 @@ export class FakeGitClient implements GitClient {
   }
   async addAllInWorktree(worktreePath: string): Promise<void> {
     this.addAllCalls.push(worktreePath);
+  }
+
+  // Phase 10 methods
+
+  async createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void> {
+    this.createWorktreeFromBranchCalls.push({ newBranch, path, baseBranch });
+    if (this.createWorktreeFromBranchError) throw this.createWorktreeFromBranchError;
+    const wt = { path, branch: newBranch };
+    this.worktrees.push(wt);
+    this.createdWorktrees.push(wt);
+  }
+
+  async checkoutBranchInWorktree(branch: string, path: string): Promise<void> {
+    this.checkoutBranchInWorktreeCalls.push({ branch, path });
+    if (this.checkoutBranchInWorktreeError) throw this.checkoutBranchInWorktreeError;
+    this.worktrees.push({ path, branch });
+  }
+
+  async createBranchFromRef(branch: string, ref: string): Promise<void> {
+    this.createBranchFromRefCalls.push({ branch, ref });
+    if (this.createBranchFromRefError) throw this.createBranchFromRefError;
+  }
+
+  async pullInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    this.pullInWorktreeCalls.push({ worktreePath, remote, branch });
+    if (this.pullInWorktreeError) throw this.pullInWorktreeError;
+  }
+
+  async mergeInWorktree(worktreePath: string, branch: string): Promise<MergeResult> {
+    this.mergeInWorktreeCalls.push({ worktreePath, branch });
+    if (this.mergeInWorktreeError) throw this.mergeInWorktreeError;
+    return this.mergeInWorktreeResult;
+  }
+
+  async abortMergeInWorktree(worktreePath: string): Promise<void> {
+    this.abortMergeInWorktreeCalls.push(worktreePath);
+    if (this.abortMergeInWorktreeError) throw this.abortMergeInWorktreeError;
+  }
+
+  async getConflictedFiles(worktreePath: string): Promise<string[]> {
+    this.getConflictedFilesCalls.push(worktreePath);
+    return this.getConflictedFilesResult;
+  }
+
+  async pushInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    this.pushInWorktreeCalls.push({ worktreePath, remote, branch });
+    if (this.pushInWorktreeError) throw this.pushInWorktreeError;
   }
 
   async isRepo(): Promise<boolean> {
@@ -934,7 +1007,7 @@ export function defaultCommitResult(): CommitResult {
   return {
     commitSha: "abc1234",
     mergeStatus: "merged",
-    branch: "ptah/dev-agent/thread-1/fake",
+    branch: "ptah/test-feature/dev-agent/fakeid",
   };
 }
 

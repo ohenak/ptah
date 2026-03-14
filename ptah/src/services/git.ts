@@ -34,6 +34,16 @@ export interface GitClient {
   resetHardInWorktree(worktreePath: string): Promise<void>;
   cleanInWorktree(worktreePath: string): Promise<void>;
   addAllInWorktree(worktreePath: string): Promise<void>;
+
+  // --- Phase 10 ---
+  createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void>;
+  checkoutBranchInWorktree(branch: string, path: string): Promise<void>;
+  createBranchFromRef(branch: string, ref: string): Promise<void>;
+  pullInWorktree(worktreePath: string, remote: string, branch: string): Promise<void>;
+  mergeInWorktree(worktreePath: string, branch: string): Promise<MergeResult>;
+  abortMergeInWorktree(worktreePath: string): Promise<void>;
+  getConflictedFiles(worktreePath: string): Promise<string[]>;
+  pushInWorktree(worktreePath: string, remote: string, branch: string): Promise<void>;
 }
 
 export class NodeGitClient implements GitClient {
