@@ -12,7 +12,14 @@ import {
   FakeArtifactCommitter,
   FakeAgentLogWriter,
   FakeMessageDeduplicator,
+  FakeQuestionStore,
+  FakeQuestionPoller,
+  FakePatternBContextBuilder,
+  FakeInvocationGuard,
+  FakeThreadStateManager,
+  FakeWorktreeRegistry,
   defaultTestConfig,
+  defaultCommitResult,
   createThreadMessage,
 } from "../../fixtures/factories.js";
 import { DefaultOrchestrator } from "../../../src/orchestrator/orchestrator.js";

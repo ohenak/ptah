@@ -6,6 +6,9 @@ import { DefaultSkillInvoker } from "../../../src/orchestrator/skill-invoker.js"
 import { DefaultResponsePoster } from "../../../src/orchestrator/response-poster.js";
 import { InMemoryThreadQueue } from "../../../src/orchestrator/thread-queue.js";
 import { CharTokenCounter } from "../../../src/orchestrator/token-counter.js";
+import { DefaultInvocationGuard } from "../../../src/orchestrator/invocation-guard.js";
+import { InMemoryWorktreeRegistry } from "../../../src/orchestrator/worktree-registry.js";
+import { InMemoryThreadStateManager } from "../../../src/orchestrator/thread-state-manager.js";
 import {
   FakeDiscordClient,
   FakeLogger,
@@ -15,6 +18,9 @@ import {
   FakeArtifactCommitter,
   FakeAgentLogWriter,
   FakeMessageDeduplicator,
+  FakeQuestionStore,
+  FakeQuestionPoller,
+  FakePatternBContextBuilder,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -30,6 +36,7 @@ describe("Orchestrator routing loop integration", () => {
   let orchestrator: DefaultOrchestrator;
   let threadQueue: InMemoryThreadQueue;
   let artifactCommitter: FakeArtifactCommitter;
+  let abortController: AbortController;
 
   beforeEach(() => {
     discord = new FakeDiscordClient();
@@ -39,6 +46,7 @@ describe("Orchestrator routing loop integration", () => {
     skillClient = new FakeSkillClient();
     config = defaultTestConfig();
     threadQueue = new InMemoryThreadQueue();
+    abortController = new AbortController();
 
     // Set up role mentions so routing can resolve agent from @mention
     config.agents.role_mentions = {
@@ -61,6 +69,18 @@ describe("Orchestrator routing loop integration", () => {
     const skillInvoker = new DefaultSkillInvoker(skillClient, gitClient, logger);
     const responsePoster = new DefaultResponsePoster(discord, logger);
 
+    // Phase 6: wire up InvocationGuard with the same skillInvoker and artifactCommitter
+    artifactCommitter = new FakeArtifactCommitter();
+    const invocationGuard = new DefaultInvocationGuard(
+      skillInvoker,
+      artifactCommitter,
+      gitClient,
+      discord,
+      logger,
+    );
+    const worktreeRegistry = new InMemoryWorktreeRegistry();
+    const threadStateManager = new InMemoryThreadStateManager();
+
     orchestrator = new DefaultOrchestrator({
       discordClient: discord,
       routingEngine,
@@ -71,9 +91,18 @@ describe("Orchestrator routing loop integration", () => {
       logger,
       config,
       gitClient,
-      artifactCommitter: artifactCommitter = new FakeArtifactCommitter(),
+      artifactCommitter,
       agentLogWriter: new FakeAgentLogWriter(),
       messageDeduplicator: new FakeMessageDeduplicator(),
+      // Phase 5 (needed for full orchestrator):
+      questionStore: new FakeQuestionStore(),
+      questionPoller: new FakeQuestionPoller(),
+      patternBContextBuilder: new FakePatternBContextBuilder(),
+      // Phase 6 additions:
+      invocationGuard,
+      threadStateManager,
+      worktreeRegistry,
+      shutdownSignal: abortController.signal,
     });
   });
 

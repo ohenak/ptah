@@ -24,6 +24,9 @@ import { InMemoryMessageDeduplicator } from "../src/orchestrator/message-dedupli
 import { DefaultQuestionStore } from "../src/orchestrator/question-store.js";
 import { DefaultQuestionPoller } from "../src/orchestrator/question-poller.js";
 import { DefaultPatternBContextBuilder } from "../src/orchestrator/pattern-b-context-builder.js";
+import { InMemoryWorktreeRegistry } from "../src/orchestrator/worktree-registry.js";
+import { InMemoryThreadStateManager } from "../src/orchestrator/thread-state-manager.js";
+import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -140,6 +143,9 @@ async function main(): Promise<void> {
       const responsePoster = new DefaultResponsePoster(discord, logger);
       const threadQueue = new InMemoryThreadQueue();
 
+      // Phase 6: Abort controller for graceful shutdown
+      const abortController = new AbortController();
+
       // Phase 4: Artifact commit pipeline services
       const mergeLock = new AsyncMutex();
       const artifactCommitter = new DefaultArtifactCommitter(git, mergeLock, logger);
@@ -164,6 +170,17 @@ async function main(): Promise<void> {
       );
       const patternBContextBuilder = new DefaultPatternBContextBuilder(fs, tokenCounter, logger);
 
+      // Phase 6: New modules
+      const worktreeRegistry = new InMemoryWorktreeRegistry();
+      const threadStateManager = new InMemoryThreadStateManager();
+      const invocationGuard = new DefaultInvocationGuard(
+        skillInvoker,
+        artifactCommitter,
+        git,
+        discord,
+        logger,
+      );
+
       orchestrator = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
@@ -182,6 +199,11 @@ async function main(): Promise<void> {
         questionStore,
         questionPoller,
         patternBContextBuilder,
+        // Phase 6 additions:
+        invocationGuard,
+        threadStateManager,
+        worktreeRegistry,
+        shutdownSignal: abortController.signal,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {
@@ -191,7 +213,17 @@ async function main(): Promise<void> {
       try {
         const result = await command.execute();
 
-        const { registerSignals } = createShutdownHandler(result, logger);
+        const { registerSignals } = createShutdownHandler(
+          result,
+          logger,
+          threadQueue,
+          worktreeRegistry,
+          git,
+          orchestrator,
+          discord,
+          config.orchestrator.shutdown_timeout_ms ?? 60000,
+          abortController,
+        );
         registerSignals();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
