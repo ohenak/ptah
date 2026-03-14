@@ -75,7 +75,10 @@ export class DefaultInvocationGuard implements InvocationGuard {
           );
         }
         retryCount++;
-        const delayed = await this.waitWithBackoff(retryCount, retryBaseDelayMs, retryMaxDelayMs, shutdownSignal);
+        const delayMs = this.computeBackoffDelay(retryCount, retryBaseDelayMs, retryMaxDelayMs);
+        await this.postToDebugChannel(debugChannelId,
+          `[ptah] Retry ${retryCount}/${retryAttempts} for ${agentId} in thread ${threadName} — retrying in ${delayMs}ms. Error: ${lastError.message}`);
+        const delayed = await this.waitWithBackoff(delayMs, shutdownSignal);
         if (!delayed) {
           await this.handleShutdownAbort(agentId, threadId, threadName, worktreePath, branch, lastError, debugChannelId);
           return { status: "shutdown" };
@@ -98,7 +101,10 @@ export class DefaultInvocationGuard implements InvocationGuard {
         }
         category = "transient";
         retryCount++;
-        const delayed = await this.waitWithBackoff(retryCount, retryBaseDelayMs, retryMaxDelayMs, shutdownSignal);
+        const delayMs = this.computeBackoffDelay(retryCount, retryBaseDelayMs, retryMaxDelayMs);
+        await this.postToDebugChannel(debugChannelId,
+          `[ptah] Retry ${retryCount}/${retryAttempts} for ${agentId} in thread ${threadName} — retrying in ${delayMs}ms. Error: ${lastError.message}`);
+        const delayed = await this.waitWithBackoff(delayMs, shutdownSignal);
         if (!delayed) {
           await this.handleShutdownAbort(agentId, threadId, threadName, worktreePath, branch, lastError, debugChannelId);
           return { status: "shutdown" };
@@ -123,7 +129,10 @@ export class DefaultInvocationGuard implements InvocationGuard {
           );
         }
         retryCount++;
-        const delayed = await this.waitWithBackoff(retryCount, retryBaseDelayMs, retryMaxDelayMs, shutdownSignal);
+        const delayMs = this.computeBackoffDelay(retryCount, retryBaseDelayMs, retryMaxDelayMs);
+        await this.postToDebugChannel(debugChannelId,
+          `[ptah] Retry ${retryCount}/${retryAttempts} for ${agentId} in thread ${threadName} — retrying in ${delayMs}ms. Error: ${lastError.message}`);
+        const delayed = await this.waitWithBackoff(delayMs, shutdownSignal);
         if (!delayed) {
           await this.handleShutdownAbort(agentId, threadId, threadName, worktreePath, branch, lastError, debugChannelId);
           return { status: "shutdown" };
@@ -154,7 +163,10 @@ export class DefaultInvocationGuard implements InvocationGuard {
           );
         }
         retryCount++;
-        const delayed = await this.waitWithBackoff(retryCount, retryBaseDelayMs, retryMaxDelayMs, shutdownSignal);
+        const delayMs = this.computeBackoffDelay(retryCount, retryBaseDelayMs, retryMaxDelayMs);
+        await this.postToDebugChannel(debugChannelId,
+          `[ptah] Retry ${retryCount}/${retryAttempts} for ${agentId} in thread ${threadName} — retrying in ${delayMs}ms. Error: ${lastError.message}`);
+        const delayed = await this.waitWithBackoff(delayMs, shutdownSignal);
         if (!delayed) {
           await this.handleShutdownAbort(agentId, threadId, threadName, worktreePath, branch, lastError, debugChannelId);
           return { status: "shutdown" };
@@ -181,13 +193,14 @@ export class DefaultInvocationGuard implements InvocationGuard {
     return "transient";
   }
 
+  private computeBackoffDelay(retryCount: number, baseDelayMs: number, maxDelayMs: number): number {
+    return Math.min(baseDelayMs * Math.pow(2, retryCount - 1), maxDelayMs);
+  }
+
   private async waitWithBackoff(
-    retryCount: number,
-    baseDelayMs: number,
-    maxDelayMs: number,
+    delayMs: number,
     shutdownSignal: AbortSignal,
   ): Promise<boolean> {
-    const delay = Math.min(baseDelayMs * Math.pow(2, retryCount - 1), maxDelayMs);
     return new Promise<boolean>((resolve) => {
       if (shutdownSignal.aborted) {
         resolve(false);
@@ -196,7 +209,7 @@ export class DefaultInvocationGuard implements InvocationGuard {
       const timer = setTimeout(() => {
         shutdownSignal.removeEventListener("abort", onAbort);
         resolve(true);
-      }, delay);
+      }, delayMs);
       const onAbort = () => {
         clearTimeout(timer);
         resolve(false);
