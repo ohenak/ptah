@@ -6,7 +6,7 @@
 | **Requirements** | [009-REQ-PTAH-auto-feature-bootstrap](./009-REQ-PTAH-auto-feature-bootstrap.md) |
 | **Functional Specification** | [009-FSPEC-ptah-auto-feature-bootstrap](./009-FSPEC-ptah-auto-feature-bootstrap.md) |
 | **Date** | March 14, 2026 |
-| **Status** | In Review |
+| **Status** | Complete |
 
 ---
 
@@ -22,7 +22,7 @@ Phase 9 adds automatic feature folder bootstrapping to the PM skill. The impleme
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| A-1 | Add `extractFeatureName — Phase 9 AF-R1 contract` describe block to `context-assembler.test.ts` covering the 4 cases in TSPEC §7.2 | `ptah/tests/unit/orchestrator/context-assembler.test.ts` | None (tests existing function, no new source) | ⬚ Not Started |
+| A-1 | Add `extractFeatureName — Phase 9 AF-R1 contract` describe block to `context-assembler.test.ts` covering the 4 cases in TSPEC §7.2 | `ptah/tests/unit/orchestrator/context-assembler.test.ts` | None (tests existing function, no new source) | ✅ Done |
 
 Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green) | 🔵 Refactored | ✅ Done
 
@@ -30,7 +30,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| B-1 | Insert Phase 0: Feature Folder Bootstrap section into PM SKILL.md immediately before "Task Selection — MANDATORY FIRST STEP" heading | None (natural language — no Vitest tests) | `.claude/skills/product-manager/SKILL.md` | ⬚ Not Started |
+| B-1 | Insert Phase 0: Feature Folder Bootstrap section into PM SKILL.md immediately before "Task Selection — MANDATORY FIRST STEP" heading | None (natural language — no Vitest tests) | `.claude/skills/product-manager/SKILL.md` | ✅ Done |
 
 ---
 
@@ -52,7 +52,7 @@ Both phases are independent and can be executed in either order. Phase A is done
 ### A-1 — `context-assembler.test.ts`
 
 - The test file already has a suite covering `extractFeatureName()`. The new describe block is appended at the end of that file.
-- The new describe block references `assembler.extractFeatureName(...)` — the test fixture must expose a way to call this method. Inspect the existing test file to determine whether `extractFeatureName` is exported from the module or accessed via the assembler instance.
+- The new describe block calls `assembler.extractFeatureName(...)` — this access pattern is confirmed at 7 existing call sites in the test file. No inspection needed.
 - No changes to `context-assembler.ts` source.
 
 ### B-1 — PM SKILL.md
@@ -70,7 +70,9 @@ Both phases are independent and can be executed in either order. Phase A is done
 - [ ] No skipped or pending tests
 - [ ] A-1 contract test covers all 4 scenarios from TSPEC §7.2
 - [ ] B-1 SKILL.md insertion matches TSPEC §11 verbatim
+- [ ] `grep -n "Phase 0: Feature Folder Bootstrap" .claude/skills/product-manager/SKILL.md` confirms the heading is present
 - [ ] Phase 0 section in SKILL.md sits immediately before "Task Selection — MANDATORY FIRST STEP"
 - [ ] Existing tests remain green (no regressions in context-assembler suite)
+- [ ] Core acceptance tests AT-AF-01 (numbered thread, first invocation), AT-AF-02 (unnumbered thread), AT-AF-03 (repeat invocation, existing folder) verified against live PM agent
 - [ ] Changes committed in logical units with `type(scope): description` format
 - [ ] Pushed to `feat-auto-feature-bootstrap` for review
