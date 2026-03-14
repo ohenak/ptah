@@ -291,7 +291,17 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
    If **Needs revision**, explicitly state that the requesting skill must address all must-fix items and route the updated deliverable back to you for re-review. If **Approved with minor changes**, the requesting skill may proceed after addressing the changes without re-routing.
 
 6. **Commit and push** following the git workflow.
-7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary.
+7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
+
+   Example (when reviewing a TSPEC requested by backend-engineer):
+   ```
+   QA review complete. Cross-review file: `docs/{NNN}-{feature-name}/CROSS-REVIEW-test-engineer-TSPEC.md`
+   Recommendation: Approved with minor changes. 2 findings, 1 question.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   Route to the agent that requested the review — check the incoming routing message to determine the correct `agent_id`.
 
 ---
 
