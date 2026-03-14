@@ -70,7 +70,7 @@ describe("DefaultInvocationGuard", () => {
     const invoker = new FakeSkillInvoker();
     invoker.result = {
       textResponse: "Agent done",
-      routingSignalRaw: "ROUTE_TO_USER some text",
+      routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
       artifactChanges: ["docs/foo.md"],
       durationMs: 500,
     };
@@ -103,7 +103,7 @@ describe("DefaultInvocationGuard", () => {
       }
       return {
         textResponse: "ok",
-        routingSignalRaw: "ROUTE_TO_USER done",
+        routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
         artifactChanges: [],
         durationMs: 100,
       };
@@ -227,7 +227,7 @@ describe("DefaultInvocationGuard", () => {
     const invoker = new FakeSkillInvoker();
     invoker.result = {
       textResponse: "ok",
-      routingSignalRaw: "ROUTE_TO_USER done",
+      routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
       artifactChanges: [],
       durationMs: 100,
     };
@@ -275,7 +275,7 @@ describe("DefaultInvocationGuard", () => {
     const invoker = new FakeSkillInvoker();
     invoker.result = {
       textResponse: "ok",
-      routingSignalRaw: "ROUTE_TO_USER done",
+      routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
       artifactChanges: [],
       durationMs: 100,
     };
@@ -302,7 +302,7 @@ describe("DefaultInvocationGuard", () => {
     const invoker = new FakeSkillInvoker();
     invoker.result = {
       textResponse: "ok",
-      routingSignalRaw: "ROUTE_TO_USER done",
+      routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
       artifactChanges: [],
       durationMs: 100,
     };
