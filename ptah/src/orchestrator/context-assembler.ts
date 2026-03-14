@@ -75,7 +75,7 @@ export class DefaultContextAssembler implements ContextAssembler {
     const overviewContent = await this.readOverviewFromBase(featureName, docsRoot);
 
     // Build Layer 1: system prompt
-    const layer1 = this.buildLayer1(rolePrompt, overviewContent);
+    let layer1 = this.buildLayer1(rolePrompt, overviewContent);
 
     // Build Layer 3: user message
     const layer3 = this.buildLayer3(
@@ -85,6 +85,18 @@ export class DefaultContextAssembler implements ContextAssembler {
       threadHistory,
       config,
     );
+
+    // Scan thread history for ACTION directives from the most recent bot message(s).
+    // This is the authoritative source — it works regardless of Pattern A vs C detection.
+    const threadActionDirective = this.extractActionFromThreadHistory(threadHistory);
+    if (threadActionDirective) {
+      // Inject into system prompt (Layer 1) — highest priority, agent sees this first
+      layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
+        `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
+        `**${threadActionDirective}**\n\n` +
+        `You MUST perform this task. Do NOT review documents. Do NOT summarize prior work. ` +
+        `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
+    }
 
     // Read Layer 2: feature folder files (excluding overview.md)
     let layer2Files = await this.readFeatureFilesFromBase(featureName, docsRoot);
@@ -285,6 +297,22 @@ export class DefaultContextAssembler implements ContextAssembler {
   extractActionDirective(routingMessage: string): string | null {
     const match = routingMessage.match(/^(ACTION:\s*.+)$/m);
     return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Scans thread history (newest-first) for an ACTION directive in bot messages.
+   * Returns the directive from the most recent bot message that contains one, or null.
+   * This works regardless of Pattern A/C detection — it always finds the directive.
+   */
+  extractActionFromThreadHistory(threadHistory: ThreadMessage[]): string | null {
+    // Walk backwards through bot messages to find the most recent ACTION directive
+    for (let i = threadHistory.length - 1; i >= 0; i--) {
+      const msg = threadHistory[i];
+      if (!msg.isBot) continue;
+      const directive = this.extractActionDirective(msg.content);
+      if (directive) return directive;
+    }
+    return null;
   }
 
   private buildPatternCLayer3(
