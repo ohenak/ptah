@@ -271,7 +271,10 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 **Trigger:** Another agent requests your **review** of their deliverable (e.g., REQ, FSPEC, PROPERTIES). The routing message will use review language like "please review", "review for feasibility/implementability", etc.
 
-**⚠ Do NOT perform this task if the routing message asks you to CREATE a deliverable** (e.g., "ACTION: Create TSPEC", "create the TSPEC"). That is Task 1, not Task 4. Read the routing message carefully before deciding which task to perform.
+**⚠ Do NOT perform this task if the routing message asks you to CREATE or IMPLEMENT something:**
+- "ACTION: Create TSPEC", "create the TSPEC" → That is **Task 1**, not Task 4.
+- "ACTION: Implement", "begin implementation", "start TDD" → That is **Task 5**, not Task 4.
+Read the routing message carefully before deciding which task to perform.
 
 **Your review scope (technical perspective only):**
 
@@ -323,9 +326,14 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 ### Task 5: Implement TSPEC Following the PLAN (TDD)
 
-**Trigger:** You are asked to implement a feature, or the PLAN has been approved by both product-manager and test-engineer (auto-proceeds from Task 3 without user approval).
+**Trigger:** You are asked to implement a feature. This includes when a routing message contains `ACTION: Implement` or similar language asking you to begin implementation / start TDD / build the feature. This also triggers when the PLAN has been approved by both product-manager and test-engineer (auto-proceeds from Task 3).
 
-**Input:** The approved TSPEC and PLAN documents.
+**How to distinguish from Task 4 (Review):**
+- If the routing message says "ACTION: Implement", "begin implementation", "start TDD", or "build the feature" → **perform Task 5**
+- If the routing message says "please review" or references a CROSS-REVIEW → **perform Task 4**
+- If the message references approved PROPERTIES and asks you to start building → **perform Task 5**
+
+**Input:** The approved TSPEC, PLAN, and PROPERTIES documents.
 
 **What you do:**
 

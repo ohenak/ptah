@@ -258,6 +258,25 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 4. **Follow the git workflow** — commit changes, push to the feature branch.
 5. **Update document status to Approved** once all feedback is addressed and reviewers are satisfied.
 6. **Re-route if changes were substantial**, or confirm approval if changes were minor.
+7. **After PROPERTIES approval, hand off to backend-engineer for implementation.** Once the PROPERTIES document is approved by all reviewers, route to **backend-engineer** with an explicit implementation request. **This is NOT a review — it is a handoff to begin TDD implementation.**
+
+   ```
+   ACTION: Implement
+
+   PROPERTIES are approved. All specifications are complete. Please begin implementation following the approved PLAN using TDD.
+
+   - Requirements: `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`
+   - Functional Specification: `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md`
+   - Technical Specification: `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md`
+   - Execution Plan: `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md`
+   - Properties: `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md`
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   If the feature has no FSPEC, omit the FSPEC line.
+
+   **Do NOT use review language** (e.g., "please review") — this causes the backend-engineer to perform a review instead of starting implementation.
 
 ---
 
