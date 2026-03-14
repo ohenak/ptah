@@ -1,0 +1,3 @@
+# 010 Parallel Feature Development
+
+Ptah's artifact committer currently merges agent work directly to main, bypassing code review. Additionally, agent worktrees are ephemeral (per-invocation), preventing multiple agents from accumulating work on a shared feature branch. This feature replaces the direct-to-main merge with a two-tier branch strategy: agents work on sub-branches off a persistent `feat-{feature-name}` branch, which is reviewed via PR before merging to main. This enables parallel agent execution on the same feature (e.g., multiple backend-engineer agents implementing different PLAN steps simultaneously, or backend-engineer and test-engineer working concurrently) while maintaining isolation and a reviewable PR workflow.
