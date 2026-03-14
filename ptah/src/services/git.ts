@@ -316,6 +316,104 @@ export class NodeGitClient implements GitClient {
   async addAllInWorktree(worktreePath: string): Promise<void> {
     await execFileAsync("git", ["-C", worktreePath, "add", "-A"], {});
   }
+
+  // --- Phase 10 ---
+
+  async createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "add", "-b", newBranch, path, baseBranch], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree add (from branch) failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async checkoutBranchInWorktree(branch: string, path: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "add", path, branch], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree add (checkout) failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async createBranchFromRef(branch: string, ref: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["branch", branch, ref], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git branch create failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async pullInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "pull", remote, branch], {});
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      // New branch path: feature branch has no remote tracking ref yet — silent no-op
+      if (message.includes("couldn't find remote ref")) {
+        return;
+      }
+      throw new Error(`git pull in worktree failed: ${message}`);
+    }
+  }
+
+  async mergeInWorktree(worktreePath: string, branch: string): Promise<MergeResult> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "merge", "--no-ff", branch], {});
+      return "merged";
+    } catch (error: unknown) {
+      if (isExecError(error) && error.code === 1) {
+        return "conflict";
+      }
+      return "merge-error";
+    }
+  }
+
+  async abortMergeInWorktree(worktreePath: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "merge", "--abort"], {});
+    } catch (error: unknown) {
+      throw new Error(
+        `git merge --abort failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async getConflictedFiles(worktreePath: string): Promise<string[]> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["-C", worktreePath, "diff", "--name-only", "--diff-filter=U"],
+        {}
+      );
+      return stdout.trim().split("\n").filter(Boolean);
+    } catch (error: unknown) {
+      throw new Error(
+        `git diff --diff-filter=U failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async pushInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "push", remote, branch], {});
+    } catch (error: unknown) {
+      throw new Error(
+        `git push in worktree failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 }
 
 interface ExecError extends Error {
