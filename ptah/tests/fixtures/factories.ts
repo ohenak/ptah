@@ -16,6 +16,7 @@ import type { MessageDeduplicator } from "../../src/orchestrator/message-dedupli
 import type {
   PtahConfig,
   ThreadMessage,
+  ThreadStatus,
   SkillRequest,
   SkillResponse,
   RoutingSignal,
@@ -36,6 +37,9 @@ import type {
 import type { QuestionStore } from "../../src/orchestrator/question-store.js";
 import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
 import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-context-builder.js";
+import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
+import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
+import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -172,6 +176,26 @@ export class FakeGitClient implements GitClient {
   branchExistsResult: boolean = false;
   branchExistsCalls: string[] = [];
 
+  // Phase 6 state
+  hasUncommittedChangesResult = false;
+  resetHardCalls: string[] = [];
+  cleanCalls: string[] = [];
+  addAllCalls: string[] = [];
+  commitCalls: Array<{ path: string; message: string }> = [];
+
+  async hasUncommittedChanges(_worktreePath: string): Promise<boolean> {
+    return this.hasUncommittedChangesResult;
+  }
+  async resetHardInWorktree(worktreePath: string): Promise<void> {
+    this.resetHardCalls.push(worktreePath);
+  }
+  async cleanInWorktree(worktreePath: string): Promise<void> {
+    this.cleanCalls.push(worktreePath);
+  }
+  async addAllInWorktree(worktreePath: string): Promise<void> {
+    this.addAllCalls.push(worktreePath);
+  }
+
   async isRepo(): Promise<boolean> {
     if (this.isRepoError) throw this.isRepoError;
     return this.isRepoReturn;
@@ -235,6 +259,7 @@ export class FakeGitClient implements GitClient {
 
   async commitInWorktree(worktreePath: string, message: string): Promise<string> {
     this.commitInWorktreeCalls.push({ worktreePath, message });
+    this.commitCalls.push({ path: worktreePath, message });
     if (this.commitInWorktreeError) throw this.commitInWorktreeError;
     return this.commitInWorktreeResult;
   }
@@ -386,8 +411,12 @@ export class FakeDiscordClient implements DiscordClient {
   replyToMessageError: Error | null = null;
   private channelMessageHandlers = new Map<string, (msg: ChannelMessage) => Promise<void>>();
 
+  // --- Phase 6 additions ---
+  debugChannelMessages: string[] = [];
+
   async postChannelMessage(channelId: string, content: string): Promise<string> {
     this.postChannelMessageCalls.push({ channelId, content });
+    this.debugChannelMessages.push(content);
     if (this.postChannelMessageError) throw this.postChannelMessageError;
     return this.postChannelMessageResponse;
   }
@@ -756,6 +785,86 @@ export function createThreadMessage(options: ThreadMessageOptions = {}): ThreadM
     content: options.content ?? "test message",
     timestamp: options.timestamp ?? new Date("2026-03-09T12:00:00Z"),
   };
+}
+
+// --- Phase 6: New fakes ---
+
+export class FakeWorktreeRegistry implements WorktreeRegistry {
+  worktrees: ActiveWorktree[] = [];
+  register(worktreePath: string, branch: string): void {
+    this.worktrees.push({ worktreePath, branch });
+  }
+  deregister(worktreePath: string): void {
+    this.worktrees = this.worktrees.filter(w => w.worktreePath !== worktreePath);
+  }
+  getAll(): ReadonlyArray<ActiveWorktree> { return this.worktrees; }
+  size(): number { return this.worktrees.length; }
+}
+
+export class FakeThreadStateManager implements ThreadStateManager {
+  turnResults = new Map<string, "allowed" | "limit-reached">();
+  reviewTurnResults = new Map<string, "allowed" | "stalled">();
+  reviewThreadIds = new Set<string>();
+  turnCounts = new Map<string, number>();
+  openThreadIdSet = new Set<string>();
+  parentThreadIds = new Map<string, string>();
+  closedThreadIds = new Set<string>();
+  stalledThreadIds = new Set<string>();
+  reconstructCalls: Array<{ threadId: string; messages: ThreadMessage[]; isReview: boolean }> = [];
+  seenThreadIds = new Set<string>();
+
+  checkAndIncrementTurn(threadId: string, _maxTurns: number): "allowed" | "limit-reached" {
+    return this.turnResults.get(threadId) ?? "allowed";
+  }
+  closeThread(threadId: string): void { this.closedThreadIds.add(threadId); }
+  registerReviewThread(threadId: string, parentThreadId: string): void {
+    this.reviewThreadIds.add(threadId);
+    this.parentThreadIds.set(threadId, parentThreadId);
+  }
+  isReviewThread(threadId: string): boolean { return this.reviewThreadIds.has(threadId); }
+  checkAndIncrementReviewTurn(threadId: string): "allowed" | "stalled" {
+    return this.reviewTurnResults.get(threadId) ?? "allowed";
+  }
+  stallReviewThread(threadId: string): void { this.stalledThreadIds.add(threadId); }
+  getParentThreadId(threadId: string): string | undefined { return this.parentThreadIds.get(threadId); }
+  getStatus(threadId: string): ThreadStatus {
+    if (this.stalledThreadIds.has(threadId)) return "stalled";
+    if (this.closedThreadIds.has(threadId)) return "closed";
+    return "open";
+  }
+  openThreadIds(): string[] { return Array.from(this.openThreadIdSet); }
+  reconstructTurnCount(threadId: string, messages: ThreadMessage[], isReview: boolean): void {
+    this.reconstructCalls.push({ threadId, messages, isReview });
+    this.seenThreadIds.add(threadId);
+  }
+}
+
+export class FakeInvocationGuard implements InvocationGuard {
+  results: GuardResult[] = [];
+  callCount = 0;
+  lastParams: InvocationGuardParams | null = null;
+  lastShutdownSignal: AbortSignal | null = null;
+
+  async invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult> {
+    this.lastParams = params;
+    this.lastShutdownSignal = params.shutdownSignal;
+    const result = this.results[this.callCount] ?? this.results[this.results.length - 1] ?? {
+      status: "success" as const,
+      invocationResult: {
+        textResponse: "",
+        routingSignalRaw: 'ROUTE_TO_AGENT',
+        artifactChanges: [],
+        durationMs: 0,
+      },
+      commitResult: {
+        commitSha: "abc",
+        mergeStatus: "merged" as const,
+        branch: "test",
+      },
+    };
+    this.callCount++;
+    return result;
+  }
 }
 
 // --- Phase 4: New fakes ---
