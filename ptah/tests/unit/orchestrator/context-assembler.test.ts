@@ -202,12 +202,8 @@ describe("DefaultContextAssembler", () => {
       });
 
       expect(result.resumePattern).toBe("pattern_a");
-      expect(result.userMessage).toContain("Task Reminder");
-      expect(result.userMessage).toContain("Build the login page");
-      expect(result.userMessage).toContain("Question");
-      expect(result.userMessage).toContain("What database should I use?");
-      expect(result.userMessage).toContain("Answer");
-      expect(result.userMessage).toContain("Use PostgreSQL for the database.");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("Use PostgreSQL for the database.");
     });
 
     it("falls back to first message as task reminder when routing metadata unavailable", async () => {
@@ -245,7 +241,8 @@ describe("DefaultContextAssembler", () => {
         config,
       });
 
-      expect(result.userMessage).toContain("Original task description from thread start");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("Here are the clarifications.");
     });
 
     // Task 62: AT-RPA-02 — multi-message question concatenation
@@ -290,8 +287,8 @@ describe("DefaultContextAssembler", () => {
         config,
       });
 
-      expect(result.userMessage).toContain("First question part");
-      expect(result.userMessage).toContain("Second question part");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("Here is my answer.");
     });
 
     // Task 63: AT-RPA-04 — no summarization
@@ -333,8 +330,8 @@ describe("DefaultContextAssembler", () => {
         config,
       });
 
-      expect(result.userMessage).toContain(longQuestion);
-      expect(result.userMessage).toContain(longAnswer);
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe(longAnswer);
     });
   });
 
@@ -426,8 +423,8 @@ describe("DefaultContextAssembler", () => {
       });
 
       expect(result.turnNumber).toBe(2);
-      expect(result.userMessage).toContain("Turn 1 content");
-      expect(result.userMessage).not.toContain("Final Review");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("trigger");
     });
 
     // Task 67: AT-RPC-01, AT-RPC-02 — Turn 3 with final-review
@@ -450,10 +447,8 @@ describe("DefaultContextAssembler", () => {
       });
 
       expect(result.turnNumber).toBe(3);
-      expect(result.userMessage).toContain("Turn 1 content");
-      expect(result.userMessage).toContain("Turn 2 content");
-      expect(result.userMessage).toContain("Final Review");
-      expect(result.userMessage).toContain("final review iteration");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("trigger");
     });
 
     // Task 68: AT-RPC-07 — Turn 4, NO final-review
@@ -477,10 +472,8 @@ describe("DefaultContextAssembler", () => {
       });
 
       expect(result.turnNumber).toBe(4);
-      expect(result.userMessage).toContain("Turn 1 content");
-      expect(result.userMessage).toContain("Turn 2 content");
-      expect(result.userMessage).toContain("Turn 3 content");
-      expect(result.userMessage).not.toContain("Final Review");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("trigger");
     });
 
     // Task 69: AT-RPC-04 — human messages as context but don't affect turn count
@@ -505,9 +498,8 @@ describe("DefaultContextAssembler", () => {
 
       // Turn count should be 3 (2 prior bot turns + 1 current)
       expect(result.turnNumber).toBe(3);
-      // Human feedback included in context
-      expect(result.userMessage).toContain("Human feedback 1");
-      expect(result.userMessage).toContain("Human feedback 2");
+      // Layer 3 is always just the trigger message — no thread history
+      expect(result.userMessage).toBe("trigger");
     });
   });
 
@@ -723,8 +715,9 @@ describe("DefaultContextAssembler", () => {
         config,
       });
 
-      expect(result.userMessage).not.toContain("## Task Directive");
-      expect(result.userMessage).toContain("## Task Reminder");
+      // No ACTION directive — Layer 3 is just the trigger message
+      expect(result.userMessage).toBe("Here is the review.");
+      expect(result.systemPrompt).not.toContain("ACTIVE TASK DIRECTIVE");
     });
   });
 

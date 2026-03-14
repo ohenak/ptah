@@ -268,10 +268,9 @@ describe("Orchestrator routing loop integration", () => {
       // Skill was invoked once
       expect(skillClient.invocations).toHaveLength(1);
 
-      // The user message (Layer 3) should contain the final review instruction
-      // since this is turn 3 (pattern C with 2 prior bot turns from same agent)
+      // Layer 3 is always just the trigger message — no thread history
       const userMessage = skillClient.invocations[0].userMessage;
-      expect(userMessage).toContain("Final Review Instruction");
+      expect(userMessage).toContain("looks good but add some tests");
 
       // Completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
@@ -415,20 +414,11 @@ describe("Orchestrator routing loop integration", () => {
 
       expect(skillClient.invocations).toHaveLength(1);
 
-      // Pattern A context: user message should contain Task Reminder, Question, Answer sections
+      // Layer 3 is always just the trigger message — no thread history
       const userMessage = skillClient.invocations[0].userMessage;
-      expect(userMessage).toContain("Task Reminder");
-      expect(userMessage).toContain("Question");
-      expect(userMessage).toContain("Answer");
-
-      // The task reminder should contain the first human message
-      expect(userMessage).toContain("Build the authentication module");
-
-      // The question should be from pm-agent
-      expect(userMessage).toContain("What authentication library should we use?");
-
-      // The answer should be the trigger message content
       expect(userMessage).toContain("Use Passport.js for authentication");
+      // No thread history — only trigger message content
+      expect(userMessage).not.toContain("What authentication library");
 
       // No Discord IDs should appear in /docs content (AT-DI-03)
       expect(skillClient.invocations[0].systemPrompt).not.toMatch(/<@&\d+>/);
