@@ -1,6 +1,7 @@
 export interface ThreadQueue {
   enqueue(threadId: string, task: () => Promise<void>): void;
   isProcessing(threadId: string): boolean;
+  activeCount(): number;
 }
 
 export class InMemoryThreadQueue implements ThreadQueue {
@@ -24,6 +25,17 @@ export class InMemoryThreadQueue implements ThreadQueue {
     const isActive = this.processing.get(threadId) ?? false;
     const hasQueued = queue !== undefined && queue.length > 0;
     return isActive || hasQueued;
+  }
+
+  activeCount(): number {
+    const active = new Set<string>();
+    for (const [threadId, isActive] of this.processing) {
+      if (isActive) active.add(threadId);
+    }
+    for (const [threadId, queue] of this.queues) {
+      if (queue.length > 0) active.add(threadId);
+    }
+    return active.size;
   }
 
   private async processQueue(threadId: string): Promise<void> {

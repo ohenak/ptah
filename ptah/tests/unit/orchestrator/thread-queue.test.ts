@@ -141,4 +141,47 @@ describe("InMemoryThreadQueue", () => {
       expect(queue.isProcessing("unknown")).toBe(false);
     });
   });
+
+  // Phase 6: activeCount()
+  describe("activeCount()", () => {
+    it("returns 0 when idle", () => {
+      const queue = new InMemoryThreadQueue();
+      expect(queue.activeCount()).toBe(0);
+    });
+
+    it("returns 1 when one thread is processing", async () => {
+      const queue = new InMemoryThreadQueue();
+      const d1 = deferred();
+      queue.enqueue("thread-1", async () => { await d1.promise; });
+      await Promise.resolve();
+      expect(queue.activeCount()).toBe(1);
+      d1.resolve();
+      await new Promise(r => setTimeout(r, 0));
+      expect(queue.activeCount()).toBe(0);
+    });
+
+    it("does not double-count a thread with both active + queued tasks", async () => {
+      const queue = new InMemoryThreadQueue();
+      const d1 = deferred();
+      queue.enqueue("thread-1", async () => { await d1.promise; });
+      queue.enqueue("thread-1", async () => {});
+      await Promise.resolve();
+      expect(queue.activeCount()).toBe(1); // not 2
+      d1.resolve();
+      await new Promise(r => setTimeout(r, 0));
+    });
+
+    it("returns 2 for two different threads both active", async () => {
+      const queue = new InMemoryThreadQueue();
+      const d1 = deferred();
+      const d2 = deferred();
+      queue.enqueue("thread-A", async () => { await d1.promise; });
+      queue.enqueue("thread-B", async () => { await d2.promise; });
+      await Promise.resolve();
+      expect(queue.activeCount()).toBe(2);
+      d1.resolve();
+      d2.resolve();
+      await new Promise(r => setTimeout(r, 0));
+    });
+  });
 });
