@@ -322,6 +322,76 @@ describe("DefaultInvocationGuard", () => {
     expect(result.status).toBe("success");
   });
 
+  it("PROP-GR-57: per-retry debug log posted on each retry attempt", async () => {
+    // First call fails, second call succeeds — verifies the per-retry log appears
+    const invoker = new FakeSkillInvoker();
+    let callCount = 0;
+    invoker.invoke = async () => {
+      callCount++;
+      if (callCount === 1) throw new Error("Transient network error");
+      return {
+        textResponse: "ok",
+        routingSignalRaw: "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>",
+        artifactChanges: [],
+        durationMs: 100,
+      };
+    };
+    const committer = new FakeArtifactCommitter();
+    committer.results = [defaultCommitResult()];
+    const discord = new FakeDiscordClient();
+    const logger = new FakeLogger();
+    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, logger);
+
+    const resultPromise = guard.invokeWithRetry(makeParams());
+    await vi.advanceTimersByTimeAsync(200);
+    const result = await resultPromise;
+
+    expect(result.status).toBe("success");
+    // Per-retry log must appear BEFORE the success log, with exact format
+    const retryLog = discord.debugChannelMessages.find(
+      (m) => m.includes("Retry 1/3") && m.includes("dev-agent") && m.includes("feature — test") && m.includes("retrying in") && m.includes("Transient network error"),
+    );
+    expect(retryLog).toBeDefined();
+  });
+
+  it("PROP-GR-08: malformedSignalCount resets between separate invokeWithRetry() calls", async () => {
+    // Guard instance is shared across two calls. If malformedSignalCount were instance-scoped
+    // (a bug), the second call's first malformed signal would push the count to 2 → unrecoverable.
+    // With correct per-call scoping, both calls recover after one malformed signal.
+    const invoker = new FakeSkillInvoker();
+    let totalCallCount = 0;
+    invoker.invoke = async () => {
+      totalCallCount++;
+      // Odd invocations return no routing tag; even invocations return valid tag
+      const hasTag = totalCallCount % 2 === 0;
+      return {
+        textResponse: "response",
+        routingSignalRaw: hasTag ? "<routing>{\"type\":\"ROUTE_TO_USER\"}</routing>" : "no routing tag",
+        artifactChanges: [],
+        durationMs: 100,
+      };
+    };
+    const committer = new FakeArtifactCommitter();
+    committer.results = [defaultCommitResult(), defaultCommitResult()];
+    const discord = new FakeDiscordClient();
+    const logger = new FakeLogger();
+    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, logger);
+
+    // First call: invoke #1 → no tag (malformedSignalCount=1), retry → invoke #2 → valid → success
+    const firstPromise = guard.invokeWithRetry(makeParams());
+    await vi.advanceTimersByTimeAsync(200);
+    const firstResult = await firstPromise;
+    expect(firstResult.status).toBe("success");
+
+    // Second call: malformedSignalCount resets to 0.
+    // invoke #3 → no tag (malformedSignalCount=1, NOT 2), retry → invoke #4 → valid → success
+    const secondPromise = guard.invokeWithRetry(makeParams());
+    await vi.advanceTimersByTimeAsync(200);
+    const secondResult = await secondPromise;
+    // If malformedSignalCount were instance-scoped, secondResult.status would be "unrecoverable"
+    expect(secondResult.status).toBe("success");
+  });
+
   it("does not post to debug channel when debugChannelId is null", async () => {
     const invoker = new FakeSkillInvoker();
     invoker.invokeError = new Error("Network error");
