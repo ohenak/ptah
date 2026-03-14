@@ -537,6 +537,64 @@ describe("DefaultContextAssembler", () => {
     it("returns null for empty string", () => {
       expect(assembler.extractActionDirective("")).toBeNull();
     });
+
+    it("extracts ACTION from thread history scanning newest bot message first", () => {
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Please review the FSPEC.",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "FSPEC review done.",
+          isBot: true,
+          authorId: "eng-agent",
+        }),
+        createThreadMessage({
+          id: "msg-3",
+          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved.",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+      ];
+
+      expect(assembler.extractActionFromThreadHistory(history)).toBe("ACTION: Create TSPEC");
+    });
+
+    it("returns null from thread history when no bot message has ACTION", () => {
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Please review the FSPEC.",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "User feedback here.",
+          isBot: false,
+          authorId: "human-1",
+        }),
+      ];
+
+      expect(assembler.extractActionFromThreadHistory(history)).toBeNull();
+    });
+
+    it("skips human messages when scanning thread history for ACTION", () => {
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "ACTION: Create TSPEC",
+          isBot: false,
+          authorId: "human-1",
+        }),
+      ];
+
+      // Human messages should be skipped — only bot messages count
+      expect(assembler.extractActionFromThreadHistory(history)).toBeNull();
+    });
   });
 
   describe("Pattern A — Task Directive injection", () => {
@@ -585,6 +643,47 @@ describe("DefaultContextAssembler", () => {
       expect(directiveIndex).toBeLessThan(reminderIndex);
     });
 
+    it("injects ACTIVE TASK DIRECTIVE into system prompt when thread history contains ACTION", async () => {
+      const featureName = "sysaction-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Build the feature",
+          isBot: false,
+          authorId: "human-1",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "ACTION: Create TSPEC\n\nREQ and FSPEC are approved.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+      ];
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-3",
+        content: "Routing to eng.",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: history,
+        triggerMessage,
+        config,
+      });
+
+      // System prompt should contain the directive
+      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
+      expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
+      expect(result.systemPrompt).toContain("Do NOT review documents");
+    });
+
     it("does not inject Task Directive when routing message has no ACTION directive", async () => {
       const featureName = "no-action-feature";
       fs.addExistingDir(`docs/${featureName}`);
@@ -622,6 +721,66 @@ describe("DefaultContextAssembler", () => {
 
       expect(result.userMessage).not.toContain("## Task Directive");
       expect(result.userMessage).toContain("## Task Reminder");
+    });
+  });
+
+  // ─── Pattern C with ACTION Directive (cross-pattern injection) ──
+
+  describe("Pattern C — ACTION directive still injected into system prompt", () => {
+    it("injects ACTIVE TASK DIRECTIVE into system prompt even in Pattern C (same agent has prior turns)", async () => {
+      const featureName = "patternc-action-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      // Simulate: eng already posted a review, then PM sends ACTION: Create TSPEC
+      // Pattern C detects eng has prior turns, but ACTION should still be extracted
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Build the feature",
+          isBot: false,
+          authorId: "human-1",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "FSPEC review complete. Approved.",
+          isBot: true,
+          authorId: "dev-agent",  // Same as the agent being invoked
+        }),
+        createThreadMessage({
+          id: "msg-3",
+          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.",
+          isBot: true,
+          authorId: "pm-agent",
+        }),
+        // dev-agent posts again (e.g., the routing acknowledgment got re-detected)
+        createThreadMessage({
+          id: "msg-4",
+          content: "Acknowledged.",
+          isBot: true,
+          authorId: "dev-agent",
+        }),
+      ];
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-5",
+        content: "Continue.",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: history,
+        triggerMessage,
+        config,
+      });
+
+      // Even though Pattern C is detected (dev-agent has prior turns and is the last bot),
+      // the system prompt should still contain the ACTION directive from thread history
+      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
+      expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
     });
   });
 
