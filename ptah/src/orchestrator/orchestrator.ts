@@ -402,6 +402,7 @@ export class DefaultOrchestrator implements Orchestrator {
           bundle,
           worktreePath,
           branch,
+          featureBranch: branch,
           config: this.config,
           shutdownSignal: this.shutdownSignal,
           debugChannelId: this.debugChannelId,
@@ -748,6 +749,7 @@ export class DefaultOrchestrator implements Orchestrator {
         threadName: question.threadName,
         worktreePath,
         branch,
+        featureBranch: branch,
         artifactChanges: result.artifactChanges,
       });
 
