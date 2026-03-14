@@ -253,15 +253,15 @@ export class DefaultOrchestrator implements Orchestrator {
       if (reviewResult === "stalled") {
         this.threadStateManager.stallReviewThread(message.threadId);
         const parentThreadId = this.threadStateManager.getParentThreadId(message.threadId);
-        const parentInfo = parentThreadId ? ` (parent: ${parentThreadId})` : "";
         await this.discord.postEmbed({
           threadId: message.threadId,
           title: "\uD83D\uDEA8 Review Thread Stalled",
           description: "This review thread has reached its turn limit and has been stalled.",
           colour: 0xFF0000,
         });
+        const parentSuffix = parentThreadId ? `. Parent thread: ${parentThreadId}` : "";
         await this.postToDebugChannel(
-          `[ptah] Review thread ${message.threadId}${parentInfo} stalled after reaching turn limit.`
+          `[ptah] Review thread ${message.threadName} (${message.threadId}) STALLED after 4 turns — no ROUTE_TO_DONE received${parentSuffix}`
         );
         return;
       }
@@ -284,7 +284,7 @@ export class DefaultOrchestrator implements Orchestrator {
           colour: 0xFF6600,
         });
         await this.postToDebugChannel(
-          `[ptah] Thread ${message.threadId} (${message.threadName}) closed after reaching turn limit of ${maxTurns}.`
+          `[ptah] Thread ${message.threadName} (${message.threadId}) closed — max turns (${maxTurns}) reached. No further routing.`
         );
         return;
       }
