@@ -530,63 +530,6 @@ describe("DefaultContextAssembler", () => {
       expect(assembler.extractActionDirective("")).toBeNull();
     });
 
-    it("extracts ACTION from thread history scanning newest bot message first", () => {
-      const history: ThreadMessage[] = [
-        createThreadMessage({
-          id: "msg-1",
-          content: "Please review the FSPEC.",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-        createThreadMessage({
-          id: "msg-2",
-          content: "FSPEC review done.",
-          isBot: true,
-          authorId: "eng-agent",
-        }),
-        createThreadMessage({
-          id: "msg-3",
-          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved.",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-      ];
-
-      expect(assembler.extractActionFromThreadHistory(history)).toBe("ACTION: Create TSPEC");
-    });
-
-    it("returns null from thread history when no bot message has ACTION", () => {
-      const history: ThreadMessage[] = [
-        createThreadMessage({
-          id: "msg-1",
-          content: "Please review the FSPEC.",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-        createThreadMessage({
-          id: "msg-2",
-          content: "User feedback here.",
-          isBot: false,
-          authorId: "human-1",
-        }),
-      ];
-
-      expect(assembler.extractActionFromThreadHistory(history)).toBeNull();
-    });
-
-    it("skips human messages when scanning thread history for ACTION", () => {
-      const history: ThreadMessage[] = [
-        createThreadMessage({
-          id: "msg-1",
-          content: "ACTION: Create TSPEC",
-          isBot: false,
-          authorId: "human-1",
-        }),
-      ];
-
-      // Human messages should be skipped — only bot messages count
-      expect(assembler.extractActionFromThreadHistory(history)).toBeNull();
-    });
   });
 
   describe("Pattern A — Task Directive injection", () => {
@@ -617,6 +560,8 @@ describe("DefaultContextAssembler", () => {
         authorId: "human-1",
       });
 
+      const routingMessage = "ACTION: Create TSPEC\n\nREQ and FSPEC are approved. Please create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>";
+
       const result = await assembler.assemble({
         agentId: "dev-agent",
         threadId: "thread-1",
@@ -624,9 +569,10 @@ describe("DefaultContextAssembler", () => {
         threadHistory: history,
         triggerMessage,
         config,
+        routingMessage,
       });
 
-      // Layer 3 should be ONLY the ACTION message content (routing tags stripped)
+      // Layer 3 should be ONLY the routing message content (routing tags stripped)
       expect(result.userMessage).toContain("ACTION: Create TSPEC");
       expect(result.userMessage).toContain("REQ and FSPEC are approved");
       expect(result.userMessage).not.toContain("<routing>");
@@ -639,24 +585,9 @@ describe("DefaultContextAssembler", () => {
       expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
     });
 
-    it("injects ACTIVE TASK DIRECTIVE into system prompt when thread history contains ACTION", async () => {
+    it("injects ACTIVE TASK DIRECTIVE into system prompt when routingMessage contains ACTION", async () => {
       const featureName = "sysaction-feature";
       fs.addExistingDir(`docs/${featureName}`);
-
-      const history: ThreadMessage[] = [
-        createThreadMessage({
-          id: "msg-1",
-          content: "Build the feature",
-          isBot: false,
-          authorId: "human-1",
-        }),
-        createThreadMessage({
-          id: "msg-2",
-          content: "ACTION: Create TSPEC\n\nREQ and FSPEC are approved.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-      ];
 
       const triggerMessage = createThreadMessage({
         id: "msg-3",
@@ -665,13 +596,16 @@ describe("DefaultContextAssembler", () => {
         authorId: "human-1",
       });
 
+      const routingMessage = "ACTION: Create TSPEC\n\nREQ and FSPEC are approved.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>";
+
       const result = await assembler.assemble({
         agentId: "dev-agent",
         threadId: "thread-1",
         threadName: featureName,
-        threadHistory: history,
+        threadHistory: [],
         triggerMessage,
         config,
+        routingMessage,
       });
 
       // System prompt should contain the directive
@@ -723,47 +657,62 @@ describe("DefaultContextAssembler", () => {
 
   // ─── Pattern C with ACTION Directive (cross-pattern injection) ──
 
-  describe("Pattern C — ACTION directive still injected into system prompt", () => {
-    it("injects ACTIVE TASK DIRECTIVE into system prompt even in Pattern C (same agent has prior turns)", async () => {
-      const featureName = "patternc-action-feature";
+  describe("routingMessage — ACTION directive via orchestrator routing", () => {
+    it("injects ACTIVE TASK DIRECTIVE into system prompt when routingMessage contains ACTION", async () => {
+      const featureName = "routing-action-feature";
       fs.addExistingDir(`docs/${featureName}`);
 
-      // Simulate: eng already posted a review, then PM sends ACTION: Create TSPEC
-      // Pattern C detects eng has prior turns, but ACTION should still be extracted
+      const triggerMessage = createThreadMessage({
+        id: "msg-1",
+        content: "review FSPEC",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      // The orchestrator passes PM's response as routingMessage when routing to eng
+      const routingMessage = "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>";
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        routingMessage,
+      });
+
+      // System prompt should contain the directive
+      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
+      expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
+      // Layer 3 should be the routing message (tags stripped), NOT the trigger message
+      expect(result.userMessage).toContain("ACTION: Create TSPEC");
+      expect(result.userMessage).not.toContain("review FSPEC");
+      expect(result.userMessage).not.toContain("<routing>");
+    });
+
+    it("excludes agent's own prior work from Layer 3 when routingMessage has ACTION", async () => {
+      const featureName = "no-prior-work-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      // Thread history has agent's own prior work — but it doesn't matter
       const history: ThreadMessage[] = [
         createThreadMessage({
           id: "msg-1",
-          content: "Build the feature",
-          isBot: false,
-          authorId: "human-1",
-        }),
-        createThreadMessage({
-          id: "msg-2",
-          content: "FSPEC review complete. Approved.",
-          isBot: true,
-          authorId: "dev-agent",  // Same as the agent being invoked
-        }),
-        createThreadMessage({
-          id: "msg-3",
-          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-        // dev-agent posts again (e.g., the routing acknowledgment got re-detected)
-        createThreadMessage({
-          id: "msg-4",
-          content: "Acknowledged.",
+          content: "FSPEC review complete. Here is my detailed analysis of the FSPEC...",
           isBot: true,
           authorId: "dev-agent",
         }),
       ];
 
       const triggerMessage = createThreadMessage({
-        id: "msg-5",
-        content: "Continue.",
+        id: "msg-2",
+        content: "review FSPEC",
         isBot: false,
         authorId: "human-1",
       });
+
+      const routingMessage = "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>";
 
       const result = await assembler.assemble({
         agentId: "dev-agent",
@@ -772,65 +721,46 @@ describe("DefaultContextAssembler", () => {
         threadHistory: history,
         triggerMessage,
         config,
+        routingMessage,
       });
 
-      // Even though Pattern C is detected (dev-agent has prior turns and is the last bot),
-      // the system prompt should still contain the ACTION directive from thread history
-      expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
-      expect(result.systemPrompt).toContain("ACTION: Create TSPEC");
-    });
-
-    it("excludes agent's own prior work from Layer 3 when ACTION directive is present", async () => {
-      const featureName = "no-prior-work-feature";
-      fs.addExistingDir(`docs/${featureName}`);
-
-      // Simulate: eng already reviewed FSPEC (its own prior work), then PM sends ACTION: Create TSPEC
-      const history: ThreadMessage[] = [
-        createThreadMessage({
-          id: "msg-1",
-          content: "Build the feature",
-          isBot: false,
-          authorId: "human-1",
-        }),
-        createThreadMessage({
-          id: "msg-2",
-          content: "FSPEC review complete. Here is my detailed analysis of the FSPEC...",
-          isBot: true,
-          authorId: "dev-agent",  // Agent's own prior work
-        }),
-        createThreadMessage({
-          id: "msg-3",
-          content: "ACTION: Create TSPEC\n\nREQ and FSPEC approved. Create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>",
-          isBot: true,
-          authorId: "pm-agent",
-        }),
-      ];
-
-      const triggerMessage = createThreadMessage({
-        id: "msg-4",
-        content: "Continue.",
-        isBot: false,
-        authorId: "human-1",
-      });
-
-      const result = await assembler.assemble({
-        agentId: "dev-agent",
-        threadId: "thread-1",
-        threadName: featureName,
-        threadHistory: history,
-        triggerMessage,
-        config,
-      });
-
-      // Layer 3 should be ONLY the ACTION message — no prior agent work
+      // Layer 3 should be ONLY the routing message — no prior agent work
       expect(result.userMessage).toContain("ACTION: Create TSPEC");
       expect(result.userMessage).not.toContain("FSPEC review complete");
       expect(result.userMessage).not.toContain("detailed analysis");
-      expect(result.userMessage).not.toContain("Build the feature");
-      // No routing tags leaked
+      expect(result.userMessage).not.toContain("review FSPEC");
       expect(result.userMessage).not.toContain("<routing>");
-      // System prompt has the directive
       expect(result.systemPrompt).toContain("ACTIVE TASK DIRECTIVE");
+    });
+
+    it("uses routingMessage as Layer 3 even without ACTION directive", async () => {
+      const featureName = "routing-no-action";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-1",
+        content: "review FSPEC",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      // Non-ACTION routing message from previous agent
+      const routingMessage = "Please review the TSPEC for feasibility.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>";
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        routingMessage,
+      });
+
+      // Layer 3 should be the routing message, NOT the trigger message
+      expect(result.userMessage).toBe(routingMessage);
+      expect(result.userMessage).not.toContain("review FSPEC");
+      expect(result.systemPrompt).not.toContain("ACTIVE TASK DIRECTIVE");
     });
   });
 

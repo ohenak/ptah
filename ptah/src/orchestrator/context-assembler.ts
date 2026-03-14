@@ -18,6 +18,7 @@ export interface ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;  // Phase 4: read Layer 2 from worktree when provided
+    routingMessage?: string; // The previous agent's response text when routing between agents
   }): Promise<ContextBundle>;
 }
 
@@ -54,8 +55,9 @@ export class DefaultContextAssembler implements ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;
+    routingMessage?: string;
   }): Promise<ContextBundle> {
-    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath } = params;
+    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage } = params;
 
     const featureName = this.extractFeatureName(threadName);
     const resumePattern = this.detectResumePattern(agentId, threadHistory);
@@ -77,27 +79,30 @@ export class DefaultContextAssembler implements ContextAssembler {
     // Build Layer 1: system prompt
     let layer1 = this.buildLayer1(rolePrompt, overviewContent);
 
-    // Layer 3: always use ONLY the latest triggering message — never include thread history.
-    // All prior work is documented in feature files (Layer 2), so agents don't need history.
-    // For ACTION directives, use the ACTION message; otherwise use the trigger message.
-    const actionMessage = this.extractActionMessageFromThreadHistory(threadHistory);
+    // Layer 3: use the routing message (previous agent's response) when available,
+    // otherwise fall back to the trigger message. Never include thread history.
+    // When routing between agents, the orchestrator passes the previous agent's
+    // response text directly — this avoids relying on Discord embed parsing.
+    const latestMessage = routingMessage ?? triggerMessage.content;
     let layer3: string;
 
-    if (actionMessage) {
-      const directive = this.extractActionDirective(actionMessage)!;
+    // Check for ACTION directive in the latest message
+    const actionDirective = this.extractActionDirective(latestMessage);
+
+    if (actionDirective) {
       // Inject into system prompt (Layer 1) — highest priority
       layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
         `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
-        `**${directive}**\n\n` +
+        `**${actionDirective}**\n\n` +
         `You MUST perform this task. Do NOT review documents. Do NOT summarize prior work. ` +
         `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
 
-      // Layer 3 = ONLY the action message content (strip routing tags)
-      layer3 = actionMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
-      this.logger.info(`ACTION directive detected: "${directive}" — using action-only context (no thread history)`);
+      // Layer 3 = the routing message content (strip routing tags)
+      layer3 = latestMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
+      this.logger.info(`ACTION directive detected: "${actionDirective}" — using action-only context`);
     } else {
-      // No ACTION directive — use the trigger message as-is (the latest message that triggered this agent)
-      layer3 = triggerMessage.content;
+      // No ACTION directive — use the latest message as-is
+      layer3 = latestMessage;
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
@@ -233,36 +238,6 @@ export class DefaultContextAssembler implements ContextAssembler {
     return match ? match[1].trim() : null;
   }
 
-  /**
-   * Scans thread history (newest-first) for an ACTION directive in bot messages.
-   * Returns the directive from the most recent bot message that contains one, or null.
-   * This works regardless of Pattern A/C detection — it always finds the directive.
-   */
-  extractActionFromThreadHistory(threadHistory: ThreadMessage[]): string | null {
-    // Walk backwards through bot messages to find the most recent ACTION directive
-    for (let i = threadHistory.length - 1; i >= 0; i--) {
-      const msg = threadHistory[i];
-      if (!msg.isBot) continue;
-      const directive = this.extractActionDirective(msg.content);
-      if (directive) return directive;
-    }
-    return null;
-  }
-
-  /**
-   * Scans thread history (newest-first) for a bot message containing an ACTION directive.
-   * Returns the full message content (not just the ACTION line) so it can be used as Layer 3.
-   * The agent doesn't need to see its own prior work — only the ACTION message matters.
-   */
-  extractActionMessageFromThreadHistory(threadHistory: ThreadMessage[]): string | null {
-    for (let i = threadHistory.length - 1; i >= 0; i--) {
-      const msg = threadHistory[i];
-      if (!msg.isBot) continue;
-      const directive = this.extractActionDirective(msg.content);
-      if (directive) return msg.content;
-    }
-    return null;
-  }
 
 
   private countTurns(

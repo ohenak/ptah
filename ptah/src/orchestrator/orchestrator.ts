@@ -314,6 +314,7 @@ export class DefaultOrchestrator implements Orchestrator {
     triggerMessage: ThreadMessage,
   ): Promise<void> {
     let currentAgentId = initialAgentId;
+    let routingMessage: string | undefined;
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -375,7 +376,13 @@ export class DefaultOrchestrator implements Orchestrator {
           triggerMessage,
           config: this.config,
           worktreePath,
+          routingMessage,
         });
+
+        this.logger.info(`--- Prompt for ${currentAgentId} (thread: "${triggerMessage.threadName}", pattern: ${bundle.resumePattern}, turn: ${bundle.turnNumber}) ---`);
+        this.logger.info(`[System Prompt] (${bundle.tokenCounts.layer1} L1 + ${bundle.tokenCounts.layer2} L2 tokens):\n${bundle.systemPrompt}`);
+        this.logger.info(`[User Message] (${bundle.tokenCounts.layer3} tokens):\n${bundle.userMessage}`);
+        this.logger.info(`--- End prompt for ${currentAgentId} ---`);
 
         const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
         this.logger.info(`Invoking ${currentAgentId} skill (timeout: ${timeoutSec}s)...`);
@@ -505,6 +512,7 @@ export class DefaultOrchestrator implements Orchestrator {
           `Routing to **${nextAgentLabel}**...`,
         );
         currentAgentId = decision.targetAgentId!;
+        routingMessage = result.textResponse;
         // Continue the while loop
       } catch (error) {
         // Unexpected error — cleanup worktree
@@ -724,6 +732,11 @@ export class DefaultOrchestrator implements Orchestrator {
         config: this.config,
         threadHistory,
       });
+
+      this.logger.info(`--- Prompt for ${question.agentId} (thread: "${question.threadName}", pattern: pattern_b) ---`);
+      this.logger.info(`[System Prompt] (${bundle.tokenCounts.layer1} L1 + ${bundle.tokenCounts.layer2} L2 tokens):\n${bundle.systemPrompt}`);
+      this.logger.info(`[User Message] (${bundle.tokenCounts.layer3} tokens):\n${bundle.userMessage}`);
+      this.logger.info(`--- End prompt for ${question.agentId} ---`);
 
       // Invoke skill
       const result = await this.skillInvoker.invoke(bundle, this.config, worktreePath);
