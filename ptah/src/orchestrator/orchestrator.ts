@@ -18,6 +18,9 @@ import type { MessageDeduplicator } from "./message-deduplicator.js";
 import type { QuestionStore } from "./question-store.js";
 import type { QuestionPoller } from "./question-poller.js";
 import type { PatternBContextBuilder } from "./pattern-b-context-builder.js";
+import type { InvocationGuard } from "./invocation-guard.js";
+import type { ThreadStateManager } from "./thread-state-manager.js";
+import type { WorktreeRegistry } from "./worktree-registry.js";
 
 export interface Orchestrator {
   handleMessage(message: ThreadMessage): Promise<void>;
@@ -46,6 +49,12 @@ export interface OrchestratorDeps {
   questionStore: QuestionStore;
   questionPoller: QuestionPoller;
   patternBContextBuilder: PatternBContextBuilder;
+
+  // --- Phase 6 (new) ---
+  invocationGuard: InvocationGuard;
+  threadStateManager: ThreadStateManager;
+  worktreeRegistry: WorktreeRegistry;
+  shutdownSignal: AbortSignal;
 }
 
 export class DefaultOrchestrator implements Orchestrator {
@@ -64,8 +73,14 @@ export class DefaultOrchestrator implements Orchestrator {
   private readonly questionStore: QuestionStore;
   private readonly questionPoller: QuestionPoller;
   private readonly patternBContextBuilder: PatternBContextBuilder;
+  private readonly invocationGuard: InvocationGuard;
+  private readonly threadStateManager: ThreadStateManager;
+  private readonly worktreeRegistry: WorktreeRegistry;
+  private readonly shutdownSignal: AbortSignal;
   private pausedThreadIds = new Set<string>();
   private openQuestionsChannelId: string | null = null;
+  private debugChannelId: string | null = null;
+  private seenThreadIds = new Set<string>();
   /**
    * In-memory map of Discord message ID → question ID.
    * Seeded on startup from both pending.md and resolved.md.
@@ -89,6 +104,10 @@ export class DefaultOrchestrator implements Orchestrator {
     this.questionStore = deps.questionStore;
     this.questionPoller = deps.questionPoller;
     this.patternBContextBuilder = deps.patternBContextBuilder;
+    this.invocationGuard = deps.invocationGuard;
+    this.threadStateManager = deps.threadStateManager;
+    this.worktreeRegistry = deps.worktreeRegistry;
+    this.shutdownSignal = deps.shutdownSignal;
   }
 
   async handleMessage(message: ThreadMessage): Promise<void> {
@@ -119,12 +138,12 @@ export class DefaultOrchestrator implements Orchestrator {
     }
 
     // Resolve debug channel (Q-01)
-    const debugChannelId = await this.discord.findChannelByName(
+    this.debugChannelId = await this.discord.findChannelByName(
       this.config.discord.server_id,
       this.config.discord.channels.debug,
     );
-    if (debugChannelId) {
-      this.logger.info(`Resolved debug channel: ${debugChannelId}`);
+    if (this.debugChannelId) {
+      this.logger.info(`Resolved debug channel: ${this.debugChannelId}`);
     } else {
       this.logger.warn(
         `debug channel #${this.config.discord.channels.debug} not found`,
@@ -185,6 +204,15 @@ export class DefaultOrchestrator implements Orchestrator {
     }
   }
 
+  private async postToDebugChannel(message: string): Promise<void> {
+    if (!this.debugChannelId) return;
+    try {
+      await this.discord.postChannelMessage(this.debugChannelId, message);
+    } catch {
+      this.logger.warn("Failed to post to #agent-debug");
+    }
+  }
+
   private async processMessage(message: ThreadMessage): Promise<void> {
     // Step 0: Malformed message guard
     if (!message.id) {
@@ -207,6 +235,59 @@ export class DefaultOrchestrator implements Orchestrator {
     // Step 2: Ignore bot messages
     if (message.isBot) {
       return;
+    }
+
+    // Phase 6: Lazy turn-count reconstruction (E-5)
+    if (!this.seenThreadIds.has(message.threadId)) {
+      const history = await this.discord.readThreadHistory(message.threadId);
+      const isReview = this.threadStateManager.isReviewThread(message.threadId);
+      this.threadStateManager.reconstructTurnCount(message.threadId, history, isReview);
+      this.seenThreadIds.add(message.threadId);
+      this.logger.info(`[ptah] Reconstructed turn count for thread ${message.threadId}`);
+    }
+
+    // Phase 6: Turn-limit pre-check (E-4)
+    if (this.threadStateManager.isReviewThread(message.threadId)) {
+      // GR-R12: review check has priority
+      const reviewResult = this.threadStateManager.checkAndIncrementReviewTurn(message.threadId);
+      if (reviewResult === "stalled") {
+        this.threadStateManager.stallReviewThread(message.threadId);
+        const parentThreadId = this.threadStateManager.getParentThreadId(message.threadId);
+        const parentInfo = parentThreadId ? ` (parent: ${parentThreadId})` : "";
+        await this.discord.postEmbed({
+          threadId: message.threadId,
+          title: "\uD83D\uDEA8 Review Thread Stalled",
+          description: "This review thread has reached its turn limit and has been stalled.",
+          colour: 0xFF0000,
+        });
+        await this.postToDebugChannel(
+          `[ptah] Review thread ${message.threadId}${parentInfo} stalled after reaching turn limit.`
+        );
+        return;
+      }
+    } else {
+      // General turn limit check
+      const maxTurns = this.config.orchestrator.max_turns_per_thread;
+      const turnResult = this.threadStateManager.checkAndIncrementTurn(message.threadId, maxTurns);
+      if (turnResult === "limit-reached") {
+        // GR-R11: if already CLOSED, silently drop
+        const status = this.threadStateManager.getStatus(message.threadId);
+        if (status === "closed") {
+          return;
+        }
+        // Close the thread and post embed
+        this.threadStateManager.closeThread(message.threadId);
+        await this.discord.postEmbed({
+          threadId: message.threadId,
+          title: "\uD83D\uDD12 Thread Closed",
+          description: `This thread has reached the maximum turn limit of ${maxTurns} and has been closed.`,
+          colour: 0xFF6600,
+        });
+        await this.postToDebugChannel(
+          `[ptah] Thread ${message.threadId} (${message.threadName}) closed after reaching turn limit of ${maxTurns}.`
+        );
+        return;
+      }
     }
 
     // Step 3: Resolve agent from human message
@@ -296,14 +377,38 @@ export class DefaultOrchestrator implements Orchestrator {
           worktreePath,
         });
 
-        // Invoke skill (with worktreePath)
         const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
         this.logger.info(`Invoking ${currentAgentId} skill (timeout: ${timeoutSec}s)...`);
         await this.responsePoster.postProgressEmbed(
           triggerMessage.threadId,
           `Invoking **${agentLabel}** skill (timeout: ${timeoutSec}s)...`,
         );
-        const result = await this.skillInvoker.invoke(bundle, this.config, worktreePath);
+
+        // Phase 6: Register worktree BEFORE invoking guard
+        this.worktreeRegistry.register(worktreePath, branch);
+
+        // Phase 6: Use InvocationGuard instead of direct skillInvoker + artifactCommitter
+        const guardResult = await this.invocationGuard.invokeWithRetry({
+          agentId: currentAgentId,
+          threadId: triggerMessage.threadId,
+          threadName: triggerMessage.threadName,
+          bundle,
+          worktreePath,
+          branch,
+          config: this.config,
+          shutdownSignal: this.shutdownSignal,
+          debugChannelId: this.debugChannelId,
+        });
+
+        if (guardResult.status !== "success") {
+          // Deregister worktree on non-success (InvocationGuard already cleaned up)
+          this.worktreeRegistry.deregister(worktreePath);
+          await this.writeLogEntry(currentAgentId, triggerMessage, "error", null);
+          return;
+        }
+
+        const { invocationResult: result, commitResult } = guardResult;
+
         const durationLabel = result.durationMs >= 60000
           ? `${Math.round(result.durationMs / 1000)}s`
           : `${result.durationMs}ms`;
@@ -312,18 +417,6 @@ export class DefaultOrchestrator implements Orchestrator {
           triggerMessage.threadId,
           `**${agentLabel}** completed in ${durationLabel} — ${result.artifactChanges.length} file(s) changed.`,
         );
-
-        // Artifact commit & merge
-        const commitResult = await this.artifactCommitter.commitAndMerge({
-          agentId: currentAgentId,
-          threadName: triggerMessage.threadName,
-          worktreePath,
-          branch,
-          artifactChanges: result.artifactChanges,
-        });
-
-        // Handle commit/merge error embeds
-        await this.handleCommitResult(commitResult, triggerMessage, worktreePath, branch, agentLabel);
 
         // Cleanup worktree on no-changes path
         if (commitResult.mergeStatus === "no-changes") {
@@ -339,15 +432,35 @@ export class DefaultOrchestrator implements Orchestrator {
           commitResult.commitSha,
         );
 
-        // Post agent response
+        // Post agent response — GR-R9: if this throws, log SHA and return
         this.logger.info(`Posting ${currentAgentId} response to thread "${triggerMessage.threadName}"`);
-        await this.responsePoster.postAgentResponse({
-          threadId: triggerMessage.threadId,
-          agentId: currentAgentId,
-          text: result.textResponse,
-          config: this.config,
-          footer: `${result.durationMs}ms`,
-        });
+        try {
+          await this.responsePoster.postAgentResponse({
+            threadId: triggerMessage.threadId,
+            agentId: currentAgentId,
+            text: result.textResponse,
+            config: this.config,
+            footer: `${result.durationMs}ms`,
+          });
+        } catch (postError) {
+          // GR-R9 / AT-GR-17: Discord response post failed after successful commit
+          const sha = commitResult.commitSha ?? "unknown";
+          await this.postToDebugChannel(
+            `[ptah] GR-R9: Discord post failed after successful commit ${sha} for ${currentAgentId} in thread ${triggerMessage.threadName}. Error: ${postError instanceof Error ? postError.message : String(postError)}`
+          );
+          await this.discord.postEmbed({
+            threadId: triggerMessage.threadId,
+            title: "\u26D4 Agent Error",
+            description: `Partial commit: ${currentAgentId} completed its work (commit: ${sha}) but the response could not be posted to Discord. See #agent-debug for details.`,
+            colour: 0xFF0000,
+          }).catch(() => {});
+          this.worktreeRegistry.deregister(worktreePath);
+          await this.cleanupWorktree(worktreePath, branch);
+          return;
+        }
+
+        // Deregister worktree after successful response post
+        this.worktreeRegistry.deregister(worktreePath);
 
         // Parse routing signal
         const signal = this.routingEngine.parseSignal(result.routingSignalRaw);
@@ -394,7 +507,8 @@ export class DefaultOrchestrator implements Orchestrator {
         currentAgentId = decision.targetAgentId!;
         // Continue the while loop
       } catch (error) {
-        // Skill timeout/error — cleanup worktree, no commit
+        // Unexpected error — cleanup worktree
+        this.worktreeRegistry.deregister(worktreePath);
         await this.cleanupWorktree(worktreePath, branch);
 
         // Write error log entry
