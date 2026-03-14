@@ -270,7 +270,17 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
    - **Positive observations** — what aligns well with the architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
 6. **Commit and push** following the git workflow.
-7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary.
+7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
+
+   Example (when reviewing an FSPEC requested by product-manager):
+   ```
+   BE review complete. Cross-review file: `docs/{NNN}-{feature-name}/CROSS-REVIEW-backend-engineer-FSPEC.md`
+   Recommendation: Approved with minor changes. 3 findings, 1 question.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm","thread_action":"reply"}</routing>
+   ```
+
+   Route to the agent that requested the review — check the incoming routing message to determine the correct `agent_id`.
 
 ---
 

@@ -294,7 +294,17 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
    - **Positive observations** — what aligns well with the frontend architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
 6. **Commit and push** following the git workflow.
-7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary.
+7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
+
+   Example (when reviewing a TSPEC requested by backend-engineer):
+   ```
+   FE review complete. Cross-review file: `docs/{NNN}-{feature-name}/CROSS-REVIEW-frontend-engineer-TSPEC.md`
+   Recommendation: Approved. 1 finding (low severity), 0 questions.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   Route to the agent that requested the review — check the incoming routing message to determine the correct `agent_id`.
 
 ---
 

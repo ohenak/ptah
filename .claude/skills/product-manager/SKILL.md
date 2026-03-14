@@ -206,7 +206,17 @@ You support the following discrete tasks. Each invocation focuses on one task.
    - **Positive observations** — what aligns well with the requirements
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
 6. **Commit and push** following the git workflow.
-7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary.
+7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
+
+   Example (when reviewing a TSPEC requested by backend-engineer):
+   ```
+   PM review complete. Cross-review file: `docs/{NNN}-{feature-name}/CROSS-REVIEW-product-manager-TSPEC.md`
+   Recommendation: Approved. 2 findings (both low severity), 0 questions.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   Route to the agent that requested the review — check the incoming routing message to determine the correct `agent_id`.
 
 ---
 
