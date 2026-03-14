@@ -5,7 +5,7 @@
 | **Technical Specification** | [010-TSPEC-ptah-parallel-feature-development](010-TSPEC-ptah-parallel-feature-development.md) |
 | **Requirements** | [010-REQ-ptah-parallel-feature-development](010-REQ-ptah-parallel-feature-development.md) |
 | **Date** | March 14, 2026 |
-| **Status** | Draft |
+| **Status** | In Review |
 
 ---
 
@@ -89,6 +89,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 | F-01 | **Forward `featureBranch` to `commitAndMerge`** — pass `params.featureBranch` through to `artifactCommitter.commitAndMerge({ ..., featureBranch })` | `ptah/tests/unit/orchestrator/invocation-guard.test.ts` (verify `featureBranch` appears in commitAndMerge call) | `ptah/src/orchestrator/invocation-guard.ts` | ⬚ Not Started |
 | F-02 | **Treat `pull-error` as unrecoverable** — add `pull-error` to the unrecoverable commit status check (alongside `conflict`) | `ptah/tests/unit/orchestrator/invocation-guard.test.ts` (new test: pull-error → status "unrecoverable", no retry) | `ptah/src/orchestrator/invocation-guard.ts` | ⬚ Not Started |
 | F-03 | **Treat `push-error` as unrecoverable** — add `push-error` to the unrecoverable commit status check | `ptah/tests/unit/orchestrator/invocation-guard.test.ts` (new test: push-error → status "unrecoverable", no retry) | `ptah/src/orchestrator/invocation-guard.ts` | ⬚ Not Started |
+| F-04 | **Treat `lock-timeout` as unrecoverable** — add `lock-timeout` to the unrecoverable commit status check (analogous to `pull-error`/`push-error` in F-02/F-03); no retry is attempted when the merge-lock acquisition times out (REQ-MG-04) | `ptah/tests/unit/orchestrator/invocation-guard.test.ts` (new test: lock-timeout → status "unrecoverable", no retry attempted) | `ptah/src/orchestrator/invocation-guard.ts` | ⬚ Not Started |
 
 ---
 
@@ -103,8 +104,9 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 | G-05 | **Pass `featureBranch` to `InvocationGuard`** — add `featureBranch` to `InvocationGuardParams` object passed to `invokeWithRetry` | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (existing tests updated to handle new `featureBranch` param) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | G-06 | **Handle `pull-error` in `handleCommitResult`** — post Discord embed with feature branch name, git error, sub-branch name | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (new test: pull-error → Discord embed posted with correct content) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | G-07 | **Handle `push-error` in `handleCommitResult`** — post Discord embed with feature branch name, git error, retained worktree path | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (new test: push-error → Discord embed with retainedWorktreePath in message) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| G-08 | **Enrich `conflict` handling** — include `conflictFiles` and `retainedWorktreePath` in Discord notification (REQ-MG-02) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (updated: conflict embed now includes file list and worktree path) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| G-08 | **Enrich `conflict` handling** — include all 4 REQ-MG-02 elements in Discord notification: `conflictFiles`, `retainedWorktreePath`, sub-branch name, and resolution commands (`cd {worktree-path} && git merge --continue` after editing / `git merge --abort` to discard) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (updated: conflict embed verified to contain all 4 elements — file list, retained worktree path, sub-branch name, and resolution commands string) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | G-09 | **`executePatternBResume` parity** — apply same feature branch setup and naming changes to the pattern B resume path | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (existing pattern B test updated) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| G-10 | **Handle `lock-timeout` in `handleCommitResult`** — post Discord embed with feature branch name, sub-branch name that timed out, and "merge was not performed" message, covering all three REQ-MG-04 notification elements | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (new test: lock-timeout → Discord embed includes feature branch name, sub-branch name, and "merge was not performed" message) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 
 ---
 
@@ -112,10 +114,10 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| H-01 | **`backend-engineer/SKILL.md`** — remove git checkout/branch/push instructions; add orchestrator-managed branch statement + worktree context | N/A (manual verification against REQ-SK-01, REQ-SK-02) | `.claude/skills/backend-engineer/SKILL.md` | ⬚ Not Started |
-| H-02 | **`product-manager/SKILL.md`** — same git workflow section update | N/A | `.claude/skills/product-manager/SKILL.md` | ⬚ Not Started |
-| H-03 | **`frontend-engineer/SKILL.md`** — same git workflow section update | N/A | `.claude/skills/frontend-engineer/SKILL.md` | ⬚ Not Started |
-| H-04 | **`test-engineer/SKILL.md`** — same git workflow section update | N/A | `.claude/skills/test-engineer/SKILL.md` | ⬚ Not Started |
+| H-01 | **`backend-engineer/SKILL.md`** — (REQ-SK-01) remove all `git checkout`, `git branch`, and `git push origin feat-` instructions; add explicit statement that branch management is handled by the orchestrator and must not be performed by the agent; (REQ-SK-02) add explicit statement that: (a) the agent is running in an isolated git worktree, (b) all file operations are relative to the worktree root, and (c) the agent must not navigate to or modify the main repository checkout | N/A (manual verification against REQ-SK-01, REQ-SK-02) | `.claude/skills/backend-engineer/SKILL.md` | ⬚ Not Started |
+| H-02 | **`product-manager/SKILL.md`** — same updates as H-01: remove conflicting git instructions (REQ-SK-01); add worktree isolation statement with explicit "do not navigate to or modify the main repository checkout" wording (REQ-SK-02) | N/A (manual verification against REQ-SK-01, REQ-SK-02) | `.claude/skills/product-manager/SKILL.md` | ⬚ Not Started |
+| H-03 | **`frontend-engineer/SKILL.md`** — same updates as H-01: remove conflicting git instructions (REQ-SK-01); add worktree isolation statement with explicit "do not navigate to or modify the main repository checkout" wording (REQ-SK-02) | N/A (manual verification against REQ-SK-01, REQ-SK-02) | `.claude/skills/frontend-engineer/SKILL.md` | ⬚ Not Started |
+| H-04 | **`test-engineer/SKILL.md`** — same updates as H-01: remove conflicting git instructions (REQ-SK-01); add worktree isolation statement with explicit "do not navigate to or modify the main repository checkout" wording (REQ-SK-02) | N/A (manual verification against REQ-SK-01, REQ-SK-02) | `.claude/skills/test-engineer/SKILL.md` | ⬚ Not Started |
 
 ---
 
@@ -135,7 +137,7 @@ Phase A (types.ts)
   └── Phase C (GitClient protocol + Fake) — uses MergeResult from types
       └── Phase D (NodeGitClient impl)  — implements C interface
           └── Phase E (ArtifactCommitter) — uses new GitClient methods; also depends on A (CommitParams.featureBranch)
-              └── Phase F (InvocationGuard) — passes featureBranch; treats pull-error/push-error
+              └── Phase F (InvocationGuard) — passes featureBranch; treats pull-error/push-error/lock-timeout
                   └── Phase G (Orchestrator) — feature branch lifecycle; depends on B, D, E, F
                       └── Phase I (bin/ptah.ts) — verify no wiring changes
 Phase H (SKILL.md) — fully independent; can run at any point
@@ -163,7 +165,7 @@ Phase H (SKILL.md) — fully independent; can run at any point
 | `ptah/src/types.ts` | `CommitParams`, `MergeStatus`, `CommitResult`, `InvocationGuardParams` extended | Low — additive; existing callers compile with optional fields |
 | `ptah/src/services/git.ts` | 8 new methods added to `GitClient` interface and `NodeGitClient` | Medium — `FakeGitClient` in `factories.ts` must be updated simultaneously |
 | `ptah/src/orchestrator/artifact-committer.ts` | `filterDocsChanges` removed; entire merge block replaced with two-tier flow | High — core behavior change; all existing tests require update |
-| `ptah/src/orchestrator/invocation-guard.ts` | `featureBranch` forwarded; `pull-error`/`push-error` added to unrecoverable set | Medium — new statuses affect retry logic |
+| `ptah/src/orchestrator/invocation-guard.ts` | `featureBranch` forwarded; `pull-error`/`push-error`/`lock-timeout` added to unrecoverable set | Medium — new statuses affect retry logic |
 | `ptah/src/orchestrator/orchestrator.ts` | Feature branch setup, sub-branch naming, `handleCommitResult` enrichment | High — multiple callsites; pattern B resume path also updated |
 | `ptah/src/orchestrator/context-assembler.ts` | `extractFeatureName` delegated to `feature-branch.ts` | Low — public API unchanged |
 | `ptah/tests/fixtures/factories.ts` | `FakeGitClient` Phase 10 additions; `defaultCommitResult` branch name | Medium — breaks existing tests until updated in Phase C |
@@ -191,7 +193,8 @@ Phase H (SKILL.md) — fully independent; can run at any point
 - [ ] Code reviewed against all 17 requirement acceptance criteria
 - [ ] Implementation matches TSPEC v0.2 (protocols, algorithm, error handling, test doubles)
 - [ ] Existing tests remain green (no regressions from type changes, FakeGitClient updates, docs/-filter removal)
-- [ ] REQ-FB-01 through REQ-PF-NF-03 each have at least one unit test verifying the acceptance criteria
+- [ ] REQ-FB-01 through REQ-SK-02, and REQ-PF-NF-03, each have at least one unit or integration test verifying the acceptance criteria
+- [ ] REQ-PF-NF-01 (merge latency < 10 seconds) and REQ-PF-NF-02 (worktree count = active invocations + conflict-retained) are verified by **code review and manual validation only** — no automated test exists for these requirements. Rationale: NF-01 latency is environment-dependent (network, disk I/O) and unsuitable for deterministic CI assertions; NF-02 worktree count requires a live orchestrator with concurrent invocations beyond the scope of unit or integration tests. This is an accepted gap, documented here in lieu of automated coverage.
 - [ ] `mergeInWorktree` uses `--no-ff` (verified in integration test)
 - [ ] `pullInWorktree` silently skips on "couldn't find remote ref" (verified in integration test with local bare remote)
 - [ ] `docs/` filter is absent from `ArtifactCommitter` (no `filterDocsChanges` call)
