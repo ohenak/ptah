@@ -35,6 +35,16 @@ export interface TokenBudgetConfig {
   headroom_pct: number;
 }
 
+export type ThreadStatus = "open" | "closed" | "stalled";
+
+export interface ThreadStateEntry {
+  status: ThreadStatus;
+  turnCount: number;
+  isReviewThread: boolean;
+  reviewTurnCount: number;
+  parentThreadId?: string;
+}
+
 export interface PtahConfig {
   project: {
     name: string;
@@ -48,6 +58,9 @@ export interface PtahConfig {
     retry_attempts: number;
     invocation_timeout_ms?: number;
     token_budget?: TokenBudgetConfig;
+    retry_base_delay_ms?: number;
+    retry_max_delay_ms?: number;
+    shutdown_timeout_ms?: number;
   };
   git: {
     commit_prefix: string;

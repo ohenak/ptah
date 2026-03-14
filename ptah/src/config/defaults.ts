@@ -139,6 +139,9 @@ export function buildConfig(projectName: string): string {
       max_turns_per_thread: 10,
       pending_poll_seconds: 30,
       retry_attempts: 3,
+      retry_base_delay_ms: 2000,
+      retry_max_delay_ms: 30000,
+      shutdown_timeout_ms: 60000,
       token_budget: {
         layer1_pct: 0.15,
         layer2_pct: 0.45,
