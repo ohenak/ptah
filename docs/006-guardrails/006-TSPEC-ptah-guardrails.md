@@ -6,7 +6,7 @@
 | **Functional Specifications** | [FSPEC-GR-01], [FSPEC-GR-02], [FSPEC-GR-03] — [006-FSPEC-ptah-guardrails](./006-FSPEC-ptah-guardrails.md) |
 | **Analysis** | Inline — FSPEC contains full behavioral specification; codebase analysis performed inline |
 | **Date** | March 13, 2026 |
-| **Status** | Approved |
+| **Status** | Approved (v1.2) |
 
 ---
 
@@ -168,6 +168,15 @@ export interface ThreadStateManager {
   /** Mark review thread as STALLED. */
   stallReviewThread(threadId: string): void;
 
+  /**
+   * Return the parent thread ID for a review thread, as supplied to
+   * registerReviewThread(). Returns undefined if threadId is unknown or
+   * was not registered as a review thread.
+   * Used by the orchestrator to populate the #agent-debug stall log message
+   * per FSPEC §4.4 Step 3b: "Parent thread: {parentThreadId}".
+   */
+  getParentThreadId(threadId: string): string | undefined;
+
   /** Current status for a thread (defaults to "open" if unseen). */
   getStatus(threadId: string): ThreadStatus;
 
@@ -282,6 +291,28 @@ const invocationGuard = new DefaultInvocationGuard(
 invocationGuard: InvocationGuard;
 threadStateManager: ThreadStateManager;
 worktreeRegistry: WorktreeRegistry;
+/**
+ * Shared AbortSignal from the composition-root AbortController.
+ * The orchestrator passes this to InvocationGuardParams.shutdownSignal
+ * at each invokeWithRetry() call site, so that backoff delays can be
+ * cancelled when the shutdown handler calls abortController.abort().
+ */
+shutdownSignal: AbortSignal;
+```
+
+The composition root wires the signal as follows:
+
+```typescript
+// bin/ptah.ts (Phase 6 additions)
+const abortController = new AbortController();
+
+const orchestrator = new DefaultOrchestrator({
+  // ... existing deps ...
+  invocationGuard,
+  threadStateManager,
+  worktreeRegistry,
+  shutdownSignal: abortController.signal,   // ← Phase 6 addition
+});
 ```
 
 `createShutdownHandler` signature changes to accept the `GitClient` and `WorktreeRegistry` for the shutdown-commit step:
@@ -427,6 +458,14 @@ This path is handled in `orchestrator.ts`, NOT in `InvocationGuard`. After `guar
           ({maxTurnsPerThread}) reached. No further routing."
         manager.closeThread(threadId)
         return (drop message)
+```
+
+The stall log in Step 1b (review-thread path) populates `{parentId}` from `manager.getParentThreadId(threadId)`:
+
+```
+postToDebugChannel: "[ptah] Review thread {name} ({id}) STALLED after 4 turns —
+  no ROUTE_TO_DONE received. Parent thread: {manager.getParentThreadId(threadId) ?? 'unknown'}"
+```
 
 3. Proceed with normal routing.
 ```
@@ -582,9 +621,15 @@ class FakeThreadStateManager implements ThreadStateManager {
   reviewThreadIds = new Set<string>();
   turnCounts = new Map<string, number>();
   openThreadIdSet = new Set<string>();  // populated by tests for monitoring assertions
+  parentThreadIds = new Map<string, string>();  // threadId → parentThreadId
 
   // openThreadIds() required by protocol — returns threads explicitly registered as open
   openThreadIds(): string[] { return Array.from(this.openThreadIdSet); }
+
+  // getParentThreadId() required by protocol — returns from parentThreadIds map
+  getParentThreadId(threadId: string): string | undefined {
+    return this.parentThreadIds.get(threadId);
+  }
   // ... full protocol implementation with test-injectable outcomes
 }
 ```
@@ -718,6 +763,7 @@ This helper is called from:
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Backend Engineer | Initial technical specification for Phase 6 — guardrails |
 | 1.1 | March 13, 2026 | Backend Engineer | TE review findings resolved: (M-01) Shutdown-aborted backoff now posts error embed per FSPEC AT-GR-16; (M-02) §5.1 Step 3 extended to handle CommitResult transient statuses returned by commitAndMerge() — "commit-error", "lock-timeout", "merge-error" now correctly routed to retry path; "merge-error" added to §6 error table; (M-03) GR-R numbering corrected throughout — 6 locations updated to match FSPEC v1.2; (M-04) debugChannelId injection standardised to Option A (via InvocationGuardParams) — §4.2.1, §4.3, §4.4, §9.5, §10 Q-02 updated for consistency; minor test double improvements: FakeInvocationGuard captures shutdownSignal, FakeThreadStateManager implements openThreadIds(), FakeGitClient adds addAllCalls/commitCalls |
+| 1.2 | March 13, 2026 | Backend Engineer | BE cross-review F-01 resolved: added `shutdownSignal: AbortSignal` to `OrchestratorDeps` additions in §4.4 and added composition-root wiring snippet; BE cross-review F-02 resolved: added `getParentThreadId(threadId: string): string \| undefined` to `ThreadStateManager` protocol in §4.2.2 with full behavioural contract, updated §5.2 Step 1b stall-log algorithm to reference `manager.getParentThreadId(threadId)` as source of {parentId}, updated `FakeThreadStateManager` in §7.2 to add `parentThreadIds: Map<string, string>` field and implement `getParentThreadId()`; status updated to Approved (v1.2) |
 
 ---
 
