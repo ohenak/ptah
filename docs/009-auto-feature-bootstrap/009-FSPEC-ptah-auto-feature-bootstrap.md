@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE9 |
 | **Parent Document** | [009-REQ-PTAH-auto-feature-bootstrap](./009-REQ-PTAH-auto-feature-bootstrap.md) |
-| **Version** | 1.0 |
+| **Version** | 1.3 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
 | **Status** | Approved |
@@ -173,9 +173,12 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
    ---
 
 8. WRITE OVERVIEW.MD
-   Write the synthesized content to docs/{full-folder-name}/overview.md.
-   This operation must complete (file flushed to disk) before any Phase 1
-   activity begins (REQ-AF-NF-01).
+   Before writing, check if docs/{full-folder-name}/overview.md already exists.
+   If it EXISTS (race condition from Step 6 or other process) → skip the write,
+   log a note: "[ptah:pm] overview.md already exists — skipping write."
+   Proceed to Step 9.
+   If it DOES NOT EXIST → write the synthesized content and flush to disk.
+   This operation must complete before any Phase 1 activity begins (REQ-AF-NF-01).
 
 9. PROCEED TO PHASE 1 (DISCOVERY)
    The PM skill resumes its normal PDLC workflow from Phase 1.
@@ -208,7 +211,7 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
 | Thread name has special characters that slugify to an empty string (e.g., "!!! — do stuff") | After stripping the task portion and slugifying, the result is "". Step 2f applies: the PM uses the fallback slug "feature" and logs a warning. Assign NNN prefix normally. The folder would be `docs/009-feature/` (numbered thread) or `docs/008-feature/` (unnumbered). The developer is expected to rename the thread; the warning message instructs them to do so. |
 | Thread name has no " — " separator (e.g., "create requirements for auth") | Strip the entire thread name (no separator found → use full name). Apply slugification → "create-requirements-for-auth". Assign NNN normally. This is unusual but valid. |
 | Two PM invocations run concurrently for different threads; both auto-assign NNN = "008" | Each runs in its own worktree. Both create `docs/008-{their-feature}/`. Both are committed via the Phase 4 pipeline. The first merge succeeds. The second merge succeeds (different folder names). No conflict. |
-| Two PM invocations run concurrently for the SAME thread (e.g., user accidentally double-invokes PM) | Both try to create the same folder. The second mkdir succeeds because the folder already exists (Step 6: race condition → treat as success). Both write `overview.md`. The artifact commit pipeline may produce a duplicate commit or a merge conflict on the same file. Engineering should note this in the TSPEC — idempotent mkdir prevents crashes, but concurrent writes to `overview.md` should be handled gracefully. |
+| Two PM invocations run concurrently for the SAME thread (e.g., user accidentally double-invokes PM) | Both try to create the same folder. The second mkdir succeeds because the folder already exists (Step 6: race condition → treat as success). Step 8 then checks whether `overview.md` already exists — the second invocation to reach Step 8 will find the file already present (written by the first) and skip the write. In the tightest race, both may pass the Step 8 existence check before either writes; the artifact commit pipeline would then see two concurrent writes to the same file. Engineering should note this in the TSPEC as the residual concurrent-write risk, but idempotent mkdir and the Step 8 existence check prevent crashes and reduce duplicated writes in practice. |
 | The `docs/` folder does not exist at all (brand new repo, ptah init not yet run) | `ptah init` (Phase 1) creates `docs/` as part of scaffolding. This edge case implies `ptah init` was not run. The PM should detect that `docs/` is missing and log a clear error instructing the user to run `ptah init` first. It must NOT create `docs/` itself — that is `ptah init`'s responsibility. |
 | Thread name begins with a 3-digit number but the folder with that number already exists for a *different* feature (e.g., thread "001-my-thing" but `docs/001-init/` already exists) | The PM checks for `docs/001-my-thing/` specifically (the slugified thread name), NOT `docs/001-init/`. The check is for the exact folder name, not just the NNN prefix. `docs/001-my-thing/` does not exist → PM creates it normally. Two features can share a NNN prefix if their slugs are different (though this is unusual and developers should avoid it). |
 
@@ -285,8 +288,8 @@ THEN:  1. I strip after " — ": "OAuth 2.0 (Google)"
        3. Folder check: docs/oauth-2-0-google/ — NOT FOUND
        4. NNN auto-assign: highest = 007 → assign 008
        5. Folder created: docs/008-oauth-2-0-google/
-       6. overview.md written with title "# 008 Oauth 2 0 Google" (or similar —
-          the exact title format is up to engineering provided it is valid Markdown)
+       6. overview.md written with title "# 008 Oauth 2 0 Google"
+          (per Step 7a: hyphens replaced by spaces, each word title-cased)
 ```
 
 **AT-AF-05: docs/ folder missing — error reported, halt**
@@ -334,6 +337,79 @@ THEN:  1. I extract: "001-custom-feature"
        (docs/001-init/ is untouched)
 ```
 
+**AT-AF-08: Empty-slug fallback — warning logged, folder created with "feature" slug**
+
+```
+WHO:   As the PM skill
+GIVEN: I am invoked on thread "!!! — do stuff"
+       and docs/ exists with the highest numbered folder being docs/007-polish/
+WHEN:  I run Phase 0 bootstrap
+THEN:  1. I strip after " — ": "!!!"
+       2. I slugify: non-alphanumeric → "---" → collapse → "-" → strip → ""
+       3. Empty slug detected → fallback slug = "feature"
+       4. I log a warning: "[ptah:pm] Warning: thread name could not be slugified
+          into a meaningful name. Using fallback slug 'feature'. Please rename
+          the Discord thread."
+       5. "feature" does NOT match ^[0-9]{3}- → NNN auto-assign
+       6. Scan docs/: highest NNN = 007 → assign 008
+       7. Full folder name: "008-feature"
+       8. I create: docs/008-feature/
+       9. I write: docs/008-feature/overview.md beginning with "# 008 Feature"
+      10. I proceed to Phase 1
+```
+
+**AT-AF-09: Race condition on overview.md — pre-write check prevents overwrite**
+
+```
+WHO:   As the PM skill
+GIVEN: I am invoked on thread "010-race-test — plan"
+       and docs/010-race-test/ does NOT exist at Step 3
+       and by the time Step 6 (mkdir) runs, another process has created
+       docs/010-race-test/ AND written docs/010-race-test/overview.md
+       with content "Existing content"
+WHEN:  I reach Step 8 (write overview.md)
+THEN:  I check if docs/010-race-test/overview.md already exists — FOUND
+       I skip the write
+       I log: "[ptah:pm] overview.md already exists — skipping write."
+       The existing "Existing content" is preserved (not overwritten)
+       I proceed to Phase 1
+```
+
+**AT-AF-10: NNN auto-assignment with no existing numbered folders — base case**
+
+```
+WHO:   As the PM skill
+GIVEN: I am invoked on thread "my-first-feature — create requirements"
+       and docs/ exists but contains NO entries matching the ^[0-9]{3}- pattern
+       (e.g., docs/ is empty or contains only non-numbered entries)
+WHEN:  I run Phase 0 bootstrap
+THEN:  1. I strip after " — ": "my-first-feature"
+       2. I slugify: "my-first-feature" (no change)
+       3. Folder check: docs/my-first-feature/ — NOT FOUND
+       4. NNN check: "my-first-feature" does NOT start with 3-digit-hyphen
+          → auto-assign: no numbered folders found → NNN = "001"
+       5. Full folder name: "001-my-first-feature"
+       6. I create: docs/001-my-first-feature/
+       7. I write: docs/001-my-first-feature/overview.md beginning with
+          "# 001 My First Feature"
+       8. I proceed to Phase 1
+```
+
+**AT-AF-11: Filesystem error on overview.md write — error reported, halt**
+
+```
+WHO:   As the PM skill
+GIVEN: I am invoked on thread "010-new-feature — plan"
+       and docs/010-new-feature/ does NOT exist
+       and mkdir succeeds (folder docs/010-new-feature/ created)
+       and docs/010-new-feature/overview.md does NOT exist (Step 8 pre-write check passes)
+       and the filesystem returns a permission denied error on the overview.md write
+WHEN:  I attempt to write docs/010-new-feature/overview.md
+THEN:  I report a clear error with the filesystem error details
+       I halt — I do NOT proceed to Phase 1
+       docs/010-new-feature/ remains on disk (empty — this is acceptable per AF-R7)
+```
+
 ### 3.8 Dependencies
 
 - Depends on: [FSPEC-AC-01] (artifact commit pipeline commits the created folder and overview.md after the PM's invocation)
@@ -367,6 +443,7 @@ THEN:  1. I extract: "001-custom-feature"
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 9 — 1 FSPEC covering all 8 requirements |
 | 1.1 | March 13, 2026 | Product Manager | Added Step 2f (empty-slug fallback to "feature") to behavioral flow; aligned edge case §3.6 row 2 with behavioral flow; updated status to Ready for Engineering Review |
 | 1.2 | March 13, 2026 | Product Manager | F-01: corrected em-dash description in Step 1b (was "hyphen-hyphen", now "em-dash U+2014"); F-02: corrected edge case §3.6 row 1 — bare-number thread slugs go through auto-NNN path, not `docs/009/`; Q-01: extended AF-R8 to document known slugification scope limitation for non-standard thread names; status updated to Approved |
+| 1.3 | March 14, 2026 | Product Manager | F-TE-02 (High): Added explicit pre-write existence check in Step 8 — overview.md is not written if it already exists (race condition protection per AF-R4); updated same-thread concurrent-invocation edge case to reflect new Step 8 check. F-TE-01 (High): Added AT-AF-08 for empty-slug fallback code path. F-TE-02 (High): Added AT-AF-09 for overview.md pre-write race-condition check. F-TE-03 (Medium): Added AT-AF-10 for NNN = "001" base case (no numbered folders). F-TE-04 (Medium): Added AT-AF-11 for overview.md write failure halting. F-TE-05 (Low): Removed "or similar" from AT-AF-04 step 6 — title algorithm is deterministic; status remains Approved. |
 
 ---
 
