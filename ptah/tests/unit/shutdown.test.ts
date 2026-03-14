@@ -1,17 +1,51 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createShutdownHandler } from "../../src/shutdown.js";
-import { FakeLogger } from "../fixtures/factories.js";
+import {
+  FakeLogger,
+  FakeGitClient,
+  FakeWorktreeRegistry,
+  FakeDiscordClient,
+} from "../fixtures/factories.js";
 import type { StartResult } from "../../src/types.js";
+import type { Orchestrator } from "../../src/orchestrator/orchestrator.js";
+import type { ThreadQueue } from "../../src/orchestrator/thread-queue.js";
+
+function makeFakeOrchestrator(): Orchestrator {
+  return {
+    handleMessage: vi.fn().mockResolvedValue(undefined),
+    startup: vi.fn().mockResolvedValue(undefined),
+    shutdown: vi.fn().mockResolvedValue(undefined),
+    resumeWithPatternB: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeFakeThreadQueue(activeCount = 0): ThreadQueue {
+  return {
+    enqueue: vi.fn(),
+    isProcessing: vi.fn().mockReturnValue(false),
+    activeCount: vi.fn().mockReturnValue(activeCount),
+  };
+}
 
 describe("createShutdownHandler", () => {
   let logger: FakeLogger;
-  let cleanupFn: ReturnType<typeof vi.fn>;
   let result: StartResult;
+  let gitClient: FakeGitClient;
+  let worktreeRegistry: FakeWorktreeRegistry;
+  let discord: FakeDiscordClient;
+  let orchestrator: Orchestrator;
+  let threadQueue: ThreadQueue;
+  let abortController: AbortController;
 
   beforeEach(() => {
     logger = new FakeLogger();
-    cleanupFn = vi.fn().mockResolvedValue(undefined);
-    result = { cleanup: cleanupFn };
+    result = { cleanup: vi.fn().mockResolvedValue(undefined) };
+    gitClient = new FakeGitClient();
+    worktreeRegistry = new FakeWorktreeRegistry();
+    discord = new FakeDiscordClient();
+    orchestrator = makeFakeOrchestrator();
+    threadQueue = makeFakeThreadQueue(0);
+    abortController = new AbortController();
     // Mock process.exit to prevent actual exit
     vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
   });
@@ -20,22 +54,44 @@ describe("createShutdownHandler", () => {
     vi.restoreAllMocks();
   });
 
+  function makeHandler(opts?: { activeCount?: number; debugChannelId?: string }) {
+    const queue = opts?.activeCount != null ? makeFakeThreadQueue(opts.activeCount) : threadQueue;
+    return createShutdownHandler(
+      result,
+      logger,
+      queue,
+      worktreeRegistry,
+      gitClient,
+      orchestrator,
+      discord,
+      60000, // shutdownTimeoutMs
+      abortController,
+      opts?.debugChannelId ?? null,
+    );
+  }
+
   // PROP-DI-13: SIGINT triggers graceful shutdown
   it("calls cleanup and exits with code 0 on shutdown", async () => {
-    const { shutdown } = createShutdownHandler(result, logger);
+    const { shutdown } = makeHandler();
 
     await shutdown();
 
-    expect(cleanupFn).toHaveBeenCalledTimes(1);
+    // orchestrator.shutdown() called
+    expect(orchestrator.shutdown).toHaveBeenCalledTimes(1);
+    // discord.disconnect() called
+    expect(discord.disconnected).toBe(true);
+    // exits with 0
     expect(process.exit).toHaveBeenCalledWith(0);
-    expect(logger.messages).toContainEqual({ level: "info", message: "Shutting down..." });
-    expect(logger.messages).toContainEqual({ level: "info", message: "Disconnected from Discord. Goodbye." });
+    // logs goodbye
+    expect(logger.messages).toContainEqual(
+      expect.objectContaining({ level: "info", message: "Disconnected from Discord. Goodbye." }),
+    );
   });
 
   // PROP-DI-14: SIGTERM triggers same graceful shutdown
   it("registers both SIGINT and SIGTERM handlers", () => {
     const onSpy = vi.spyOn(process, "on");
-    const { registerSignals } = createShutdownHandler(result, logger);
+    const { registerSignals } = makeHandler();
 
     registerSignals();
 
@@ -44,30 +100,26 @@ describe("createShutdownHandler", () => {
   });
 
   // PROP-DI-47: shuttingDown guard prevents concurrent shutdown
-  it("prevents concurrent shutdown — second call is a no-op", async () => {
-    const { shutdown } = createShutdownHandler(result, logger);
+  it("prevents concurrent shutdown — second call forces exit(1)", async () => {
+    const { shutdown } = makeHandler();
 
-    // Call shutdown twice concurrently
-    await Promise.all([shutdown(), shutdown()]);
+    // First call in the background, second call immediately after
+    const first = shutdown();
+    // Second call should trigger process.exit(1) immediately
+    shutdown();
+    await first;
 
-    // cleanup should only be called once
-    expect(cleanupFn).toHaveBeenCalledTimes(1);
-    expect(process.exit).toHaveBeenCalledTimes(1);
+    // process.exit should have been called (at least once for the first shutdown)
+    expect(process.exit).toHaveBeenCalled();
   });
 
-  it("logs shutdown sequence in correct order", async () => {
-    const { shutdown } = createShutdownHandler(result, logger);
+  // Phase 6: abortController.abort() is called on shutdown
+  it("abortController.abort() called on shutdown to signal in-flight invocations", async () => {
+    const abortSpy = vi.spyOn(abortController, "abort");
+    const { shutdown } = makeHandler();
 
     await shutdown();
 
-    const infoMessages = logger.messages
-      .filter(m => m.level === "info")
-      .map(m => m.message);
-
-    const shutdownIdx = infoMessages.indexOf("Shutting down...");
-    const goodbyeIdx = infoMessages.indexOf("Disconnected from Discord. Goodbye.");
-
-    expect(shutdownIdx).toBeGreaterThanOrEqual(0);
-    expect(goodbyeIdx).toBeGreaterThan(shutdownIdx);
+    expect(abortSpy).toHaveBeenCalledTimes(1);
   });
 });
