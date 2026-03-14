@@ -6,7 +6,7 @@
 | **Functional Specifications** | [FSPEC-GR-01], [FSPEC-GR-02], [FSPEC-GR-03] — [006-FSPEC-ptah-guardrails](./006-FSPEC-ptah-guardrails.md) |
 | **Analysis** | Inline — FSPEC contains full behavioral specification; codebase analysis performed inline |
 | **Date** | March 13, 2026 |
-| **Status** | Approved (v1.2) |
+| **Status** | Approved (v1.3) |
 
 ---
 
@@ -232,6 +232,26 @@ export interface ThreadQueue {
 }
 ```
 
+#### 4.2.5 `GitClient` Phase 6 additions — `src/services/git.ts`
+
+```typescript
+export interface GitClient {
+  // ... existing Phase 1–4 methods ...
+
+  // --- Phase 6 ---
+  hasUncommittedChanges(worktreePath: string): Promise<boolean>;
+  resetHardInWorktree(worktreePath: string): Promise<void>;
+  cleanInWorktree(worktreePath: string): Promise<void>;
+  addAllInWorktree(worktreePath: string): Promise<void>;
+}
+```
+
+**Behavioural contract:**
+- `resetHardInWorktree`: Executes `git -C {worktreePath} reset --hard HEAD` to discard all changes before retry.
+- `cleanInWorktree`: Executes `git -C {worktreePath} clean -fd` to remove untracked files before retry.
+- `addAllInWorktree`: Executes `git -C {worktreePath} add -A` for the shutdown commit step.
+- `hasUncommittedChanges`: Returns `true` if the worktree has staged or unstaged changes (used in shutdown Step 4).
+
 ### 4.3 Concrete Implementations
 
 #### `DefaultInvocationGuard`
@@ -315,7 +335,7 @@ const orchestrator = new DefaultOrchestrator({
 });
 ```
 
-`createShutdownHandler` signature changes to accept the `GitClient` and `WorktreeRegistry` for the shutdown-commit step:
+`createShutdownHandler` signature changes to accept the `GitClient`, `WorktreeRegistry`, `Orchestrator`, `DiscordClient`, and `debugChannelId` for the full 7-step shutdown sequence:
 
 ```typescript
 export function createShutdownHandler(
@@ -325,8 +345,11 @@ export function createShutdownHandler(
   threadQueue: ThreadQueue,
   worktreeRegistry: WorktreeRegistry,
   gitClient: GitClient,
+  orchestrator: Orchestrator,           // Step 5: stop question poller
+  discord: DiscordClient,               // Step 2d: debug channel embed; Step 6: disconnect
   shutdownTimeoutMs: number,
-  abortController: AbortController,  // shared; abort() called on shutdown to cancel backoff waits
+  abortController: AbortController,     // shared; abort() called on shutdown to cancel backoff waits
+  debugChannelId?: string | null,       // resolved by orchestrator.startup(); passed here for shutdown embed
 ): ShutdownHandler
 ```
 
@@ -764,6 +787,7 @@ This helper is called from:
 | 1.0 | March 13, 2026 | Backend Engineer | Initial technical specification for Phase 6 — guardrails |
 | 1.1 | March 13, 2026 | Backend Engineer | TE review findings resolved: (M-01) Shutdown-aborted backoff now posts error embed per FSPEC AT-GR-16; (M-02) §5.1 Step 3 extended to handle CommitResult transient statuses returned by commitAndMerge() — "commit-error", "lock-timeout", "merge-error" now correctly routed to retry path; "merge-error" added to §6 error table; (M-03) GR-R numbering corrected throughout — 6 locations updated to match FSPEC v1.2; (M-04) debugChannelId injection standardised to Option A (via InvocationGuardParams) — §4.2.1, §4.3, §4.4, §9.5, §10 Q-02 updated for consistency; minor test double improvements: FakeInvocationGuard captures shutdownSignal, FakeThreadStateManager implements openThreadIds(), FakeGitClient adds addAllCalls/commitCalls |
 | 1.2 | March 13, 2026 | Backend Engineer | BE cross-review F-01 resolved: added `shutdownSignal: AbortSignal` to `OrchestratorDeps` additions in §4.4 and added composition-root wiring snippet; BE cross-review F-02 resolved: added `getParentThreadId(threadId: string): string \| undefined` to `ThreadStateManager` protocol in §4.2.2 with full behavioural contract, updated §5.2 Step 1b stall-log algorithm to reference `manager.getParentThreadId(threadId)` as source of {parentId}, updated `FakeThreadStateManager` in §7.2 to add `parentThreadIds: Map<string, string>` field and implement `getParentThreadId()`; status updated to Approved (v1.2) |
+| 1.3 | March 13, 2026 | Backend Engineer | Post-implementation reconciliation: (1) `createShutdownHandler` signature in §4.4 updated to match actual implementation — added `orchestrator: Orchestrator`, `discord: DiscordClient`, and `debugChannelId?: string \| null` parameters (shutdown handler owns the full 7-step sequence including orchestrator shutdown, Discord disconnect, and debug channel notification); (2) Added §4.2.5 documenting Phase 6 `GitClient` interface additions (`hasUncommittedChanges`, `resetHardInWorktree`, `cleanInWorktree`, `addAllInWorktree`) with behavioural contracts; status updated to Approved (v1.3) |
 
 ---
 
