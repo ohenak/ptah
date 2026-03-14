@@ -214,6 +214,13 @@ describe("StartCommand", () => {
         artifactCommitter: new FakeArtifactCommitter(),
         agentLogWriter: new FakeAgentLogWriter(),
         messageDeduplicator: new FakeMessageDeduplicator(),
+        questionStore: new FakeQuestionStore(),
+        questionPoller: new FakeQuestionPoller(),
+        patternBContextBuilder: new FakePatternBContextBuilder(),
+        invocationGuard: new FakeInvocationGuard(),
+        threadStateManager: new FakeThreadStateManager(),
+        worktreeRegistry: new FakeWorktreeRegistry(),
+        shutdownSignal: new AbortController().signal,
       });
 
       command = new StartCommand(configLoader, discord, logger, {
@@ -310,6 +317,13 @@ describe("StartCommand", () => {
         artifactCommitter: new FakeArtifactCommitter(),
         agentLogWriter: new FakeAgentLogWriter(),
         messageDeduplicator: new FakeMessageDeduplicator(),
+        questionStore: new FakeQuestionStore(),
+        questionPoller: new FakeQuestionPoller(),
+        patternBContextBuilder: new FakePatternBContextBuilder(),
+        invocationGuard: new FakeInvocationGuard(),
+        threadStateManager: new FakeThreadStateManager(),
+        worktreeRegistry: new FakeWorktreeRegistry(),
+        shutdownSignal: new AbortController().signal,
       });
 
       const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
@@ -340,6 +354,13 @@ describe("StartCommand", () => {
         artifactCommitter: new FakeArtifactCommitter(),
         agentLogWriter: new FakeAgentLogWriter(),
         messageDeduplicator: new FakeMessageDeduplicator(),
+        questionStore: new FakeQuestionStore(),
+        questionPoller: new FakeQuestionPoller(),
+        patternBContextBuilder: new FakePatternBContextBuilder(),
+        invocationGuard: new FakeInvocationGuard(),
+        threadStateManager: new FakeThreadStateManager(),
+        worktreeRegistry: new FakeWorktreeRegistry(),
+        shutdownSignal: new AbortController().signal,
       });
 
       discord.channels.set("agent-debug", "debug-channel-id");
