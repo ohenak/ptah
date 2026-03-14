@@ -60,9 +60,13 @@ Every task you perform follows this git workflow. No exceptions.
 
 ### After Completing the Task
 
-3. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, code, tests, and any other files created during the task. Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `feat`, `test`, `fix`, `refactor`, `chore`, `docs`). **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
-4. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
-5. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
+> **⚠ HARD RULE: Every file you create MUST be committed and pushed before you output any routing tags or summary messages. If you skip this, the file only exists in your local workspace and no other agent can read it. This is the #1 cause of lost review artifacts.**
+
+3. **Write all artifacts to disk using the Write tool.** Do NOT just include document content in your response text — you must use the Write tool to create the file. Verify the file exists afterward.
+4. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, code, tests, and any other files created during the task. Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `feat`, `test`, `fix`, `refactor`, `chore`, `docs`). **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
+5. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
+6. **Verify the push succeeded** by running `git log --oneline -1` and confirming the commit is present.
+7. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
 
 ---
 
@@ -140,7 +144,7 @@ You support the following discrete tasks. Each invocation focuses on one task.
    - Requirement → Technical Component Mapping
    - Integration Points
    - Open Questions
-9. **Commit and push** following the git workflow.
+9. **CRITICAL — Commit and push BEFORE routing.** Stage the TSPEC document, commit with `docs({NNN}): add TSPEC for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 10. **Route for review** — see Task 3.
 
 **Output:** Technical Specification Document (Draft).
@@ -205,7 +209,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 - [ ] Pushed to remote for review
 ```
 
-4. **Commit and push** following the git workflow.
+4. **CRITICAL — Commit and push BEFORE routing.** Stage the PLAN document, commit with `docs({NNN}): add execution plan for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 5. **Route for review** — see Task 3.
 
 **Output:** Execution Plan Document (Draft).
@@ -288,12 +292,19 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 2. **Read the deliverable thoroughly** within your frontend scope.
 3. **Cross-reference against the codebase.** Check for integration conflicts with existing components, shared contracts, and frontend patterns.
 4. **Use web search** if you need to validate UI/UX assumptions, check accessibility standards, research component library capabilities, or investigate alternatives.
-5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-frontend-engineer-{document-type}.md` containing:
+5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-frontend-engineer-{document-type}.md` using the Write tool. You MUST use the Write tool to create this file on disk — do NOT just include the review content in your response text. The file must contain:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the frontend architecture
    - **Recommendation:** Approved / Approved with minor changes / Needs revision
-6. **Commit and push** following the git workflow.
+6. **CRITICAL — Commit and push BEFORE routing.** Other agents cannot read your review unless it is committed and pushed. Do all of these in sequence:
+   1. Stage the cross-review file: `git add docs/{NNN}-{feature-name}/CROSS-REVIEW-frontend-engineer-{document-type}.md`
+   2. Commit: `git commit -m "docs({NNN}): add frontend-engineer cross-review of {document-type}"`
+   3. Push: `git push origin feat-{feature-name}`
+   4. Verify the commit landed: `git log --oneline -1` — confirm the commit message matches
+
+   **Do NOT proceed to step 7 until the push succeeds.** If the push fails, diagnose and fix before continuing.
+
 7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
 
    Example (when reviewing a TSPEC requested by backend-engineer):
@@ -369,7 +380,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
    - Verify responsive breakpoints (mobile, tablet, desktop)
    - Verify keyboard navigation
    - Update the PLAN status to `Complete`
-   - Commit and push following the git workflow
+   - **CRITICAL — Commit and push BEFORE routing.** Commit all implementation changes and push to the remote branch. Verify the push succeeds before proceeding.
 
 5. **Route to test-engineer for code and test review:**
 
@@ -393,7 +404,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 1. **Follow the git workflow** — sync the feature branch.
 2. **Read the review feedback** from the cross-review file referenced in the routing message.
 3. **Address findings** — fix issues, add missing tests, improve accessibility or error handling as needed, following TDD for any new code.
-4. **Commit and push** following the git workflow.
+4. **CRITICAL — Commit and push BEFORE routing.** Commit all changes and push to the remote branch. Verify the push succeeds before proceeding.
 5. **Re-route to test-engineer** if changes were substantial, or confirm completion if changes were minor.
 
 ---

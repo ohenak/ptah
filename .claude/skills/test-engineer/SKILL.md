@@ -57,9 +57,13 @@ Every task you perform follows this git workflow. No exceptions.
 
 ### After Completing the Task
 
-3. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `test`, `docs`, `chore`). **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
-4. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
-5. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
+> **⚠ HARD RULE: Every file you create MUST be committed and pushed before you output any routing tags or summary messages. If you skip this, the file only exists in your local workspace and no other agent can read it. This is the #1 cause of lost review artifacts.**
+
+3. **Write all artifacts to disk using the Write tool.** Do NOT just include document content in your response text — you must use the Write tool to create the file. Verify the file exists afterward.
+4. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use conventional commit format: `type(scope): description` (types: `test`, `docs`, `chore`). **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
+5. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
+6. **Verify the push succeeded** by running `git log --oneline -1` and confirming the commit is present.
+7. **Route if needed.** If the task requires routing to other agents (e.g., review requests), do the routing **only after pushing**.
 
 ---
 
@@ -151,7 +155,7 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 
    **Important:** Only include category subsections that have properties — remove empty categories. Follow the template exactly for structure and field names.
 
-9. **Commit and push** following the git workflow.
+9. **CRITICAL — Commit and push BEFORE routing.** Stage the properties document, commit with `docs({NNN}): add test properties for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 10. **Route for review** — see Task 3.
 
 **Output:** Properties Document (Draft).
@@ -198,7 +202,7 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
      ```
    - Integration testing section for cross-module tests
    - Recommendation: Complete / Gaps identified (with must-fix list)
-7. **Commit and push** following the git workflow.
+7. **CRITICAL — Commit and push BEFORE routing.** Stage the coverage review document, commit with `docs({NNN}): add coverage review for {feature-name}`, and push to the remote branch. Verify the push succeeds before proceeding.
 8. **Route for review** — see Task 3.
 
 **Output:** Coverage Review/Augmentation Document.
@@ -282,7 +286,7 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 2. **Read the deliverable thoroughly** within your testing scope.
 3. **Cross-reference against existing test artifacts.** Check for consistency with approved properties documents, existing test patterns, and the project's test infrastructure.
 4. **Use web search** if you need to validate testing assumptions, research edge case patterns, or investigate tooling capabilities.
-5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-test-engineer-{document-type}.md` containing:
+5. **Write structured feedback to a markdown file** at `docs/{NNN}-{feature-name}/CROSS-REVIEW-test-engineer-{document-type}.md` using the Write tool. You MUST use the Write tool to create this file on disk — do NOT just include the review content in your response text. The file must contain:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with testability and coverage goals
@@ -290,7 +294,14 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 
    If **Needs revision**, explicitly state that the requesting skill must address all must-fix items and route the updated deliverable back to you for re-review. If **Approved with minor changes**, the requesting skill may proceed after addressing the changes without re-routing.
 
-6. **Commit and push** following the git workflow.
+6. **CRITICAL — Commit and push BEFORE routing.** Other agents cannot read your review unless it is committed and pushed. Do all three of these in sequence:
+   1. Stage the cross-review file: `git add docs/{NNN}-{feature-name}/CROSS-REVIEW-test-engineer-{document-type}.md`
+   2. Commit: `git commit -m "docs({NNN}): add test-engineer cross-review of {document-type}"`
+   3. Push: `git push origin feat-{feature-name}`
+   4. Verify the commit landed: `git log --oneline -1` — confirm the commit message matches
+
+   **Do NOT proceed to step 7 until the push succeeds.** If the push fails, diagnose and fix before continuing.
+
 7. **Route feedback back** to the requesting agent using a `<routing>` tag, referencing the cross-review file path and a brief summary. You **must** include the routing tag — without it, the requesting agent will not receive your feedback.
 
    Example (when reviewing a TSPEC requested by backend-engineer):
