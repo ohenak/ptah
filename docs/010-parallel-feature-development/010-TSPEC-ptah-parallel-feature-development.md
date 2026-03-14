@@ -6,7 +6,7 @@
 | **Requirements** | [010-REQ-ptah-parallel-feature-development](010-REQ-ptah-parallel-feature-development.md) |
 | **Date** | March 14, 2026 |
 | **Author** | Backend Engineer |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
@@ -202,7 +202,15 @@ createBranchFromRef(branch: string, ref: string): Promise<void>;
  * Equivalent to: git -C {worktreePath} pull {remote} {branch}
  *
  * Used to update the feature branch before merging (REQ-MG-03).
- * Throws on network error, authentication failure, or diverged history.
+ *
+ * NEW BRANCH PATH (F-02 / REQ-MG-03): If the branch has no remote tracking ref
+ * (i.e., the feature branch has never been pushed — normal on first invocation),
+ * the implementation detects the "couldn't find remote ref" error from git and
+ * returns without error, treating it as "already up to date". This is NOT a pull
+ * failure — it is an expected no-op for brand-new feature branches.
+ *
+ * Throws on: network error, authentication failure, diverged history.
+ * Does NOT throw when: branch does not exist on remote (new branch — skip silently).
  */
 pullInWorktree(
   worktreePath: string,
@@ -211,14 +219,20 @@ pullInWorktree(
 ): Promise<void>;
 
 /**
- * Merges a branch into the HEAD of a worktree.
- * Equivalent to: git -C {worktreePath} merge {branch}
+ * Merges a branch into the HEAD of a worktree using --no-ff.
+ * Equivalent to: git -C {worktreePath} merge --no-ff {branch}
+ *
+ * --no-ff is used to always create a merge commit, preserving per-agent history
+ * on the feature branch. This makes PR reviews more informative — reviewers can
+ * see which agent produced which commit and in what order (F-04, PM endorsement).
  *
  * Returns "merged" on success, "conflict" on content conflict,
  * "merge-error" on other git error.
  *
  * IMPORTANT: On conflict, does NOT automatically abort. The caller decides
- * whether to abort (cleanup) or retain (developer resolution).
+ * whether to abort (cleanup) or retain (developer resolution). The merge worktree
+ * is left in MERGE_HEAD state — the developer runs `git merge --continue` after
+ * resolving conflicts, or `git merge --abort` to discard (REQ-MG-02).
  */
 mergeInWorktree(worktreePath: string, branch: string): Promise<MergeResult>;
 
@@ -449,18 +463,21 @@ INPUT: worktreePath, branch (sub-branch), featureBranch, artifactChanges, agentI
 
 1. Validate — return no-changes if artifactChanges is empty
 
-2. Filter — keep only docs/ paths
-
-3. Stage — addInWorktree(worktreePath, docsChanges)
+2. Stage — addInWorktree(worktreePath, artifactChanges)
+   NOTE (F-03): The docs/-only filter is REMOVED in Phase 10. All tracked changes
+   (docs/, src/, tests/, etc.) are staged and committed to the sub-branch. This
+   enables parallel BE agents implementing PLAN steps to commit code artifacts
+   (US-11). Sub-branch isolation ensures agents do not see each other's uncommitted
+   work — only committed feature-branch state (REQ-AB-02).
    On error → cleanupSubBranch(worktreePath, branch); return commit-error
 
-4. Commit — commitInWorktree(worktreePath, message)
+3. Commit — commitInWorktree(worktreePath, message)
    On error → cleanupSubBranch(worktreePath, branch); return commit-error
 
-5. Acquire merge lock (10,000ms timeout)
+4. Acquire merge lock (10,000ms timeout)
    On MergeLockTimeoutError → cleanupSubBranch(worktreePath, branch); return lock-timeout
 
-6. Inside lock (try/finally to ensure release):
+5. Inside lock (try/finally to ensure release):
 
    a. Create merge worktree for feature branch:
       mergeWorktreePath = join(tmpdir(), "ptah-merge-worktrees", uuid())
@@ -468,13 +485,21 @@ INPUT: worktreePath, branch (sub-branch), featureBranch, artifactChanges, agentI
 
    b. Pull feature branch from remote (REQ-MG-03):
       pullInWorktree(mergeWorktreePath, "origin", featureBranch)
-      On error:
+
+      NEW BRANCH PATH (F-02): pullInWorktree internally detects "couldn't find
+      remote ref" (feature branch never pushed) and silently returns — treated
+      as "already up to date". This is the normal path for the FIRST merge on
+      any brand-new feature branch. The first push (step e below) establishes
+      the remote tracking ref.
+
+      On genuine pull error (network, auth, diverged):
         removeWorktree(mergeWorktreePath)      // merge worktree — clean up
         cleanupSubBranch(worktreePath, branch) // sub-branch — clean up
         return pull-error
 
-   c. Merge sub-branch into feature branch:
+   c. Merge sub-branch into feature branch (--no-ff, F-04):
       result = mergeInWorktree(mergeWorktreePath, branch)
+      // --no-ff always creates a merge commit, preserving agent history
 
       if result == "conflict":
         conflictFiles = getConflictedFiles(mergeWorktreePath)
@@ -501,7 +526,7 @@ INPUT: worktreePath, branch (sub-branch), featureBranch, artifactChanges, agentI
       cleanupSubBranch(worktreePath, branch) // clean up agent sub-branch
       return merged(sha=shortSha)
 
-7. Release lock (finally block)
+6. Release lock (finally block)
 ```
 
 ### 5.3 Sub-Branch Cleanup (`cleanupSubBranch`)
@@ -543,7 +568,8 @@ Output: "my-feature-2"
 | Stage failure (git add) | Log error | `commit-error` | Thread error embed via Orchestrator | Sub-branch cleaned up |
 | Commit failure | Log error | `commit-error` | Thread error embed | Sub-branch cleaned up |
 | Lock timeout (>10,000ms) | Log error | `lock-timeout` | Feature branch, sub-branch name, "merge not performed" | Sub-branch cleaned up |
-| Pull failure (network/auth) | Log error | `pull-error` | Feature branch, git error, sub-branch name | Both worktrees cleaned up |
+| Pull — no remote tracking ref (new feature branch, first invocation) | `pullInWorktree` silently returns — treated as up-to-date | *(not an error — flow continues normally)* | None | No cleanup needed — proceed to merge step |
+| Pull failure (network/auth/diverged) | Log error | `pull-error` | Feature branch, git error, sub-branch name | Both worktrees cleaned up |
 | Merge conflict | Retain merge worktree | `conflict` | Conflicted files, merge worktree path, sub-branch name, `git merge --continue` / `git merge --abort` commands | Merge worktree **retained**; sub-branch cleaned up |
 | Merge error (non-conflict) | Abort, clean up | `merge-error` | Thread error embed | Both worktrees cleaned up |
 | Push failure | Retain merge worktree | `push-error` | Feature branch, git error, merge worktree path | Merge worktree **retained**; sub-branch cleaned up |
@@ -552,7 +578,7 @@ Output: "my-feature-2"
 
 **Notes on retained worktrees:**
 - Retained worktrees (conflict, push-error) have no TTL. Developer is responsible for manual cleanup.
-- Conflict-retained worktrees are in MERGE_HEAD state. Developer resolves conflicts in the worktree files then runs `git merge --continue` or `git merge --abort`.
+- **Conflict-retained worktrees are in MERGE_HEAD state** (the merge is NOT aborted — F-01). The worktree is left mid-merge so the developer can resolve conflicts in-place and then run `git merge --continue`, or run `git merge --abort` to discard. This is the only path that makes `git merge --continue` valid (REQ-MG-02).
 - Push-retained worktrees have a complete merge commit but it was not pushed. Developer runs `git push origin {featureBranch}` from the worktree.
 
 ---
@@ -701,7 +727,7 @@ it("reuses existing feature branch on subsequent invocations", async () => {
 | REQ-AB-04 | `DefaultArtifactCommitter.cleanupSubBranch` | On merge success: remove sub-branch worktree + delete sub-branch. On technical failure (non-conflict): same. On conflict: sub-branch cleaned up but merge worktree retained. |
 | REQ-MG-01 | `AsyncMutex` (existing, no change), `DefaultArtifactCommitter` lock acquisition | Single mutex serializes all merges; timeout returns lock-timeout |
 | REQ-MG-02 | `DefaultArtifactCommitter.commitAndMerge` (conflict branch), `GitClient.getConflictedFiles`, `Orchestrator.handleCommitResult` | On conflict: collect files, retain merge worktree, return conflict result; Orchestrator posts Discord notification |
-| REQ-MG-03 | `GitClient.pullInWorktree`, `DefaultArtifactCommitter.commitAndMerge` (pull step) | Pull before merge; on failure: clean up and return pull-error |
+| REQ-MG-03 | `GitClient.pullInWorktree`, `DefaultArtifactCommitter.commitAndMerge` (pull step) | Pull before merge; on genuine failure (network, auth, diverged): clean up and return pull-error. New branch path (no remote tracking ref): `pullInWorktree` silently skips — not an error. |
 | REQ-MG-04 | `AsyncMutex` timeout (already 10,000ms), `DefaultArtifactCommitter.commitAndMerge` (lock step), `Orchestrator.handleCommitResult` | Lock timeout → cleanupSubBranch → return lock-timeout; Orchestrator posts Discord notification |
 | REQ-SK-01 | `.claude/skills/{pm,eng,fe,qa}/SKILL.md` — Git Workflow section | Remove `git checkout`, `git branch`, `git push` instructions; add orchestrator manages branches statement |
 | REQ-SK-02 | `.claude/skills/{pm,eng,fe,qa}/SKILL.md` — Git Workflow section | Add: "you are in an isolated worktree; cwd is worktree root; use relative paths" |
@@ -748,13 +774,13 @@ The following existing tests are affected and require updates:
 
 ## 10. Open Questions
 
-| # | Question | Impact | Owner |
-|---|---------|--------|-------|
-| OQ-01 | Should `pullInWorktree` be skipped if the feature branch has no remote tracking ref (e.g., brand-new feature branch that was created locally and never pushed)? `git pull origin feat-{name}` will fail with "couldn't find remote ref" if the branch doesn't exist on remote. | Pull failure would incorrectly block the very first merge to a brand-new feature branch. | QA/BE |
-| OQ-02 | Should `mergeInWorktree` use `--no-ff` to always create a merge commit, preserving agent history on the feature branch? Or allow fast-forward (simpler history)? The REQ does not specify. | Affects git log readability on the feature branch. | PM/BE |
-| OQ-03 | The `ArtifactCommitter` currently filters to `docs/` only. Phase 10 brings code changes (src/, tests/) in scope when multiple BE agents implement PLAN steps. Should the filter be removed in Phase 10 or deferred? | If deferred, BE agents working on code (not docs) will produce no-changes and their commits won't appear on the feature branch. | PM/BE |
+All open questions resolved during PM review. No unresolved questions remain.
 
-> **Note OQ-01 is likely a MUST-FIX before implementation.** If pull fails on a new feature branch's first invocation, no agent can ever merge. A safe resolution: catch `couldn't find remote ref` errors from `pullInWorktree` and treat as "no remote branch yet — skip pull". Alternatively, only pull if the remote tracking ref exists (`git ls-remote --heads origin {featureBranch}`).
+| # | Question | Resolution | Reference |
+|---|---------|-----------|-----------|
+| OQ-01 ✅ | Should `pullInWorktree` be skipped if the feature branch has no remote tracking ref? | **RESOLVED (F-02).** `NodeGitClient.pullInWorktree` internally catches "couldn't find remote ref" and silently returns (no-op). The orchestrator intentionally defers the first feature branch push to `ArtifactCommitter` — there is no eager push in orchestrator setup. The skip-pull approach handles first-invocation without additional orchestrator complexity. Documented in Section 4.3 and Section 5.2 step 5b. | F-02, Q-01 |
+| OQ-02 ✅ | Should `mergeInWorktree` use `--no-ff`? | **RESOLVED (F-04, PM endorsement).** Use `--no-ff`. Rationale: the feature branch is a PR review artifact — developers reviewing the PR benefit from discrete merge commits per agent, showing which agent produced which commit and in what order. Fast-forward would collapse this history. Documented in Section 4.3 and Section 5.2 step 5c. | F-04 |
+| OQ-03 ✅ | Should the `docs/`-only filter in `ArtifactCommitter` be removed in Phase 10? | **RESOLVED (F-03, PM decision: Option A).** Filter removed. All tracked changes (docs/, src/, tests/, etc.) are staged and committed. This enables the primary Phase 10 use case: parallel BE agents implementing PLAN steps (US-11). Sub-branch isolation ensures agents do not interfere with each other's uncommitted work. Documented in Section 5.2 step 2. | F-03 |
 
 ---
 
@@ -763,3 +789,4 @@ The following existing tests are affected and require updates:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 0.1 | March 14, 2026 | Backend Engineer | Initial draft |
+| 0.2 | March 14, 2026 | Backend Engineer | PM review (Approved with minor changes): F-01 — clarified MERGE_HEAD conflict state in Section 4.3 mergeInWorktree docstring and Section 6 error notes; F-02 — documented skip-pull behavior for new-branch path in Section 4.3 pullInWorktree docstring, Section 5.2 step 5b, Section 6 error table, REQ-MG-03 mapping; F-03 — removed docs/-only filter from Section 5.2 step 2 (all tracked changes staged); F-04 — added --no-ff to mergeInWorktree docstring and Section 5.2 step 5c; OQ-01/02/03 all resolved. Status → Approved. |
