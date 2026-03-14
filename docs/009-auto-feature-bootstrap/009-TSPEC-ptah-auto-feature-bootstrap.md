@@ -6,7 +6,7 @@
 | **Requirements** | [009-REQ-PTAH-auto-feature-bootstrap](./009-REQ-PTAH-auto-feature-bootstrap.md) |
 | **Functional Specification** | [009-FSPEC-ptah-auto-feature-bootstrap](./009-FSPEC-ptah-auto-feature-bootstrap.md) |
 | **Date** | March 14, 2026 |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
@@ -140,7 +140,7 @@ STEP 3 — CHECK FOR EXISTING FOLDER
 Action: check if docs/{feature-slug}/ exists in the worktree
         (Bash: test -d docs/{feature-slug} && echo EXISTS || echo NOT_FOUND)
   if EXISTS   → skip to STEP 9 (idempotent — no file operations)
-  if NOT_FOUND → continue to STEP 4
+  if NOT_FOUND → continue to STEP 3.5
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 3.5 — CHECK DOCS/ EXISTS
@@ -296,7 +296,7 @@ describe("extractFeatureName — Phase 9 AF-R1 contract", () => {
     // PM slugifies "auth redesign" → "auth-redesign"
     // PM auto-assigns NNN → "008-auth-redesign"
     // context-assembler looks for "auth redesign" (spaces, no NNN) — MISMATCH
-    // This is the known limitation documented in AF-R8 / AT-AF-12
+    // This is the known limitation documented in AF-R8 / AT-AF-03
   });
 
   it("returns full thread name when no em-dash separator present (known limitation AF-R8)", () => {
