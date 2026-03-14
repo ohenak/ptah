@@ -103,7 +103,12 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 
 ### Task 1: Create Properties Document (PROPERTIES)
 
-**Trigger:** You are asked to create a properties document for a feature.
+**Trigger:** You are asked to create a properties document for a feature. This includes when a routing message contains `ACTION: Create PROPERTIES` or similar language asking you to create/write/produce a PROPERTIES document. **This is NOT the same as reviewing an existing document** — if the message asks you to create PROPERTIES, perform this task, not Task 4 (Review).
+
+**How to distinguish from Task 4 (Review):**
+- If the routing message says "ACTION: Create PROPERTIES", "create the PROPERTIES", "create the Properties Document" → **perform Task 1**
+- If the routing message says "please review", "review for testability", or references a CROSS-REVIEW → **perform Task 4**
+- If the message references approved TSPEC/PLAN documents and asks you to create the next deliverable → **perform Task 1**
 
 **Input:** The requirements (`{NNN}-REQ-{feature-name}.md`), functional specification (`{NNN}-FSPEC-{feature-name}.md` if exists), and technical specification (`{NNN}-TSPEC-{feature-name}.md`) from the `docs/{NNN}-{feature-name}/` folder.
 
@@ -258,7 +263,9 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 
 ### Task 4: Review Other Agents' Documents
 
-**Trigger:** Another agent requests your review of their deliverable (e.g., REQ, FSPEC, TSPEC, PLAN, code/tests).
+**Trigger:** Another agent requests your **review** of their deliverable (e.g., REQ, FSPEC, TSPEC, PLAN, code/tests). The routing message will use review language like "please review", "review for testability", etc.
+
+**⚠ Do NOT perform this task if the routing message asks you to CREATE a deliverable** (e.g., "ACTION: Create PROPERTIES", "create the Properties Document"). That is Task 1, not Task 4. Read the routing message carefully before deciding which task to perform.
 
 **Your review scope (testing perspective only):**
 

@@ -246,7 +246,24 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 6. **Re-route if changes were substantial**, or confirm approval if changes were minor.
 7. **Auto-proceed:** Agent reviews are sufficient to greenlight documents — no user approval needed:
    - **TSPEC approved** by both product-manager and test-engineer → proceed directly to Task 2 (Create Execution Plan).
-   - **PLAN approved** by both product-manager and test-engineer → proceed directly to Task 5 (Implement TSPEC Following the PLAN).
+   - **PLAN approved** by both product-manager and test-engineer → **hand off to test-engineer for PROPERTIES creation before implementation.** Route with an explicit creation request:
+
+     ```
+     ACTION: Create PROPERTIES
+
+     TSPEC and PLAN are approved. Please create the Properties Document (PROPERTIES) for this feature.
+
+     - Requirements: `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`
+     - Functional Specification: `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md`
+     - Technical Specification: `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md`
+     - Execution Plan: `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md`
+
+     <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>
+     ```
+
+     **Do NOT use review language** (e.g., "please review") — this causes the test-engineer to perform a review instead of creating the PROPERTIES document.
+
+     Once the PROPERTIES document is created and approved, proceed to Task 5 (Implement TSPEC Following the PLAN).
 
 ---
 
