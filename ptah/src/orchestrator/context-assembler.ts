@@ -259,13 +259,32 @@ export class DefaultContextAssembler implements ContextAssembler {
     // The answer is the trigger message (the response to the question)
     const answer = triggerMessage.content;
 
-    const parts = [
-      `## Task Reminder\n\n${taskReminder}`,
-      `## Question\n\n${question}`,
-      `## Answer\n\n${answer}`,
-    ];
+    const parts: string[] = [];
+
+    // Extract ACTION directive from the routing message and promote it to the top
+    const actionDirective = this.extractActionDirective(question);
+    if (actionDirective) {
+      parts.push(
+        `## Task Directive\n\n` +
+        `**⚠ The previous agent has assigned you a specific task. Perform this task — do NOT review or re-examine the input documents.**\n\n` +
+        `**${actionDirective}**`,
+      );
+    }
+
+    parts.push(`## Task Reminder\n\n${taskReminder}`);
+    parts.push(`## Question\n\n${question}`);
+    parts.push(`## Answer\n\n${answer}`);
 
     return parts.join("\n\n");
+  }
+
+  /**
+   * Extracts an ACTION directive (e.g., "ACTION: Create TSPEC") from the routing message.
+   * Returns the full ACTION line, or null if no directive is found.
+   */
+  extractActionDirective(routingMessage: string): string | null {
+    const match = routingMessage.match(/^(ACTION:\s*.+)$/m);
+    return match ? match[1].trim() : null;
   }
 
   private buildPatternCLayer3(

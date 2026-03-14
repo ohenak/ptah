@@ -511,6 +511,120 @@ describe("DefaultContextAssembler", () => {
     });
   });
 
+  // ─── ACTION Directive Extraction ─────────────────────────────────
+
+  describe("ACTION Directive Extraction", () => {
+    it("extracts ACTION directive from routing message", () => {
+      const message = "ACTION: Create TSPEC\n\nREQ and FSPEC are approved.";
+      expect(assembler.extractActionDirective(message)).toBe("ACTION: Create TSPEC");
+    });
+
+    it("extracts ACTION: Implement directive", () => {
+      const message = "ACTION: Implement\n\nPROPERTIES are approved.";
+      expect(assembler.extractActionDirective(message)).toBe("ACTION: Implement");
+    });
+
+    it("extracts ACTION: Create PROPERTIES directive", () => {
+      const message = "ACTION: Create PROPERTIES\n\nTSPEC and PLAN are approved.";
+      expect(assembler.extractActionDirective(message)).toBe("ACTION: Create PROPERTIES");
+    });
+
+    it("returns null when no ACTION directive present", () => {
+      const message = "Please review the TSPEC for feasibility.";
+      expect(assembler.extractActionDirective(message)).toBeNull();
+    });
+
+    it("returns null for empty string", () => {
+      expect(assembler.extractActionDirective("")).toBeNull();
+    });
+  });
+
+  describe("Pattern A — Task Directive injection", () => {
+    it("prepends Task Directive section when routing message contains ACTION directive", async () => {
+      const featureName = "action-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Build the feature",
+          isBot: false,
+          authorId: "human-1",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "ACTION: Create TSPEC\n\nREQ and FSPEC are approved. Please create the TSPEC.\n\n<routing>{\"type\":\"ROUTE_TO_AGENT\",\"agent_id\":\"eng\"}</routing>",
+          isBot: true,
+          authorId: "pm-agent",
+          authorName: "PMBot",
+        }),
+      ];
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-3",
+        content: "Routing to eng.",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: history,
+        triggerMessage,
+        config,
+      });
+
+      expect(result.userMessage).toContain("## Task Directive");
+      expect(result.userMessage).toContain("ACTION: Create TSPEC");
+      expect(result.userMessage).toContain("do NOT review");
+      // Task Directive should appear before Task Reminder
+      const directiveIndex = result.userMessage.indexOf("## Task Directive");
+      const reminderIndex = result.userMessage.indexOf("## Task Reminder");
+      expect(directiveIndex).toBeLessThan(reminderIndex);
+    });
+
+    it("does not inject Task Directive when routing message has no ACTION directive", async () => {
+      const featureName = "no-action-feature";
+      fs.addExistingDir(`docs/${featureName}`);
+
+      const history: ThreadMessage[] = [
+        createThreadMessage({
+          id: "msg-1",
+          content: "Build the feature",
+          isBot: false,
+          authorId: "human-1",
+        }),
+        createThreadMessage({
+          id: "msg-2",
+          content: "Please review the TSPEC for feasibility.",
+          isBot: true,
+          authorId: "other-agent",
+        }),
+      ];
+
+      const triggerMessage = createThreadMessage({
+        id: "msg-3",
+        content: "Here is the review.",
+        isBot: false,
+        authorId: "human-1",
+      });
+
+      const result = await assembler.assemble({
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: history,
+        triggerMessage,
+        config,
+      });
+
+      expect(result.userMessage).not.toContain("## Task Directive");
+      expect(result.userMessage).toContain("## Task Reminder");
+    });
+  });
+
   // ─── Token Budget Enforcement ──────────────────────────────────
 
   describe("Token Budget Enforcement", () => {
