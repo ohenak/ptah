@@ -66,6 +66,111 @@ Every task you perform follows this git workflow. No exceptions.
 
 ---
 
+## Phase 0: Feature Folder Bootstrap (MANDATORY — Runs Before Task Selection)
+
+> **⚠ This step runs on EVERY PM invocation, before any task selection.** It is idempotent — if the feature folder already exists, it exits immediately. On the first invocation for a new feature, it creates the folder and writes `overview.md`.
+
+### Step 1 — Extract candidate slug from thread name
+
+Take the full Discord thread name from your context. Find the first occurrence of ` — ` (space, em dash U+2014, space). If found, take everything **before** it. If not found, use the full thread name. This is your **candidate**.
+
+Example: `"009-auto-feature-bootstrap — create FSPEC"` → candidate = `"009-auto-feature-bootstrap"`
+
+> **Note:** This strip logic must remain identical to `extractFeatureName()` in `context-assembler.ts` (AF-R1). If that function changes, this step must change too.
+
+### Step 2 — Slugify the candidate
+
+Apply in order:
+1. Lowercase all characters
+2. Replace any character NOT in `[a-z0-9-]` with a hyphen
+3. Collapse consecutive hyphens (`--`, `---`, etc.) into a single hyphen
+4. Strip leading and trailing hyphens
+5. If the result is an **empty string**, use the fallback slug `"feature"` and log:
+   `[ptah:pm] Warning: thread name could not be slugified into a meaningful name. Using fallback slug 'feature'. Please rename the Discord thread.`
+
+The result is your **feature-slug**.
+
+### Step 3 — Check for existing folder
+
+```bash
+test -d docs/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+```
+
+- **EXISTS** → Skip to Step 9. Do NOT create any files or folders.
+- **NOT_FOUND** → Continue to Step 3.5.
+
+### Step 3.5 — Verify docs/ exists
+
+```bash
+test -d docs && echo "OK" || echo "MISSING"
+```
+
+- **OK** → Continue to Step 4.
+- **MISSING** → Report the following error in your response and **halt** (do not proceed to task selection):
+
+  > `docs/ directory not found. Please run 'ptah init' to scaffold the project structure before invoking the PM skill.`
+
+### Step 4 — Determine NNN prefix
+
+**Condition A — Numbered thread** (feature-slug starts with `^[0-9]{3}-`):
+- The NNN is already embedded. Your `full-folder-name` = `feature-slug`.
+- Example: `"009-auto-feature-bootstrap"` → `full-folder-name = "009-auto-feature-bootstrap"`
+
+**Condition B — Unnumbered thread** (feature-slug does NOT start with `^[0-9]{3}-`):
+1. Run: `ls docs/ | grep -E '^[0-9]{3}-' | sort | tail -1`
+2. If output is non-empty: `NNN = (first 3 chars of output, cast to int) + 1`, zero-padded to 3 digits
+3. If output is empty (no numbered folders): `NNN = "001"`
+4. `full-folder-name = "{NNN}-{feature-slug}"`
+
+### Step 5 — Log
+
+```
+[ptah:pm] Bootstrapping feature folder: docs/{full-folder-name}/
+```
+
+### Step 6 — Create feature folder
+
+```bash
+mkdir -p docs/{full-folder-name}
+```
+
+- If `mkdir` **succeeds** (or folder already exists due to a race condition) → continue to Step 7.
+- If `mkdir` **fails** → Report error in your response and **halt**:
+
+  > `Failed to create feature folder docs/{full-folder-name}/: {error details}. Please check filesystem permissions.`
+
+### Step 7 — Synthesize overview.md content
+
+Construct the file content:
+
+**Title line (deterministic):**
+Replace all hyphens in `full-folder-name` with spaces, then title-case each word.
+`"009-auto-feature-bootstrap"` → `# 009 Auto Feature Bootstrap`
+
+**Body (1–3 sentences):**
+Summarize the feature using the thread name and the user's initial message. Keep it factual and concise — this is Layer 1 reference context for all subsequent skills.
+
+**Format:** Valid Markdown, H1 heading first, no front-matter.
+
+### Step 8 — Write overview.md
+
+First, check if the file already exists (race condition protection):
+
+```bash
+test -f docs/{full-folder-name}/overview.md && echo "EXISTS" || echo "NOT_FOUND"
+```
+
+- **EXISTS** → Log `[ptah:pm] overview.md already exists — skipping write.` Skip to Step 9.
+- **NOT_FOUND** → Write synthesized content to `docs/{full-folder-name}/overview.md` using the **Write tool**. This write must complete before any task work begins (REQ-AF-NF-01).
+  - If the write **fails** → Report error in your response and **halt**:
+    > `Failed to write docs/{full-folder-name}/overview.md: {error details}. The folder was created but overview.md is missing.`
+
+### Step 9 — Proceed to Task Selection
+
+Phase 0 is complete. Continue to the Task Selection section below.
+
+---
+
 ## Task Selection — MANDATORY FIRST STEP
 
 > **⚠ CRITICAL: Before doing ANY work, you MUST determine which task to perform by checking the incoming message against this decision table. Do NOT skip this step.**
