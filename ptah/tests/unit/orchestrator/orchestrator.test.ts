@@ -14,10 +14,14 @@ import {
   FakeQuestionStore,
   FakeQuestionPoller,
   FakePatternBContextBuilder,
+  FakeInvocationGuard,
+  FakeThreadStateManager,
+  FakeWorktreeRegistry,
   createThreadMessage,
   createPendingQuestion,
   createChannelMessage,
   defaultTestConfig,
+  defaultCommitResult,
 } from "../../fixtures/factories.js";
 import { InMemoryThreadQueue } from "../../../src/orchestrator/thread-queue.js";
 import { RoutingParseError } from "../../../src/orchestrator/router.js";
@@ -40,6 +44,10 @@ describe("DefaultOrchestrator", () => {
   let questionStore: FakeQuestionStore;
   let questionPoller: FakeQuestionPoller;
   let patternBContextBuilder: FakePatternBContextBuilder;
+  let invocationGuard: FakeInvocationGuard;
+  let threadStateManager: FakeThreadStateManager;
+  let worktreeRegistry: FakeWorktreeRegistry;
+  let abortController: AbortController;
   let orchestrator: DefaultOrchestrator;
 
   beforeEach(() => {
@@ -58,6 +66,11 @@ describe("DefaultOrchestrator", () => {
     questionStore = new FakeQuestionStore();
     questionPoller = new FakeQuestionPoller();
     patternBContextBuilder = new FakePatternBContextBuilder();
+    invocationGuard = new FakeInvocationGuard();
+    invocationGuard.results = [{ status: "success", invocationResult: { textResponse: "fake response", routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>', artifactChanges: [], durationMs: 1000 }, commitResult: defaultCommitResult() }];
+    threadStateManager = new FakeThreadStateManager();
+    worktreeRegistry = new FakeWorktreeRegistry();
+    abortController = new AbortController();
 
     orchestrator = new DefaultOrchestrator({
       discordClient: discord,
@@ -75,6 +88,10 @@ describe("DefaultOrchestrator", () => {
       questionStore,
       questionPoller,
       patternBContextBuilder,
+      invocationGuard,
+      threadStateManager,
+      worktreeRegistry,
+      shutdownSignal: abortController.signal,
     });
   });
 
@@ -90,7 +107,7 @@ describe("DefaultOrchestrator", () => {
 
       expect(routingEngine.resolveHumanCalls).toHaveLength(0);
       expect(contextAssembler.assembleCalls).toHaveLength(0);
-      expect(skillInvoker.invokeCalls).toHaveLength(0);
+      expect(invocationGuard.callCount).toBe(0);
     });
   });
 
@@ -121,13 +138,17 @@ describe("DefaultOrchestrator", () => {
         tokenCounts: { layer1: 100, layer2: 200, layer3: 50, total: 350 },
       };
 
-      // Set up skill invoker result
-      skillInvoker.result = {
-        textResponse: "I implemented the feature",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      // Set up invocation guard to return success with text
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "I implemented the feature",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       // Set up routing engine to return terminal decision
       routingEngine.parseResult = { type: "TASK_COMPLETE" };
@@ -151,8 +172,8 @@ describe("DefaultOrchestrator", () => {
       expect(contextAssembler.assembleCalls[0].agentId).toBe("dev-agent");
       expect(contextAssembler.assembleCalls[0].threadId).toBe("thread-1");
 
-      // Verify skill invoker was called
-      expect(skillInvoker.invokeCalls).toHaveLength(1);
+      // Verify invocation guard was called (Phase 6: guard replaces direct skillInvoker)
+      expect(invocationGuard.callCount).toBe(1);
 
       // Verify response poster was called
       expect(responsePoster.postedEmbeds).toHaveLength(1);
@@ -185,7 +206,7 @@ describe("DefaultOrchestrator", () => {
 
       // No further processing
       expect(contextAssembler.assembleCalls).toHaveLength(0);
-      expect(skillInvoker.invokeCalls).toHaveLength(0);
+      expect(invocationGuard.callCount).toBe(0);
     });
   });
 
@@ -201,13 +222,29 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      // First invocation returns ROUTE_TO_AGENT reply
-      skillInvoker.result = {
-        textResponse: "I need PM to review",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm-agent","thread_action":"reply"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      // Phase 6: configure guard to return ROUTE_TO_AGENT on first call, TASK_COMPLETE on second
+      invocationGuard.results = [
+        {
+          status: "success",
+          invocationResult: {
+            textResponse: "I need PM to review",
+            routingSignalRaw: '<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm-agent","thread_action":"reply"}</routing>',
+            artifactChanges: [],
+            durationMs: 1000,
+          },
+          commitResult: defaultCommitResult(),
+        },
+        {
+          status: "success",
+          invocationResult: {
+            textResponse: "Review complete, LGTM",
+            routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+            artifactChanges: [],
+            durationMs: 500,
+          },
+          commitResult: defaultCommitResult(),
+        },
+      ];
 
       // Parse returns ROUTE_TO_AGENT
       routingEngine.parseResult = { type: "ROUTE_TO_AGENT", agentId: "pm-agent", threadAction: "reply" };
@@ -236,28 +273,6 @@ describe("DefaultOrchestrator", () => {
         };
       };
 
-      // Second invocation — after re-assembly for pm-agent
-      let invokeCallCount = 0;
-      skillInvoker.invoke = async (bundle, cfg, worktreePath) => {
-        invokeCallCount++;
-        if (invokeCallCount === 1) {
-          return {
-            textResponse: "I need PM to review",
-            routingSignalRaw: '<routing>{"type":"ROUTE_TO_AGENT","agent_id":"pm-agent"}</routing>',
-            artifactChanges: [],
-            durationMs: 1000,
-          };
-        }
-        // Second invocation returns TASK_COMPLETE
-        routingEngine.parseResult = { type: "TASK_COMPLETE" };
-        return {
-          textResponse: "Review complete, LGTM",
-          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-          artifactChanges: [],
-          durationMs: 500,
-        };
-      };
-
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
@@ -280,12 +295,16 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "Need test-agent to create tests in a new thread",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_AGENT","agent_id":"test-agent","thread_action":"new_thread"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Need test-agent to create tests in a new thread",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_AGENT","agent_id":"test-agent","thread_action":"new_thread"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       routingEngine.parseResult = { type: "ROUTE_TO_AGENT", agentId: "test-agent", threadAction: "new_thread" };
       routingEngine.decideResult = {
@@ -317,12 +336,16 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "What framework should I use?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What framework should I use?"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "What framework should I use?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What framework should I use?"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What framework should I use?" };
       routingEngine.decideResult = {
@@ -360,12 +383,16 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "Looks good to me!",
-        routingSignalRaw: '<routing>{"type":"LGTM"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Looks good to me!",
+          routingSignalRaw: '<routing>{"type":"LGTM"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       routingEngine.parseResult = { type: "LGTM" };
       routingEngine.decideResult = {
@@ -396,12 +423,16 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "Task is done",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Task is done",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       routingEngine.parseResult = { type: "TASK_COMPLETE" };
       routingEngine.decideResult = {
@@ -421,9 +452,9 @@ describe("DefaultOrchestrator", () => {
     });
   });
 
-  // Task 111: Routing parse error
+  // Task 111: Routing parse error (now handled by InvocationGuard; orchestrator handles guard result via routing pipeline)
   describe("routing parse error (AT-RP-02)", () => {
-    it("posts error embed with routing error details", async () => {
+    it("guard exhausted — returns and writes error log", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement the feature",
         threadId: "thread-1",
@@ -432,12 +463,43 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "response with bad routing",
-        routingSignalRaw: "no routing tag here",
-        artifactChanges: [],
-        durationMs: 1000,
-      };
+      // Phase 6: InvocationGuard now handles routing parse errors.
+      // When guard returns "exhausted", orchestrator writes error log and returns.
+      invocationGuard.results = [{ status: "exhausted" }];
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      // Guard was called once
+      expect(invocationGuard.callCount).toBe(1);
+      // Error log entry written
+      expect(agentLogWriter.entries).toHaveLength(1);
+      expect(agentLogWriter.entries[0].status).toBe("error");
+    });
+  });
+
+  // Task 111b: Routing parse error — RoutingParseError propagates through catch block
+  describe("routing parse error — propagates from routing engine", () => {
+    it("posts error embed with routing error details when parseSignal throws", async () => {
+      const message = createThreadMessage({
+        content: "<@&111222333> implement the feature",
+        threadId: "thread-1",
+      });
+
+      routingEngine.resolveHumanResult = "dev-agent";
+      discord.threadHistory.set("thread-1", []);
+
+      // Configure guard to succeed so routing is attempted
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "response with bad routing",
+          routingSignalRaw: "no routing tag here",
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: defaultCommitResult(),
+      }];
 
       routingEngine.parseError = new RoutingParseError("missing routing signal");
 
@@ -448,15 +510,12 @@ describe("DefaultOrchestrator", () => {
       expect(responsePoster.postedErrors[0].threadId).toBe("thread-1");
       expect(responsePoster.postedErrors[0].errorMessage).toContain("Routing error:");
       expect(responsePoster.postedErrors[0].errorMessage).toContain("missing routing signal");
-
-      // Skill invoker should NOT be called again after parse error
-      expect(skillInvoker.invokeCalls).toHaveLength(1);
     });
   });
 
-  // Task 112: Skill invocation timeout
+  // Task 112: Skill invocation timeout (now handled by InvocationGuard)
   describe("skill invocation timeout", () => {
-    it("posts error embed with timeout message", async () => {
+    it("guard exhausted — error log written, orchestrator returns", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement the feature",
         threadId: "thread-1",
@@ -465,19 +524,21 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.invokeError = new InvocationTimeoutError(90_000);
+      // Phase 6: InvocationGuard handles timeouts; orchestrator gets "exhausted"
+      invocationGuard.results = [{ status: "exhausted" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Skill invocation timed out");
+      expect(invocationGuard.callCount).toBe(1);
+      expect(agentLogWriter.entries).toHaveLength(1);
+      expect(agentLogWriter.entries[0].status).toBe("error");
     });
   });
 
-  // Task 113: Skill invocation API error
+  // Task 113: Skill invocation API error (now handled by InvocationGuard)
   describe("skill invocation API error", () => {
-    it("posts error embed with error message", async () => {
+    it("guard exhausted — error log written, orchestrator returns", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement the feature",
         threadId: "thread-1",
@@ -486,16 +547,15 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.invokeError = new InvocationError(
-        "Skill invocation failed: API error",
-        new Error("API error"),
-      );
+      // Phase 6: Guard handles API errors; return exhausted
+      invocationGuard.results = [{ status: "exhausted" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Skill invocation failed:");
+      expect(invocationGuard.callCount).toBe(1);
+      expect(agentLogWriter.entries).toHaveLength(1);
+      expect(agentLogWriter.entries[0].status).toBe("error");
     });
   });
 
@@ -532,7 +592,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-1");
 
       // Both should have been processed sequentially
-      expect(skillInvoker.invokeCalls).toHaveLength(2);
+      expect(invocationGuard.callCount).toBe(2);
     });
 
     it("processes messages from different threads independently", async () => {
@@ -566,7 +626,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-A");
       await waitForQueue(threadQueue, "thread-B");
 
-      expect(skillInvoker.invokeCalls).toHaveLength(2);
+      expect(invocationGuard.callCount).toBe(2);
     });
   });
 
@@ -659,7 +719,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-1");
 
       expect(routingEngine.resolveHumanCalls).toHaveLength(0);
-      expect(skillInvoker.invokeCalls).toHaveLength(0);
+      expect(invocationGuard.callCount).toBe(0);
 
       const warnLog = logger.messages.find(
         (m) => m.level === "warn" && m.message.includes("no ID"),
@@ -689,7 +749,7 @@ describe("DefaultOrchestrator", () => {
         createNewThread: false,
       };
 
-      // Track ordering
+      // Track ordering: createWorktree → assemble → invocationGuard
       const callOrder: string[] = [];
       const origCreateWorktree = gitClient.createWorktree.bind(gitClient);
       gitClient.createWorktree = async (branch: string, path: string) => {
@@ -703,10 +763,10 @@ describe("DefaultOrchestrator", () => {
         return origAssemble(params);
       };
 
-      const origInvoke = skillInvoker.invoke.bind(skillInvoker);
-      skillInvoker.invoke = async (bundle, cfg, worktreePath) => {
+      const origInvoke = invocationGuard.invokeWithRetry.bind(invocationGuard);
+      invocationGuard.invokeWithRetry = async (params) => {
         callOrder.push("invoke");
-        return origInvoke(bundle, cfg, worktreePath);
+        return origInvoke(params);
       };
 
       await orchestrator.handleMessage(message);
@@ -725,10 +785,8 @@ describe("DefaultOrchestrator", () => {
       expect(assembleCall.worktreePath).toBeDefined();
       expect(typeof assembleCall.worktreePath).toBe("string");
 
-      // Verify worktreePath was passed to invoker
-      expect(skillInvoker.invokeCalls).toHaveLength(1);
-      const invokeCall = skillInvoker.invokeCalls[0] as { worktreePath?: string };
-      expect(invokeCall.worktreePath).toBeDefined();
+      // Verify invocationGuard was called (Phase 6)
+      expect(invocationGuard.callCount).toBe(1);
     });
   });
 
@@ -766,7 +824,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-1");
 
       // Should still succeed (with regenerated branch)
-      expect(skillInvoker.invokeCalls).toHaveLength(1);
+      expect(invocationGuard.callCount).toBe(1);
       // Branch exists was called at least once
       expect(branchExistsCalls).toBeGreaterThanOrEqual(1);
     });
@@ -803,13 +861,13 @@ describe("DefaultOrchestrator", () => {
 
       // Branch should have been deleted
       expect(gitClient.deletedBranches.length).toBeGreaterThanOrEqual(1);
-      expect(skillInvoker.invokeCalls).toHaveLength(1);
+      expect(invocationGuard.callCount).toBe(1);
     });
   });
 
-  // Task 65: Commit/merge success — full pipeline
+  // Task 65: Commit/merge success — full pipeline (Phase 6: via InvocationGuard)
   describe("commit/merge success — full pipeline (Task 65)", () => {
-    it("calls artifactCommitter.commitAndMerge and writes log with completed status", async () => {
+    it("invocationGuard succeeds and writes log with completed status", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement",
         threadId: "thread-1",
@@ -819,17 +877,20 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "I implemented the feature",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: ["docs/test-feature/spec.md"],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: "abc1234",
-        mergeStatus: "merged",
-        branch: "ptah/dev-agent/thread-1/abc",
+      // Phase 6: Configure invocationGuard to return success with specific data
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "I implemented the feature",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: ["docs/test-feature/spec.md"],
+          durationMs: 1000,
+        },
+        commitResult: {
+          commitSha: "abc1234",
+          mergeStatus: "merged",
+          branch: "ptah/dev-agent/thread-1/abc",
+        },
       }];
 
       routingEngine.parseResult = { type: "TASK_COMPLETE" };
@@ -844,10 +905,8 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Verify artifactCommitter was called
-      expect(artifactCommitter.commitAndMergeCalls).toHaveLength(1);
-      expect(artifactCommitter.commitAndMergeCalls[0].agentId).toBe("dev-agent");
-      expect(artifactCommitter.commitAndMergeCalls[0].artifactChanges).toEqual(["docs/test-feature/spec.md"]);
+      // Verify invocationGuard was called
+      expect(invocationGuard.callCount).toBe(1);
 
       // Verify log entry written with completed status
       expect(agentLogWriter.entries).toHaveLength(1);
@@ -857,9 +916,9 @@ describe("DefaultOrchestrator", () => {
     });
   });
 
-  // Task 66: Merge conflict continues
-  describe("merge conflict continues (Task 66)", () => {
-    it("posts error embed but still posts response and routes", async () => {
+  // Task 66: Merge conflict — Phase 6: InvocationGuard returns "unrecoverable"
+  describe("merge conflict → guard returns unrecoverable (Task 66)", () => {
+    it("guard returns unrecoverable, orchestrator writes error log and returns", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement",
         threadId: "thread-1",
@@ -869,51 +928,24 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "I made changes",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: ["docs/test-feature/spec.md"],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: "abc1234",
-        mergeStatus: "conflict",
-        branch: "ptah/dev-agent/thread-1/abc",
-        conflictMessage: "CONFLICT in docs/test-feature/spec.md",
-      }];
-
-      routingEngine.parseResult = { type: "TASK_COMPLETE" };
-      routingEngine.decideResult = {
-        signal: { type: "TASK_COMPLETE" },
-        targetAgentId: null,
-        isTerminal: true,
-        isPaused: false,
-        createNewThread: false,
-      };
+      // Phase 6: conflict is handled by guard as "unrecoverable"
+      invocationGuard.results = [{ status: "unrecoverable" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Error embed posted about conflict
-      expect(responsePoster.postedErrors.length).toBeGreaterThanOrEqual(1);
-
-      // Agent response still posted
-      expect(responsePoster.postedEmbeds).toHaveLength(1);
-      expect(responsePoster.postedEmbeds[0].text).toBe("I made changes");
-
-      // Routing still happened
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
-
-      // Log entry written with conflict status
+      // Guard returned unrecoverable; orchestrator writes error log and returns
+      expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
-      expect(agentLogWriter.entries[0].status).toBe("conflict");
+      expect(agentLogWriter.entries[0].status).toBe("error");
+      // No response was posted (guard handled that)
+      expect(responsePoster.postedEmbeds).toHaveLength(0);
     });
   });
 
-  // Task 67: Commit failure continues
-  describe("commit failure continues (Task 67)", () => {
-    it("posts error embed, cleans up worktree, still posts response and routes", async () => {
+  // Task 67: Commit failure — Phase 6: InvocationGuard returns "exhausted" after retries
+  describe("commit failure → guard exhausted (Task 67)", () => {
+    it("guard exhausted, orchestrator writes error log and returns", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement",
         threadId: "thread-1",
@@ -923,50 +955,44 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "I made changes",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: ["docs/test-feature/spec.md"],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: null,
-        mergeStatus: "commit-error",
-        branch: "ptah/dev-agent/thread-1/abc",
-        conflictMessage: "git commit failed",
-      }];
-
-      routingEngine.parseResult = { type: "TASK_COMPLETE" };
-      routingEngine.decideResult = {
-        signal: { type: "TASK_COMPLETE" },
-        targetAgentId: null,
-        isTerminal: true,
-        isPaused: false,
-        createNewThread: false,
-      };
+      invocationGuard.results = [{ status: "exhausted" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Error embed posted
-      expect(responsePoster.postedErrors.length).toBeGreaterThanOrEqual(1);
+      expect(invocationGuard.callCount).toBe(1);
+      expect(agentLogWriter.entries).toHaveLength(1);
+      expect(agentLogWriter.entries[0].status).toBe("error");
+      expect(responsePoster.postedEmbeds).toHaveLength(0);
+    });
+  });
 
-      // Agent response still posted
-      expect(responsePoster.postedEmbeds).toHaveLength(1);
+  // Task 68: Merge error — Phase 6: InvocationGuard handles via retry
+  describe("merge error → guard exhausted (Task 68)", () => {
+    it("guard exhausted, error log written", async () => {
+      const message = createThreadMessage({
+        content: "<@&111222333> implement",
+        threadId: "thread-1",
+        threadName: "test-feature",
+      });
 
-      // Routing still happened
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
+      routingEngine.resolveHumanResult = "dev-agent";
+      discord.threadHistory.set("thread-1", []);
 
-      // Log entry with error status
+      invocationGuard.results = [{ status: "exhausted" }];
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
     });
   });
 
-  // Task 68: Merge error continues
-  describe("merge error continues (Task 68)", () => {
-    it("posts error embed, worktree retained, still posts response", async () => {
+  // Task 69: Lock timeout — Phase 6: InvocationGuard handles via retry
+  describe("lock timeout → guard exhausted (Task 69)", () => {
+    it("guard exhausted, error log written", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement",
         threadId: "thread-1",
@@ -976,125 +1002,52 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "I made changes",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: ["docs/test-feature/spec.md"],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: "abc1234",
-        mergeStatus: "merge-error",
-        branch: "ptah/dev-agent/thread-1/abc",
-        conflictMessage: "merge failed unexpectedly",
-      }];
-
-      routingEngine.parseResult = { type: "TASK_COMPLETE" };
-      routingEngine.decideResult = {
-        signal: { type: "TASK_COMPLETE" },
-        targetAgentId: null,
-        isTerminal: true,
-        isPaused: false,
-        createNewThread: false,
-      };
+      invocationGuard.results = [{ status: "exhausted" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Error embed posted
-      expect(responsePoster.postedErrors.length).toBeGreaterThanOrEqual(1);
-
-      // Agent response still posted
-      expect(responsePoster.postedEmbeds).toHaveLength(1);
-
-      // Log entry with conflict status (per FSPEC AT-AC-16)
-      expect(agentLogWriter.entries).toHaveLength(1);
-      expect(agentLogWriter.entries[0].status).toBe("conflict");
-    });
-  });
-
-  // Task 69: Lock timeout
-  describe("lock timeout (Task 69)", () => {
-    it("posts error embed, worktree retained, writes log with error status", async () => {
-      const message = createThreadMessage({
-        content: "<@&111222333> implement",
-        threadId: "thread-1",
-        threadName: "test-feature",
-      });
-
-      routingEngine.resolveHumanResult = "dev-agent";
-      discord.threadHistory.set("thread-1", []);
-
-      skillInvoker.result = {
-        textResponse: "I made changes",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: ["docs/test-feature/spec.md"],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: null,
-        mergeStatus: "lock-timeout",
-        branch: "ptah/dev-agent/thread-1/abc",
-      }];
-
-      routingEngine.parseResult = { type: "TASK_COMPLETE" };
-      routingEngine.decideResult = {
-        signal: { type: "TASK_COMPLETE" },
-        targetAgentId: null,
-        isTerminal: true,
-        isPaused: false,
-        createNewThread: false,
-      };
-
-      await orchestrator.handleMessage(message);
-      await waitForQueue(threadQueue, "thread-1");
-
-      // Error embed posted
-      expect(responsePoster.postedErrors.length).toBeGreaterThanOrEqual(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("lock timeout");
-
-      // Log entry with error status
+      expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
     });
   });
 
-  // Task 70: Log entry always written
+  // Task 70: Log entry always written (Phase 6: via invocationGuard results)
   describe("log entry always written (Task 70)", () => {
     const mergeStatuses = [
       { mergeStatus: "merged" as const, expectedLogStatus: "completed" },
       { mergeStatus: "no-changes" as const, expectedLogStatus: "completed (no changes)" },
-      { mergeStatus: "conflict" as const, expectedLogStatus: "conflict" },
-      { mergeStatus: "commit-error" as const, expectedLogStatus: "error" },
-      { mergeStatus: "merge-error" as const, expectedLogStatus: "conflict" },
-      { mergeStatus: "lock-timeout" as const, expectedLogStatus: "error" },
     ];
 
     for (const { mergeStatus, expectedLogStatus } of mergeStatuses) {
       it(`writes log with status "${expectedLogStatus}" for mergeStatus "${mergeStatus}"`, async () => {
         const message = createThreadMessage({
           content: "<@&111222333> implement",
-          threadId: "thread-1",
+          threadId: `thread-${mergeStatus}`,
           threadName: "test-feature",
         });
 
         routingEngine.resolveHumanResult = "dev-agent";
-        discord.threadHistory.set("thread-1", []);
+        discord.threadHistory.set(`thread-${mergeStatus}`, []);
 
-        skillInvoker.result = {
-          textResponse: "done",
-          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-          artifactChanges: mergeStatus === "no-changes" ? [] : ["docs/x.md"],
-          durationMs: 1000,
-        };
-
-        artifactCommitter.results = [{
-          commitSha: mergeStatus === "merged" ? "abc1234" : null,
-          mergeStatus,
-          branch: "ptah/dev-agent/thread-1/abc",
+        // Phase 6: Set guard to return specific merge statuses
+        invocationGuard.results = [{
+          status: "success",
+          invocationResult: {
+            textResponse: "done",
+            routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+            artifactChanges: mergeStatus === "no-changes" ? [] : ["docs/x.md"],
+            durationMs: 1000,
+          },
+          commitResult: {
+            commitSha: mergeStatus === "merged" ? "abc1234" : null,
+            mergeStatus,
+            branch: "ptah/dev-agent/thread-1/abc",
+          },
         }];
+        // Reset call count for this test
+        invocationGuard.callCount = 0;
 
         routingEngine.parseResult = { type: "TASK_COMPLETE" };
         routingEngine.decideResult = {
@@ -1106,15 +1059,36 @@ describe("DefaultOrchestrator", () => {
         };
 
         await orchestrator.handleMessage(message);
-        await waitForQueue(threadQueue, "thread-1");
+        await waitForQueue(threadQueue, `thread-${mergeStatus}`);
 
         expect(agentLogWriter.entries).toHaveLength(1);
         expect(agentLogWriter.entries[0].status).toBe(expectedLogStatus);
       });
     }
+
+    // Guard returning exhausted/unrecoverable always writes error log
+    it("writes error log when guard returns exhausted", async () => {
+      const message = createThreadMessage({
+        content: "<@&111222333> implement",
+        threadId: "thread-exhausted",
+        threadName: "test-feature",
+      });
+
+      routingEngine.resolveHumanResult = "dev-agent";
+      discord.threadHistory.set("thread-exhausted", []);
+
+      invocationGuard.results = [{ status: "exhausted" }];
+      invocationGuard.callCount = 0;
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-exhausted");
+
+      expect(agentLogWriter.entries).toHaveLength(1);
+      expect(agentLogWriter.entries[0].status).toBe("error");
+    });
   });
 
-  // Task 71: No-changes cleanup
+  // Task 71: No-changes cleanup (Phase 6: via InvocationGuard)
   describe("no-changes cleanup (Task 71)", () => {
     it("cleans up worktree and branch when no changes", async () => {
       const message = createThreadMessage({
@@ -1126,17 +1100,20 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.result = {
-        textResponse: "Nothing to change",
-        routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
-        artifactChanges: [],
-        durationMs: 1000,
-      };
-
-      artifactCommitter.results = [{
-        commitSha: null,
-        mergeStatus: "no-changes",
-        branch: "ptah/dev-agent/thread-1/abc",
+      // Phase 6: guard returns success with no-changes
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Nothing to change",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: [],
+          durationMs: 1000,
+        },
+        commitResult: {
+          commitSha: null,
+          mergeStatus: "no-changes",
+          branch: "ptah/dev-agent/thread-1/abc",
+        },
       }];
 
       routingEngine.parseResult = { type: "TASK_COMPLETE" };
@@ -1151,7 +1128,7 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Worktree should be cleaned up
+      // Worktree should be cleaned up (orchestrator calls cleanupWorktree for no-changes)
       expect(gitClient.removedWorktrees.length).toBeGreaterThanOrEqual(1);
       expect(gitClient.deletedBranches.length).toBeGreaterThanOrEqual(1);
 
@@ -1161,9 +1138,9 @@ describe("DefaultOrchestrator", () => {
     });
   });
 
-  // Task 72: Skill timeout — cleanup worktree, write error log
+  // Task 72: Skill timeout — Phase 6: InvocationGuard handles timeouts
   describe("skill timeout — cleanup and error log (Task 72)", () => {
-    it("cleans up worktree, posts error embed, writes error log on timeout", async () => {
+    it("guard exhausted, error log written", async () => {
       const message = createThreadMessage({
         content: "<@&111222333> implement",
         threadId: "thread-1",
@@ -1173,24 +1150,16 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", []);
 
-      skillInvoker.invokeError = new InvocationTimeoutError(90_000);
+      // Phase 6: InvocationGuard absorbs timeouts and returns exhausted
+      invocationGuard.results = [{ status: "exhausted" }];
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Error embed posted
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("timed out");
-
-      // Worktree cleaned up
-      expect(gitClient.removedWorktrees.length).toBeGreaterThanOrEqual(1);
-
-      // Error log entry written
+      // Guard returned exhausted → error log written
+      expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
-
-      // No commit/merge
-      expect(artifactCommitter.commitAndMergeCalls).toHaveLength(0);
     });
   });
 
@@ -1256,12 +1225,17 @@ describe("DefaultOrchestrator", () => {
 
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "What is the expected format?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What is the expected format?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "What is the expected format?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What is the expected format?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What is the expected format?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "What is the expected format?" },
@@ -1275,7 +1249,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, threadId);
 
       // Now the thread is paused. Send a second message to the same thread.
-      const invokeCallsBefore = skillInvoker.invokeCalls.length;
+      const invokeCallsBefore = invocationGuard.callCount;
       const message2 = createThreadMessage({
         id: "msg-2",
         content: "hello again",
@@ -1285,8 +1259,8 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message2);
       await waitForQueue(threadQueue, threadId);
 
-      // Skill should NOT have been invoked again
-      expect(skillInvoker.invokeCalls.length).toBe(invokeCallsBefore);
+      // Guard should NOT have been invoked again
+      expect(invocationGuard.callCount).toBe(invokeCallsBefore);
       // Context assembler should not have been called again
       // (total calls = 1, from the first message)
       expect(contextAssembler.assembleCalls.length).toBe(1);
@@ -1308,12 +1282,17 @@ describe("DefaultOrchestrator", () => {
 
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "What OAuth provider should we use?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider should we use?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "What OAuth provider should we use?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider should we use?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What OAuth provider should we use?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "What OAuth provider should we use?" },
@@ -1357,12 +1336,17 @@ describe("DefaultOrchestrator", () => {
 
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "Which auth provider?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth provider?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which auth provider?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth provider?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which auth provider?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which auth provider?" },
@@ -1405,12 +1389,17 @@ describe("DefaultOrchestrator", () => {
 
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "Which provider?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which provider?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which provider?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which provider?" },
@@ -1451,12 +1440,17 @@ describe("DefaultOrchestrator", () => {
 
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "Which provider?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which provider?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which provider?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which provider?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which provider?" },
@@ -1583,6 +1577,10 @@ describe("DefaultOrchestrator", () => {
         questionStore,
         questionPoller: fakePoller,
         patternBContextBuilder,
+        invocationGuard,
+        threadStateManager,
+        worktreeRegistry,
+        shutdownSignal: abortController.signal,
       });
 
       const q = createPendingQuestion({
@@ -1604,8 +1602,21 @@ describe("DefaultOrchestrator", () => {
   describe("Pattern B resume (Tasks 52-54)", () => {
     let orchB: DefaultOrchestrator;
     let fakePollerB: FakeQuestionPoller;
+    let invocationGuardB: FakeInvocationGuard;
 
     beforeEach(() => {
+      invocationGuardB = new FakeInvocationGuard();
+      // Default: guard returns success with ROUTE_TO_USER signal (for setup phase)
+      invocationGuardB.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "placeholder",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       fakePollerB = new FakeQuestionPoller((q) => orchB.resumeWithPatternB(q));
       orchB = new DefaultOrchestrator({
         discordClient: discord,
@@ -1623,6 +1634,10 @@ describe("DefaultOrchestrator", () => {
         questionStore,
         questionPoller: fakePollerB,
         patternBContextBuilder,
+        invocationGuard: invocationGuardB,
+        threadStateManager,
+        worktreeRegistry,
+        shutdownSignal: abortController.signal,
       });
     });
 
@@ -1640,12 +1655,17 @@ describe("DefaultOrchestrator", () => {
       });
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "What OAuth provider?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER signal
+      invocationGuardB.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "What OAuth provider?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"What OAuth provider?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What OAuth provider?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "What OAuth provider?" },
@@ -1668,6 +1688,7 @@ describe("DefaultOrchestrator", () => {
       const qWithAnswer = { ...pendingBefore[0], answer: "Use Google as the OAuth provider" };
 
       // Step 3: Reset to happy path for skill invocation during resume
+      // Pattern B resume still uses skillInvoker and artifactCommitter directly
       skillInvoker.result = {
         textResponse: "I'll use Google OAuth.",
         routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
@@ -1694,7 +1715,7 @@ describe("DefaultOrchestrator", () => {
       expect(patternBContextBuilder.buildCalls).toHaveLength(1);
       expect(patternBContextBuilder.buildCalls[0].question.id).toBe(qId);
 
-      // skillInvoker was called (for the resume)
+      // skillInvoker was called (for the resume — Pattern B uses skillInvoker directly)
       expect(skillInvoker.invokeCalls.length).toBeGreaterThanOrEqual(1);
 
       // Response posted to originating thread
@@ -1720,12 +1741,17 @@ describe("DefaultOrchestrator", () => {
       });
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "Which OAuth?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuardB.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which OAuth?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which OAuth?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which OAuth?" },
@@ -1796,12 +1822,17 @@ describe("DefaultOrchestrator", () => {
       });
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set(threadId, []);
-      skillInvoker.result = {
-        textResponse: "Which auth?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER
+      invocationGuardB.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which auth?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which auth?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which auth?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which auth?" },
@@ -1837,8 +1868,10 @@ describe("DefaultOrchestrator", () => {
   // Tasks 55-62: handleOpenQuestionReply tests
   describe("handleOpenQuestionReply (Tasks 55-62)", () => {
     let orchC: DefaultOrchestrator;
+    let invocationGuardC: FakeInvocationGuard;
 
     beforeEach(async () => {
+      invocationGuardC = new FakeInvocationGuard();
       orchC = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
@@ -1855,6 +1888,10 @@ describe("DefaultOrchestrator", () => {
         questionStore,
         questionPoller,
         patternBContextBuilder,
+        invocationGuard: invocationGuardC,
+        threadStateManager,
+        worktreeRegistry,
+        shutdownSignal: abortController.signal,
       });
 
       // Set up open-questions channel and startup
@@ -1866,12 +1903,17 @@ describe("DefaultOrchestrator", () => {
       // We do this by triggering ROUTE_TO_USER via a message
       routingEngine.resolveHumanResult = "pm-agent";
       discord.threadHistory.set("thread-qa-55", []);
-      skillInvoker.result = {
-        textResponse: "Which OAuth provider?",
-        routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth provider?"}</routing>',
-        artifactChanges: [],
-        durationMs: 500,
-      };
+      // Phase 6: guard returns ROUTE_TO_USER signal
+      invocationGuardC.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "Which OAuth provider?",
+          routingSignalRaw: '<routing>{"type":"ROUTE_TO_USER","question":"Which OAuth provider?"}</routing>',
+          artifactChanges: [],
+          durationMs: 500,
+        },
+        commitResult: defaultCommitResult(),
+      }];
       routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "Which OAuth provider?" };
       routingEngine.decideResult = {
         signal: { type: "ROUTE_TO_USER", question: "Which OAuth provider?" },
