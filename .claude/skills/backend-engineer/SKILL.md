@@ -235,7 +235,9 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 4. **Follow the git workflow** — commit changes, push to the feature branch.
 5. **Update document status to Approved** once all feedback is addressed and reviewers are satisfied.
 6. **Re-route if changes were substantial**, or confirm approval if changes were minor.
-7. **Auto-proceed for TSPEC:** Once a TSPEC is approved by both product-manager and test-engineer, proceed directly to Task 2 (Create Execution Plan) without requiring user approval. The agent reviews are sufficient to greenlight the TSPEC.
+7. **Auto-proceed:** Agent reviews are sufficient to greenlight documents — no user approval needed:
+   - **TSPEC approved** by both product-manager and test-engineer → proceed directly to Task 2 (Create Execution Plan).
+   - **PLAN approved** by both product-manager and test-engineer → proceed directly to Task 5 (Implement TSPEC Following the PLAN).
 
 ---
 
@@ -286,7 +288,7 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 ### Task 5: Implement TSPEC Following the PLAN (TDD)
 
-**Trigger:** You are asked to implement a feature, or the TSPEC and PLAN are both approved.
+**Trigger:** You are asked to implement a feature, or the PLAN has been approved by both product-manager and test-engineer (auto-proceeds from Task 3 without user approval).
 
 **Input:** The approved TSPEC and PLAN documents.
 
