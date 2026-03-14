@@ -7,7 +7,7 @@
 | **Version** | 1.0 |
 | **Date** | March 13, 2026 |
 | **Author** | Product Manager |
-| **Status** | Ready for Engineering Review |
+| **Status** | Approved |
 
 ---
 
@@ -84,7 +84,7 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
 
 1. EXTRACT FEATURE NAME FROM THREAD NAME
    a. Take the full Discord thread name
-   b. Strip everything after the first occurrence of " — " (space–hyphen-hyphen–space)
+   b. Strip everything after the first occurrence of " — " (space–em-dash–space, Unicode U+2014 `—`)
       e.g. "009-auto-feature-bootstrap — create FSPEC"
            → "009-auto-feature-bootstrap"
    c. Apply slugification (Step 2) to the stripped result
@@ -198,13 +198,13 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
 | AF-R5 | The bootstrap log note (Step 5) is the only visible signal that Phase 0 ran. The PM does not post a Discord embed, send a message, or otherwise surface the bootstrap action to the user. | Phase 0 is a housekeeping detail, not a product event. The user's experience is unchanged — they invoke the PM, and the PM starts Phase 1. |
 | AF-R6 | If folder creation fails (Step 6) due to a filesystem error (e.g., permission denied), the PM must report the error clearly and halt. It must not proceed to Phase 1 with a broken state. | Proceeding without the folder would mean `overview.md` cannot be written, and the context assembler will continue warning on every subsequent invocation. |
 | AF-R7 | If `overview.md` write fails (Step 8) due to a filesystem error, the PM must report the error clearly and halt. The folder will remain on disk (empty), which is acceptable — the context assembler handles empty folders gracefully. | An empty folder is preferable to no folder. Subsequent invocations will try again. The PM can recover by re-attempting the write in its next invocation. |
-| AF-R8 | The Phase 0 bootstrap runs entirely within the PM skill's own SKILL.md instructions — it is not a feature of the orchestrator or context assembler. No changes to `orchestrator.ts` or `context-assembler.ts` are required. | Option A was chosen over Option B specifically to avoid orchestrator changes. Engineering must implement this as SKILL.md instructions only. |
+| AF-R8 | The Phase 0 bootstrap runs entirely within the PM skill's own SKILL.md instructions — it is not a feature of the orchestrator or context assembler. No changes to `orchestrator.ts` or `context-assembler.ts` are required **for standard thread names** (those following the `NNN-slug` convention with only lowercase alphanumeric characters and hyphens). If a thread name contains special characters requiring slugification, the folder the PM creates may not match the path `extractFeatureName()` resolves — this is a known limitation documented in assumption [A-09-03]. Full slugification support in `context-assembler.ts` is out of scope for Phase 9. | Option A was chosen over Option B to avoid orchestrator changes. The primary use case (standard thread naming) requires no `context-assembler.ts` update. |
 
 ### 3.6 Edge Cases
 
 | Edge Case | Expected Behavior |
 |-----------|-------------------|
-| Thread name contains only a number prefix with no feature name (e.g., "009 — create FSPEC") | After slugification, the feature-slug is "009". The folder would be `docs/009/`. This is a degenerate but valid case — the PM creates the folder and proceeds. The developer should name threads more descriptively. No error is raised. |
+| Thread name contains only a number prefix with no feature name (e.g., "009 — create FSPEC") | After slugification, the feature-slug is "009". Because "009" does NOT match the `^[0-9]{3}-` pattern (no trailing hyphen), Step 4b applies: NNN is auto-assigned (e.g., "008" if the highest existing numbered folder is "007"), producing a folder like `docs/008-009/`. **Known limitation:** `extractFeatureName()` in `context-assembler.ts` derives the path `docs/009/` from the thread name, which will not match the created folder. Developers should avoid naming threads with only a bare number. No error is raised; the PM proceeds normally. |
 | Thread name has special characters that slugify to an empty string (e.g., "!!! — do stuff") | After stripping the task portion and slugifying, the result is "". Step 2f applies: the PM uses the fallback slug "feature" and logs a warning. Assign NNN prefix normally. The folder would be `docs/009-feature/` (numbered thread) or `docs/008-feature/` (unnumbered). The developer is expected to rename the thread; the warning message instructs them to do so. |
 | Thread name has no " — " separator (e.g., "create requirements for auth") | Strip the entire thread name (no separator found → use full name). Apply slugification → "create-requirements-for-auth". Assign NNN normally. This is unusual but valid. |
 | Two PM invocations run concurrently for different threads; both auto-assign NNN = "008" | Each runs in its own worktree. Both create `docs/008-{their-feature}/`. Both are committed via the Phase 4 pipeline. The first merge succeeds. The second merge succeeds (different folder names). No conflict. |
@@ -366,6 +366,7 @@ THEN:  1. I extract: "001-custom-feature"
 |---------|------|--------|---------|
 | 1.0 | March 13, 2026 | Product Manager | Initial functional specification for Phase 9 — 1 FSPEC covering all 8 requirements |
 | 1.1 | March 13, 2026 | Product Manager | Added Step 2f (empty-slug fallback to "feature") to behavioral flow; aligned edge case §3.6 row 2 with behavioral flow; updated status to Ready for Engineering Review |
+| 1.2 | March 13, 2026 | Product Manager | F-01: corrected em-dash description in Step 1b (was "hyphen-hyphen", now "em-dash U+2014"); F-02: corrected edge case §3.6 row 1 — bare-number thread slugs go through auto-NNN path, not `docs/009/`; Q-01: extended AF-R8 to document known slugification scope limitation for non-standard thread names; status updated to Approved |
 
 ---
 

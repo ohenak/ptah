@@ -142,7 +142,7 @@ THEN:  I assign NNN = "001"
 |-------|--------|
 | **ID** | REQ-AF-04 |
 | **Title** | Slugify thread name to derive feature folder name |
-| **Description** | The PM skill must derive the feature slug from the Discord thread name using the same convention used by `context-assembler.ts`: strip everything after ` — ` (space–en-dash–space), then apply the following normalization: lowercase all characters; replace any character that is not alphanumeric or a hyphen with a hyphen; collapse consecutive hyphens to a single hyphen; strip any leading or trailing hyphens. If the thread name was already numbered (REQ-AF-02), the NNN prefix is already part of the slug and is preserved. |
+| **Description** | The PM skill must derive the feature slug from the Discord thread name using the same convention used by `context-assembler.ts`: strip everything after ` — ` (space–em-dash–space, Unicode U+2014 `—`), then apply the following normalization: lowercase all characters; replace any character that is not alphanumeric or a hyphen with a hyphen; collapse consecutive hyphens to a single hyphen; strip any leading or trailing hyphens. If the thread name was already numbered (REQ-AF-02), the NNN prefix is already part of the slug and is preserved. |
 | **Priority** | P0 |
 | **Phase** | 9 |
 | **Source User Stories** | [US-09] |
