@@ -99,6 +99,8 @@ test -d docs/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
 - **EXISTS** → Skip to Step 9. Do NOT create any files or folders.
 - **NOT_FOUND** → Continue to Step 3.5.
 
+> **Idempotency scope:** For **numbered threads** (feature-slug matches `^[0-9]{3}-`), `feature-slug` equals `full-folder-name`, so this check reliably detects the existing folder on every subsequent invocation. For **unnumbered threads**, `feature-slug` does not include the NNN prefix added in Step 4B, so this check will not detect the previously created folder — a known limitation documented as AF-R8 in TSPEC §10.1.
+
 ### Step 3.5 — Verify docs/ exists
 
 ```bash

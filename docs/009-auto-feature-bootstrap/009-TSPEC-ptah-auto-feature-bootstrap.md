@@ -103,7 +103,7 @@ PHASE 0: FEATURE FOLDER BOOTSTRAP
 STEP 1 — EXTRACT CANDIDATE SLUG
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Input:  full Discord thread name
-Action: find the first occurrence of " — " (U+2020 em dash with surrounding spaces)
+Action: find the first occurrence of " — " (U+2014 em dash with surrounding spaces)
         if found → take substring before it
         if not found → use full thread name as-is
 Output: candidate (stripped thread name, may contain uppercase/special chars)
