@@ -11,8 +11,8 @@
 | **Version** | 1.0 |
 | **Date** | March 14, 2026 |
 | **Author** | Test Engineer |
-| **Status** | Draft |
-| **Approval Date** | Pending |
+| **Status** | Approved |
+| **Approval Date** | March 14, 2026 |
 
 ---
 
@@ -104,7 +104,7 @@ Core business logic and observable behavior.
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
 | PROP-FB-08 | `ArtifactCommitter` must call `pushInWorktree(mergeWorktreePath, "origin", featureBranch)` after a successful merge — `remote` must be `"origin"` and `branch` must be `featureBranch`, not the sub-branch name | [REQ-FB-03], [TSPEC §5.2 step d] | Unit | P0 |
-| PROP-FB-09 | `ArtifactCommitter` must retain the merge worktree and return `"push-error"` with `retainedWorktreePath` set when `pushInWorktree` throws | [REQ-FB-03], [TSPEC §5.2 step d] | Unit | P0 |
+| PROP-FB-09 | `ArtifactCommitter` must retain the merge worktree and return `"push-error"` with `retainedWorktreePath` set when `pushInWorktree` throws — the merge commit already landed in the merge worktree at `retainedWorktreePath` and remains reachable on `featureBranch` in that worktree, so the developer can push manually without losing work | [REQ-FB-03], [TSPEC §5.2 step d] | Unit | P0 |
 
 #### Agent Sub-Branch — Orchestrator
 
@@ -158,6 +158,8 @@ Core business logic and observable behavior.
 |----|----------|--------|------------|----------|
 | PROP-SK-01 | All four SKILL.md files (PM, BE, FE, QA) must contain no instructions to run `git checkout -b feat-`, `git checkout feat-` with pull, `git fetch origin && git checkout -b feat-`, or `git push origin feat-` | [REQ-SK-01], [TSPEC §4.8] | Manual | P0 |
 | PROP-SK-02 | All four SKILL.md files must contain an explicit statement that branch management (worktree creation, sub-branch creation, push to remote) is handled by the orchestrator and must not be performed by the agent | [REQ-SK-01], [TSPEC §4.8] | Manual | P0 |
+
+> **Note on PROP-SK-01 and PROP-NEG-10:** These two properties both address the same SKILL.md invariant from complementary framings — PROP-SK-01 is a **positive** specification property (the file must not contain conflicting instructions) while PROP-NEG-10 is a **negative** property (agents must not perform these operations). They are retained as separate entries because they belong to different sections (§3.1 Functional vs §4 Negative) and drive different test scripts: PROP-SK-01 drives the CI grep check (Gap #4) while PROP-NEG-10 drives the conceptual constraint across all agent invocations.
 | PROP-SK-03 | All four SKILL.md files must contain an explicit statement that the agent runs in an isolated git worktree, that all file operations are relative to the worktree root, and that the agent must not navigate to or modify the main repository checkout | [REQ-SK-02], [TSPEC §4.8] | Manual | P1 |
 
 #### Backward Compatibility
@@ -242,7 +244,7 @@ Response times, resource limits, and timeout behavior.
 
 ---
 
-### 3.8 Idempotency Properties
+### 3.7 Idempotency Properties
 
 Repeated operations produce the same result.
 
@@ -253,7 +255,7 @@ Repeated operations produce the same result.
 
 ---
 
-### 3.9 Observability Properties
+### 3.8 Observability Properties
 
 Logging and error reporting.
 
@@ -373,7 +375,7 @@ Properties that define what the system must NOT do. These are derived from speci
 
 | Role | Name | Date | Status |
 |------|------|------|--------|
-| Product Owner | — | — | Pending |
+| Product Owner | Product Manager | March 14, 2026 | Approved (minor changes) |
 | Technical Lead | — | — | Pending |
 
 ---
@@ -383,6 +385,7 @@ Properties that define what the system must NOT do. These are derived from speci
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Test Engineer | Initial properties document. 66 positive properties across 8 categories (33 functional, 7 contract, 8 error handling, 4 data integrity, 8 integration, 2 performance, 2 idempotency, 2 observability) plus 10 negative properties. All 17 requirements covered. No E2E tests recommended — full coverage achieved at unit and integration levels. |
+| 1.1 | March 14, 2026 | Test Engineer | Address PM review feedback: (F-01) Renumber §3.8→§3.7 and §3.9→§3.8 to correct section gap; (F-02) Add clarifying note on PROP-SK-01/PROP-NEG-10 complementary relationship; (F-03) Strengthen PROP-FB-09 to explicitly assert commit reachability after push failure. Status updated to Approved. |
 
 ---
 
