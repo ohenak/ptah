@@ -156,9 +156,24 @@ You support the following discrete tasks. Each invocation focuses on one task.
 
 1. **Route the review request** to both **backend-engineer** and **test-engineer** using `<routing>` tags. Include the document path and a brief summary of what needs reviewing.
 
+   For REQ reviews:
    ```
    REQ document is ready for review at `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`.
    Please review for implementability and testability.
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   After the backend-engineer review completes, route to test-engineer:
+
+   ```
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"qa","thread_action":"reply"}</routing>
+   ```
+
+   For FSPEC reviews:
+   ```
+   FSPEC document is ready for review at `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md`.
+   Please review for technical feasibility and testability.
 
    <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
    ```
@@ -177,6 +192,32 @@ You support the following discrete tasks. Each invocation focuses on one task.
 4. **Follow the git workflow** — commit changes, push to the feature branch.
 5. **Update document status to Approved** once all feedback is addressed and reviewers are satisfied.
 6. **Re-route if changes were substantial**, or confirm approval if changes were minor.
+7. **After approval, hand off to engineering for TSPEC creation.** Once the REQ (and FSPEC if applicable) is approved by all reviewers, route to **backend-engineer** with an explicit TSPEC creation request. **This is NOT a review — it is a handoff to create the next deliverable.**
+
+   ```
+   ACTION: Create TSPEC
+
+   REQ and FSPEC are approved. Please create the Technical Specification (TSPEC) for this feature.
+
+   - Requirements: `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`
+   - Functional Specification: `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md`
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   If the feature has no FSPEC, omit the FSPEC line:
+
+   ```
+   ACTION: Create TSPEC
+
+   REQ is approved. Please create the Technical Specification (TSPEC) for this feature.
+
+   - Requirements: `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md`
+
+   <routing>{"type":"ROUTE_TO_AGENT","agent_id":"eng","thread_action":"reply"}</routing>
+   ```
+
+   **Do NOT use review language** (e.g., "please review") in the handoff message — this causes the receiving agent to perform a review instead of creating the TSPEC.
 
 ---
 
