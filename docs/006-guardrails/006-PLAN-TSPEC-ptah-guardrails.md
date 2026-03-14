@@ -6,7 +6,7 @@
 | **Requirements** | [006-REQ-PTAH-guardrails](006-REQ-PTAH-guardrails.md) |
 | **Functional Specification** | [006-FSPEC-ptah-guardrails](006-FSPEC-ptah-guardrails.md) |
 | **Date** | March 13, 2026 |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
@@ -122,6 +122,8 @@ Phase G wires all new Phase 6 modules into `bin/ptah.ts`.
 ### Phase H: Acceptance Tests
 
 Phase H writes the end-to-end integration tests that verify all 17 FSPEC acceptance tests (AT-GR-01 through AT-GR-17).
+
+> **Note:** `vi.useFakeTimers()` is **required** in the `guardrails.test.ts` suite-level setup (`beforeEach`/`beforeAll`). Tasks H-3, H-11, H-12, H-13, and H-16 involve timing-sensitive assertions (backoff delay formula, 500ms poll interval, 5-second progress log, `shutdownTimeoutMs` elapse). Without fake timers these tests will rely on real wall-clock time, making them slow (30+ seconds per test) and flaky. (TE review finding F-02.)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
