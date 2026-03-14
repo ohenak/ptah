@@ -8,6 +8,7 @@ import type {
 import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
 import type { TokenCounter } from "./token-counter.js";
+import { extractFeatureName as extractFeatureNameFromModule } from "./feature-branch.js";
 
 export interface ContextAssembler {
   assemble(params: {
@@ -158,11 +159,7 @@ export class DefaultContextAssembler implements ContextAssembler {
   }
 
   extractFeatureName(threadName: string): string {
-    const emDashIndex = threadName.indexOf(" \u2014 ");
-    if (emDashIndex !== -1) {
-      return threadName.substring(0, emDashIndex);
-    }
-    return threadName;
+    return extractFeatureNameFromModule(threadName);
   }
 
   detectResumePattern(
