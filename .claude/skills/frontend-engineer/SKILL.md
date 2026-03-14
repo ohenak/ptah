@@ -84,13 +84,34 @@ Always cite your sources when presenting research findings. Prefer official docu
 
 ---
 
+## Task Selection — MANDATORY FIRST STEP
+
+> **⚠ CRITICAL: Before doing ANY work, you MUST determine which task to perform by checking the incoming message against this decision table. Do NOT skip this step. Do NOT default to reviewing.**
+
+**Check the incoming message for these keywords IN THIS ORDER:**
+
+| Priority | If the message contains… | Perform… |
+|----------|--------------------------|----------|
+| 1 | `ACTION: Create TSPEC` or "create the TSPEC" or "write the TSPEC" | **Task 1** (Create TSPEC) |
+| 2 | `ACTION: Implement` or "begin implementation" or "start TDD" | **Task 5** (Implement) |
+| 3 | `ACTION: Create PLAN` or "create the execution plan" | **Task 2** (Create PLAN) |
+| 4 | "please review" or "review for" or "CROSS-REVIEW" | **Task 4** (Review) |
+| 5 | Review feedback received on your TSPEC/PLAN | **Task 3** (Route/Update) |
+| 6 | Test-engineer review feedback on your implementation | **Task 6** (Address Review) |
+
+**The word "ACTION:" in a routing message is an explicit command. It always overrides any other interpretation.** If you see `ACTION: Create TSPEC`, you are being asked to CREATE a new document, NOT to review an existing one. The fact that another agent sent you the message does NOT make it a review request.
+
+---
+
 ## Tasks
 
 You support the following discrete tasks. Each invocation focuses on one task.
 
 ### Task 1: Create Technical Specification (TSPEC)
 
-**Trigger:** You are asked to create a frontend technical specification for a feature.
+**Trigger:** You are asked to create a frontend technical specification for a feature. This includes when a routing message contains `ACTION: Create TSPEC` or similar language asking you to create/write/produce a TSPEC.
+
+> **🚨 THIS IS A CREATION TASK, NOT A REVIEW. If the routing message says "ACTION: Create TSPEC", you must CREATE a new TSPEC document. Do NOT review the FSPEC. Do NOT write a CROSS-REVIEW file. Read the REQ and FSPEC as INPUT, then produce a TSPEC as OUTPUT.**
 
 **Input:** The requirements document (`{NNN}-REQ-{feature-name}.md`) and optionally the functional specification (`{NNN}-FSPEC-{feature-name}.md`) from the `docs/{NNN}-{feature-name}/` folder.
 
@@ -266,7 +287,15 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 ### Task 4: Review Other Agents' Documents
 
-**Trigger:** Another agent requests your review of their deliverable (e.g., REQ, FSPEC, TSPEC, PROPERTIES).
+**Trigger:** Another agent explicitly requests your **review** using review language like "please review", "review for", or sends you a CROSS-REVIEW file to respond to.
+
+> **🚨 STOP — Re-read the incoming message. Does it contain ANY of these phrases?**
+> - `ACTION: Create TSPEC` → **WRONG TASK. Go to Task 1.**
+> - `ACTION: Implement` → **WRONG TASK. Go to Task 5.**
+> - "create the TSPEC", "write the TSPEC", "produce a TSPEC" → **WRONG TASK. Go to Task 1.**
+> - "begin implementation", "start TDD" → **WRONG TASK. Go to Task 5.**
+>
+> **Only proceed with Task 4 if the message explicitly uses the word "review" and does NOT contain an ACTION directive.**
 
 **Your review scope (frontend perspective only):**
 
@@ -321,9 +350,14 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 ### Task 5: Implement TSPEC Following the PLAN (TDD)
 
-**Trigger:** You are asked to implement a feature, or the TSPEC and PLAN are both approved.
+**Trigger:** You are asked to implement a feature. This includes when a routing message contains `ACTION: Implement` or similar language asking you to begin implementation / start TDD / build the feature. This also triggers when the PLAN has been approved.
 
-**Input:** The approved TSPEC and PLAN documents.
+**How to distinguish from Task 4 (Review):**
+- If the routing message says "ACTION: Implement", "begin implementation", "start TDD", or "build the feature" → **perform Task 5**
+- If the routing message says "please review" or references a CROSS-REVIEW → **perform Task 4**
+- If the message references approved PROPERTIES and asks you to start building → **perform Task 5**
+
+**Input:** The approved TSPEC, PLAN, and PROPERTIES documents.
 
 **What you do:**
 

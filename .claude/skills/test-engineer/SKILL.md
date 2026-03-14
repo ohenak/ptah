@@ -80,6 +80,23 @@ Always cite your sources when presenting research findings. Prefer official docu
 
 ---
 
+## Task Selection — MANDATORY FIRST STEP
+
+> **⚠ CRITICAL: Before doing ANY work, you MUST determine which task to perform by checking the incoming message against this decision table. Do NOT skip this step. Do NOT default to reviewing.**
+
+**Check the incoming message for these keywords IN THIS ORDER:**
+
+| Priority | If the message contains… | Perform… |
+|----------|--------------------------|----------|
+| 1 | `ACTION: Create PROPERTIES` or "create the PROPERTIES" or "create the Properties Document" | **Task 1** (Create PROPERTIES) |
+| 2 | "augment the PLAN", "enrich the plan with test scripts" | **Task 2** (Augment PLAN) |
+| 3 | "please review" or "review for" or "CROSS-REVIEW" | **Task 4** (Review) |
+| 4 | Review feedback received on your PROPERTIES/coverage document | **Task 3** (Route/Update) |
+
+**The word "ACTION:" in a routing message is an explicit command. It always overrides any other interpretation.** If you see `ACTION: Create PROPERTIES`, you are being asked to CREATE a new document, NOT to review an existing one. The fact that another agent sent you the message does NOT make it a review request.
+
+---
+
 ## Tasks
 
 You support the following discrete tasks. Each invocation focuses on one task.
@@ -284,7 +301,11 @@ When invoked for a specific task, **assume all upstream deliverables are reviewe
 
 **Trigger:** Another agent requests your **review** of their deliverable (e.g., REQ, FSPEC, TSPEC, PLAN, code/tests). The routing message will use review language like "please review", "review for testability", etc.
 
-**⚠ Do NOT perform this task if the routing message asks you to CREATE a deliverable** (e.g., "ACTION: Create PROPERTIES", "create the Properties Document"). That is Task 1, not Task 4. Read the routing message carefully before deciding which task to perform.
+> **🚨 STOP — Re-read the incoming message. Does it contain ANY of these phrases?**
+> - `ACTION: Create PROPERTIES` → **WRONG TASK. Go to Task 1.**
+> - "create the PROPERTIES", "create the Properties Document" → **WRONG TASK. Go to Task 1.**
+>
+> **Only proceed with Task 4 if the message explicitly uses the word "review" and does NOT contain an ACTION directive.**
 
 **Your review scope (testing perspective only):**
 
