@@ -66,6 +66,25 @@ Every task you perform follows this git workflow. No exceptions.
 
 ---
 
+## Task Selection — MANDATORY FIRST STEP
+
+> **⚠ CRITICAL: Before doing ANY work, you MUST determine which task to perform by checking the incoming message against this decision table. Do NOT skip this step.**
+
+**Check the incoming message for these keywords IN THIS ORDER:**
+
+| Priority | If the message contains… | Perform… |
+|----------|--------------------------|----------|
+| 1 | "create requirements", "create REQ", or user asks for a new REQ | **Task 1** (Create REQ) |
+| 2 | "create FSPEC", "create functional specification", or REQ is approved and needs FSPEC | **Task 2** (Create FSPEC) |
+| 3 | Feedback on YOUR OWN REQ or FSPEC (e.g., a CROSS-REVIEW file from BE or QA about your document) | **Task 3** (Process Feedback & Approve) |
+| 4 | "please review" a document YOU DID NOT CREATE (TSPEC, PLAN, PROPERTIES) | **Task 4** (Review) |
+
+**KEY RULE: You NEVER review your own documents.** If an incoming message references your REQ or FSPEC and contains review findings, that is **Task 3** (process the feedback, update your document, approve, and hand off). It is NOT Task 4. You do not write a CROSS-REVIEW file for your own deliverables.
+
+**Task 4 is ONLY for documents created by other agents** (e.g., backend-engineer's TSPEC, PLAN, or test-engineer's PROPERTIES). If you created the document being discussed, you are receiving feedback — perform Task 3.
+
+---
+
 ## Tasks
 
 You support the following discrete tasks. Each invocation focuses on one task.
@@ -150,7 +169,11 @@ You support the following discrete tasks. Each invocation focuses on one task.
 
 ### Task 3: Route Documents for Review and Approval
 
-**Trigger:** A REQ or FSPEC document has been created (Draft status) and needs review, or review feedback has been received and documents need updating.
+**Trigger:** One of the following:
+- A REQ or FSPEC document has been created (Draft status) and needs review → start at step 1
+- Review feedback has been received from BE or QA on YOUR REQ or FSPEC → start at step 2
+
+> **This is the correct task when you receive a CROSS-REVIEW file about your own REQ or FSPEC.** You process the feedback, update your document, approve it, and hand off for TSPEC creation. You do NOT write a CROSS-REVIEW of your own document.
 
 **What you do:**
 
@@ -224,6 +247,8 @@ You support the following discrete tasks. Each invocation focuses on one task.
 ### Task 4: Review Other Agents' Documents
 
 **Trigger:** Another agent requests your review of their deliverable (e.g., TSPEC, PLAN, PROPERTIES).
+
+> **🚨 STOP — Is this YOUR document?** If the document being discussed is a REQ or FSPEC that YOU created, this is NOT a review task. You are receiving feedback — go to **Task 3**. You NEVER write a CROSS-REVIEW of your own documents. Task 4 is ONLY for documents created by other agents (TSPEC, PLAN, PROPERTIES).
 
 **Your review scope (product perspective only):**
 
