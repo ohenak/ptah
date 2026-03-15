@@ -14,7 +14,7 @@ async function gitExec(cwd: string, ...args: string[]): Promise<string> {
 }
 
 async function initRepo(dir: string): Promise<void> {
-  await gitExec(dir, "init");
+  await gitExec(dir, "init", "-b", "main");
   await gitExec(dir, "config", "user.email", "test@test.com");
   await gitExec(dir, "config", "user.name", "Test");
 }
@@ -274,11 +274,11 @@ describe("NodeGitClient", () => {
       await gitExec(tempDir, "checkout", "-b", "feat-merge-test");
       await makeCommit(tempDir, "feat.txt", "feat content", "feat commit");
 
-      // Create merge worktree on main
+      // Create merge worktree on a new branch from main
       const mergeWt = nodePath.join(tempDir, "merge-wt");
-      await client.checkoutBranchInWorktree("main", mergeWt);
+      await client.createWorktreeFromBranch("merge-main", mergeWt, "main");
 
-      // Merge feature branch into main (no conflict)
+      // Merge feature branch into merge-main (no conflict)
       const result = await client.mergeInWorktree(mergeWt, "feat-merge-test");
       expect(result).toBe("merged");
     });
@@ -295,9 +295,9 @@ describe("NodeGitClient", () => {
       await gitExec(tempDir, "checkout", "main");
       await makeCommit(tempDir, "shared.txt", "main version", "main: modify shared");
 
-      // Create merge worktree on main
+      // Create merge worktree on a new branch from main
       const mergeWt = nodePath.join(tempDir, "conflict-merge-wt");
-      await client.checkoutBranchInWorktree("main", mergeWt);
+      await client.createWorktreeFromBranch("conflict-main", mergeWt, "main");
 
       const result = await client.mergeInWorktree(mergeWt, "feat-conflict");
       expect(result).toBe("conflict");
@@ -322,7 +322,7 @@ describe("NodeGitClient", () => {
       await makeCommit(tempDir, "shared.txt", "main version", "main: modify shared");
 
       const mergeWt = nodePath.join(tempDir, "abort-wt");
-      await client.checkoutBranchInWorktree("main", mergeWt);
+      await client.createWorktreeFromBranch("abort-main", mergeWt, "main");
 
       // Start a conflicting merge
       await client.mergeInWorktree(mergeWt, "feat-abort-conflict");
@@ -344,7 +344,7 @@ describe("NodeGitClient", () => {
       await makeCommit(tempDir, "shared.txt", "main version", "main: modify");
 
       const mergeWt = nodePath.join(tempDir, "conflict-files-wt");
-      await client.checkoutBranchInWorktree("main", mergeWt);
+      await client.createWorktreeFromBranch("conflict-files-main", mergeWt, "main");
       await client.mergeInWorktree(mergeWt, "feat-conflict-files");
 
       const conflictFiles = await client.getConflictedFiles(mergeWt);
@@ -356,7 +356,7 @@ describe("NodeGitClient", () => {
       await makeCommit(tempDir, "file.txt", "content", "initial");
 
       const worktreePath = nodePath.join(tempDir, "no-conflict-wt");
-      await client.checkoutBranchInWorktree("main", worktreePath);
+      await client.createWorktreeFromBranch("no-conflict-main", worktreePath, "main");
 
       const files = await client.getConflictedFiles(worktreePath);
       expect(files).toEqual([]);
@@ -382,9 +382,10 @@ describe("NodeGitClient", () => {
     });
 
     it("pushes a branch to remote", async () => {
-      // Create a feature branch with a commit
+      // Create a feature branch with a commit, then switch back to main
       await gitExec(tempDir, "checkout", "-b", "feat-push-test");
       await makeCommit(tempDir, "feat.txt", "feat", "feat commit");
+      await gitExec(tempDir, "checkout", "main");
 
       const worktreePath = nodePath.join(tempDir, "push-wt");
       await client.checkoutBranchInWorktree("feat-push-test", worktreePath);
@@ -402,6 +403,7 @@ describe("NodeGitClient", () => {
     it("throws when push fails (invalid remote)", async () => {
       await gitExec(tempDir, "checkout", "-b", "feat-push-fail");
       await makeCommit(tempDir, "fail.txt", "fail", "fail commit");
+      await gitExec(tempDir, "checkout", "main");
 
       const worktreePath = nodePath.join(tempDir, "push-fail-wt");
       await client.checkoutBranchInWorktree("feat-push-fail", worktreePath);
