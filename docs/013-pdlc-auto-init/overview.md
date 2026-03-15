@@ -1,0 +1,3 @@
+# 013 Pdlc Auto Init
+
+Feature 011 (orchestrator PDLC state machine) implemented the `initializeFeature()` method on `PdlcDispatcher` and the managed/unmanaged branch in `executeRoutingLoop()`, but never wired auto-initialization into the orchestrator. When a new feature thread arrives, `isManaged()` returns false because no state record exists, and the orchestrator falls through to the unmanaged/legacy path — treating LGTM as terminal and never dispatching PDLC reviews. This feature closes that gap by adding auto-initialization logic so new features are automatically registered in the PDLC state machine on first encounter.
