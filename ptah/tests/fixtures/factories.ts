@@ -41,7 +41,8 @@ import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/wo
 import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
 import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
 import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
-import type { PdlcStateFile } from "../../src/orchestrator/pdlc/phases.js";
+import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
+import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction } from "../../src/orchestrator/pdlc/phases.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -1203,5 +1204,78 @@ export class FakeStateStore implements StateStore {
     this.state = structuredClone(state);
     this.savedStates.push(structuredClone(state));
     this.saveCount++;
+  }
+}
+
+export class FakePdlcDispatcher implements PdlcDispatcher {
+  loaded = false;
+  managedSlugs = new Set<string>();
+  featureStates = new Map<string, FeatureState>();
+  nextActions = new Map<string, DispatchAction>();
+  agentCompletionResult: DispatchAction = { action: "wait" };
+  reviewCompletionResult: DispatchAction = { action: "wait" };
+  resumeResult: DispatchAction = { action: "wait" };
+  initResult: FeatureState | null = null;
+
+  processAgentCompletionCalls: Array<{
+    featureSlug: string;
+    agentId: string;
+    signal: "LGTM" | "TASK_COMPLETE";
+    worktreePath: string;
+  }> = [];
+  processReviewCompletionCalls: Array<{
+    featureSlug: string;
+    reviewerAgentId: string;
+    reviewerScope?: string;
+    worktreePath: string;
+  }> = [];
+  getNextActionCalls: string[] = [];
+  initializeFeatureCalls: Array<{ slug: string; config: FeatureConfig }> = [];
+
+  async loadState(): Promise<void> {
+    this.loaded = true;
+  }
+
+  async isManaged(featureSlug: string): Promise<boolean> {
+    return this.managedSlugs.has(featureSlug);
+  }
+
+  async getFeatureState(featureSlug: string): Promise<FeatureState | null> {
+    return this.featureStates.get(featureSlug) ?? null;
+  }
+
+  async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState> {
+    this.initializeFeatureCalls.push({ slug, config });
+    if (this.initResult) return this.initResult;
+    throw new Error("FakePdlcDispatcher: no initResult configured");
+  }
+
+  async processAgentCompletion(params: {
+    featureSlug: string;
+    agentId: string;
+    signal: "LGTM" | "TASK_COMPLETE";
+    worktreePath: string;
+  }): Promise<DispatchAction> {
+    this.processAgentCompletionCalls.push(params);
+    return this.agentCompletionResult;
+  }
+
+  async processReviewCompletion(params: {
+    featureSlug: string;
+    reviewerAgentId: string;
+    reviewerScope?: string;
+    worktreePath: string;
+  }): Promise<DispatchAction> {
+    this.processReviewCompletionCalls.push(params);
+    return this.reviewCompletionResult;
+  }
+
+  async getNextAction(featureSlug: string): Promise<DispatchAction> {
+    this.getNextActionCalls.push(featureSlug);
+    return this.nextActions.get(featureSlug) ?? { action: "wait" };
+  }
+
+  async processResumeFromBound(_featureSlug: string): Promise<DispatchAction> {
+    return this.resumeResult;
   }
 }
