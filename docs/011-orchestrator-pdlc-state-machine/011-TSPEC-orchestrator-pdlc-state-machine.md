@@ -9,7 +9,7 @@
 | **Functional Specification** | [011-FSPEC-orchestrator-pdlc-state-machine](011-FSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Date** | March 14, 2026 |
 | **Version** | 1.2 |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
