@@ -6,10 +6,10 @@
 |-------|--------|
 | **Document ID** | FSPEC-011 |
 | **Parent Document** | [011-REQ-orchestrator-pdlc-state-machine](011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 14, 2026 |
 | **Author** | Product Manager |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
@@ -348,42 +348,50 @@ None — this is a leaf FSPEC.
 
 Defines the complete lifecycle of a review phase: entering the phase, dispatching reviewers, collecting results, advancing on all-approved, and handling revision loops with a bound.
 
+**Review status model:** For single-discipline features, review status is tracked per reviewer (e.g., `{ "eng": "approved", "qa": "pending" }`). For fullstack TSPEC/PLAN reviews where a single reviewer reviews multiple documents, status is tracked as `(reviewer, document_scope)` pairs (e.g., `{ "pm:be_tspec": "approved", "pm:fe_tspec": "pending", "qa:be_tspec": "pending", ... }`). The status key format is `reviewer_id` for single-document reviews or `reviewer_id:document_scope` for multi-document reviews. The phase advances only when ALL status entries show `approved`.
+
 #### Behavioral Flow
 
 **Entering a review phase:**
 
-1. Compute the reviewer manifest for this phase + discipline (see [FSPEC-FC-01]).
-2. Initialize per-reviewer status: each reviewer → `pending`.
+1. Compute the reviewer manifest for this phase + discipline (see [FSPEC-FC-01]). For fullstack TSPEC/PLAN reviews, the manifest returns `(reviewer, document_scope)` pairs.
+2. Initialize review status: each manifest entry → `pending`. For single-discipline reviews, keys are `reviewer_id`. For fullstack multi-document reviews, keys are `reviewer_id:document_scope`.
 3. Initialize revision count for this phase (if not already tracked): `revisionCount = 0`.
-4. Dispatch review requests to each reviewer sequentially (see [FSPEC-AI-01]).
+4. Dispatch review requests to all reviewers sequentially. Each reviewer is dispatched and completes independently. The orchestrator does NOT evaluate rejection until ALL reviewers have completed (collect-all-then-evaluate). This ensures the author receives all feedback in a single revision round rather than fixing one reviewer's issues only to be rejected by another.
 
-**Collecting a review result:**
+**Collecting review results:**
 
-5. When a reviewer agent completes, parse the cross-review file (see [FSPEC-RT-01]).
-6. Update the reviewer's status: `pending` → `approved` or `revision_requested`.
-7. Evaluate phase outcome:
+5. As each reviewer agent completes, parse the cross-review file (see [FSPEC-RT-01]).
+6. Update the corresponding status entry: `pending` → `approved` or `revision_requested`.
+7. If any reviewers still have `pending` status → wait for remaining reviewers.
+8. Once ALL reviewers have completed (no `pending` entries remaining) → evaluate phase outcome:
 
-**Decision — phase outcome evaluation:**
+**Decision — phase outcome evaluation (step 8):**
 
 ```
-IF any reviewer has status "revision_requested":
-    → Check revision count (step 8)
-ELSE IF all reviewers have status "approved":
-    → Advance phase (step 10)
-ELSE:
-    → Wait for remaining reviewers (some still "pending")
+IF any status entry has "revision_requested":
+    → Check revision count (step 9)
+ELSE IF all status entries have "approved":
+    → Advance phase (step 11)
 ```
 
-**Revision loop (step 8):**
+**Revision loop (step 9):**
 
-8. Increment `revisionCount` for this phase.
-9. Check against bound:
-   - If `revisionCount <= 3`: transition back to corresponding creation phase (e.g., `TSPEC_REVIEW` → `TSPEC_CREATION`). Reset all reviewer statuses to `pending`. Invoke author agent with revision context (see [FSPEC-CA-01] revision context).
-   - If `revisionCount > 3`: do NOT transition. Pause feature via `ROUTE_TO_USER`: "Review phase {phase} has exceeded the maximum of 3 revision cycles. Reviewer {agent_id} requested revision for the 4th time. Developer intervention required."
+9. Increment `revisionCount` for this phase.
+10. Check against bound:
+    - If `revisionCount <= 3`: transition back to corresponding creation phase (e.g., `TSPEC_REVIEW` → `TSPEC_CREATION`). Reset all status entries to `pending`. Invoke author agent with revision context including ALL cross-review files from this round (see [FSPEC-CA-01] revision context).
+    - If `revisionCount > 3`: do NOT transition. Pause feature via `ROUTE_TO_USER`: "Review phase {phase} has exceeded the maximum of 3 revision cycles. Developer intervention required."
 
-**Phase advance (step 10):**
+**Phase advance (step 11):**
 
-10. All reviewers approved → transition to `*_APPROVED` phase (which auto-transitions to next creation phase per [FSPEC-SM-01]).
+11. All status entries approved → transition to `*_APPROVED` phase (which auto-transitions to next creation phase per [FSPEC-SM-01]).
+
+**Revision bound resume behavior:**
+
+When a feature is paused due to revision bound escalation and the developer responds:
+- The orchestrator resets the revision count to 0 and re-enters the review phase. All reviewer statuses are reset to `pending` and reviewers are dispatched again.
+- This preserves the review integrity guarantee (US-14) — a document cannot advance without reviewer approval. The developer's intervention acknowledges the situation and grants another 3 revision cycles.
+- Force-advancing without approval is NOT supported, as it would violate the core purpose of the state machine.
 
 #### Business Rules
 
@@ -391,18 +399,21 @@ ELSE:
 |------|-------------|
 | BR-RL-01 | Revision count is tracked per review phase, not globally. Each review phase (REQ_REVIEW, FSPEC_REVIEW, etc.) has its own counter. |
 | BR-RL-02 | The revision count resets to 0 when the phase successfully advances (all-approved). If the same phase is re-entered later (e.g., after TSPEC changes require re-review), the count starts fresh. |
-| BR-RL-03 | A single rejection from ANY reviewer triggers the revision loop. The orchestrator does not wait for remaining reviewers. |
+| BR-RL-03 | The orchestrator dispatches ALL reviewers and waits for ALL to complete before evaluating the outcome (collect-all-then-evaluate). This ensures the author receives all feedback in one revision round. Sequential dispatch is the P0 implementation; concurrent dispatch per REQ-RT-08 is a P1 enhancement. |
 | BR-RL-04 | On re-entering a review phase after revision, ALL reviewers must re-review (statuses reset to `pending`), even if some had previously approved. |
 | BR-RL-05 | The revision bound (3) applies per phase. A feature could have 3 revisions in REQ_REVIEW AND 3 in TSPEC_REVIEW — these are independent. |
+| BR-RL-06 | For fullstack TSPEC/PLAN reviews, review status uses `reviewer_id:document_scope` keys. A reviewer who reviews 2 documents produces 2 cross-review files and has 2 independent status entries. Both must be `approved` for that reviewer's obligations to be met. |
+| BR-RL-07 | "Approved with minor changes" is treated identically to "Approved" — no follow-up action. The cross-review file is already on disk for the author's reference. |
 
 #### Edge Cases
 
 | Case | Behavior |
 |------|----------|
-| First reviewer approves, second rejects | Phase transitions to creation immediately on second reviewer's rejection. The first reviewer's approval is discarded (will need to re-review). |
+| First reviewer approves, second rejects | Both reviewers complete before evaluation. The author receives both the approval and the rejection feedback in one round, enabling a more comprehensive revision. |
 | All reviewers approve but one previously rejected (in an earlier revision cycle) | Current cycle's status is what matters. If all show `approved` in the current cycle, phase advances. |
-| Revision bound reached but reviewer submits "Approved" on the same cycle | The rejection from another reviewer already triggered escalation. The approval is a race condition — the escalation (ROUTE_TO_USER) takes precedence because the revision_requested status was processed first. |
-| Feature is paused (ROUTE_TO_USER) due to revision bound, then developer resumes | Developer response unfreezes the feature. The orchestrator can either: (a) reset the revision count and re-enter review, or (b) force-advance the phase. This is determined by the developer's response content — left to TSPEC to define the resume protocol. |
+| Multiple reviewers reject in the same round | All rejection feedback is collected. The author receives ALL cross-review files and can address all feedback in a single revision, reducing total revision cycles. |
+| Feature is paused (ROUTE_TO_USER) due to revision bound, then developer resumes | Developer response resets the revision count to 0 and re-enters the review phase. All statuses reset to `pending`. Force-advance is not supported — see "Revision bound resume behavior" above. |
+| Fullstack TSPEC_REVIEW: pm approves backend TSPEC but rejects frontend TSPEC | Status entries: `pm:be_tspec = approved`, `pm:fe_tspec = revision_requested`. After all reviewers complete, the presence of any `revision_requested` triggers revision. Both TSPECs go back to creation for revision (the entire TSPEC_CREATION phase restarts). |
 
 #### Acceptance Tests
 
@@ -412,7 +423,9 @@ ELSE:
 | AT-RL-02 | WHO: As the orchestrator GIVEN: feature in `TSPEC_REVIEW` with 3 reviewers, first two `approved`, third `revision_requested` WHEN: third review is recorded THEN: phase transitions to `TSPEC_CREATION`, all statuses reset to `pending`, revision count incremented to 1 |
 | AT-RL-03 | WHO: As the orchestrator GIVEN: feature in `FSPEC_REVIEW` with revision count at 3 WHEN: a reviewer submits `revision_requested` THEN: phase does NOT transition, feature pauses via ROUTE_TO_USER with escalation message |
 | AT-RL-04 | WHO: As the orchestrator GIVEN: feature in `REQ_REVIEW` revision cycle 2 WHEN: all reviewers approve THEN: phase advances to `REQ_APPROVED` and revision count resets |
-| AT-RL-05 | WHO: As the orchestrator GIVEN: feature in `PLAN_REVIEW`, first reviewer submits `revision_requested` WHEN: second reviewer has not yet responded THEN: phase transitions immediately to `PLAN_CREATION` without waiting for second reviewer |
+| AT-RL-05 | WHO: As the orchestrator GIVEN: feature in `PLAN_REVIEW`, first reviewer submits `revision_requested` WHEN: second reviewer has not yet responded THEN: orchestrator waits for second reviewer to complete before evaluating; both review results are collected |
+| AT-RL-06 | WHO: As the orchestrator GIVEN: feature in fullstack `TSPEC_REVIEW` with status entries `pm:be_tspec`, `pm:fe_tspec`, `qa:be_tspec`, `qa:fe_tspec`, `fe:be_tspec`, `eng:fe_tspec` WHEN: all 6 entries are `approved` THEN: phase transitions to `TSPEC_APPROVED` |
+| AT-RL-07 | WHO: As the orchestrator GIVEN: feature paused at revision bound WHEN: developer resumes THEN: revision count resets to 0, review phase re-entered, all statuses reset to `pending` |
 
 #### Dependencies
 
@@ -669,7 +682,7 @@ For each document in the matrix, resolve the path:
 | BR-CA-01 | The context matrix is exhaustive — exactly the listed documents are included, no more. Agents should not receive unrelated documents. |
 | BR-CA-02 | "approved FSPEC (if exists)" means: include the FSPEC only if `skipFspec === false` and the FSPEC file exists. If `skipFspec === true`, do not include it. |
 | BR-CA-03 | Revision context is additive — the standard creation-phase context PLUS the cross-review files. |
-| BR-CA-04 | For fullstack TSPEC/PLAN creation, each engineer receives only their own discipline's prerequisite documents. The backend engineer does not receive the frontend TSPEC and vice versa. |
+| BR-CA-04 | For fullstack TSPEC/PLAN creation, each engineer receives only their own discipline's prerequisite documents. For TSPEC_CREATION: both engineers receive the same context (overview.md, REQ, FSPEC). For PLAN_CREATION: the backend engineer receives the backend TSPEC only, and the frontend engineer receives the frontend TSPEC only. Neither receives the other discipline's TSPEC. |
 | BR-CA-05 | The existing token budget enforcement ([REQ-CB-05]) still applies. If the total context exceeds the budget, Layer 2 documents are omitted with preference for keeping the most recent/relevant documents (the document under review or revision is never omitted). |
 
 #### Edge Cases
@@ -739,6 +752,7 @@ None — all questions were resolved during REQ review (backend-engineer Q-01 th
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Product Manager | Initial FSPEC — 7 functional specifications covering state machine transitions, persistence/recovery, approval detection, review lifecycle, agent dispatch, reviewer computation, and context assembly. |
+| 1.1 | March 14, 2026 | Product Manager | Addressed backend-engineer cross-review (6 findings, 2 questions). Changes: (F-01) FSPEC-RT-02 now uses `reviewer_id:document_scope` pair tracking for fullstack multi-document reviews; added BR-RL-06. (F-02) Changed from early-exit to collect-all-then-evaluate dispatch model; updated BR-RL-03, edge cases, AT-RL-05. (F-05) Defined revision bound resume behavior: reset count + re-enter review; force-advance not supported. (Q-01) "Approved with minor changes" treated identically to "Approved"; added BR-RL-07. (Q-02) Clarified BR-CA-04: fullstack PLAN_CREATION gives each engineer only their own discipline's TSPEC. F-03, F-04, F-06 deferred to TSPEC (low severity). Status: Approved. |
 
 ---
 
