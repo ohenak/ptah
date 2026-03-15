@@ -6,11 +6,11 @@
 |-------|--------|
 | **Document ID** | REQ-012 |
 | **Parent Document** | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 15, 2026 |
 | **Author** | Product Manager |
-| **Status** | Draft |
-| **Approval Date** | Pending |
+| **Status** | Approved |
+| **Approval Date** | March 15, 2026 |
 
 ---
 
@@ -88,7 +88,7 @@ Requirements are grouped by the section of SKILL.md being modified.
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source | Dependencies |
 |----|-------|-------------|---------------------|----------|-------|--------|--------------|
 | REQ-RT-01 | Remove routing task from SKILL.md | All four SKILL.md files must have their "Route Documents for Review and Approval" task removed entirely. Agents no longer decide who to route to — they signal completion and the orchestrator handles routing. | WHO: As a SKILL.md maintainer GIVEN: the orchestrator handles review routing WHEN: SKILL.md files are updated THEN: the routing task (Task 3 in BE/FE/PM, or equivalent in QA) is removed; no `<routing>` tag examples for workflow routing remain | P0 | 1 | [REQ-SA-02], [US-19] | — |
-| REQ-RT-02 | Remove routing tag instructions | All references to constructing `<routing>` tags for PDLC workflow purposes must be removed. Agents no longer need to know agent IDs for routing purposes. | WHO: As a SKILL.md maintainer GIVEN: routing is orchestrator-managed WHEN: SKILL.md files are updated THEN: the "Routing lookup" table (agent ID mapping), routing tag JSON examples, and "Route if needed" instructions in the git workflow are removed | P0 | 1 | [REQ-SA-02], [US-19] | [REQ-RT-01] |
+| REQ-RT-02 | Remove PDLC workflow routing instructions | All references to constructing `<routing>` tags for PDLC workflow purposes (which agent to route to next, handoff instructions, ROUTE_TO_AGENT with specific agent_ids for workflow) must be removed. The `<routing>` tag syntax itself must be PRESERVED because agents still emit signals (`LGTM`, `ROUTE_TO_USER`, `TASK_COMPLETE`) via `<routing>` tags that the orchestrator's `parseSignal()` parses. The signal emission format is documented in the response contract (REQ-RC-01/RC-02). | WHO: As a SKILL.md maintainer GIVEN: routing is orchestrator-managed but signal emission uses `<routing>` tags WHEN: SKILL.md files are updated THEN: the "Routing lookup" table (agent ID mapping), workflow routing examples (ROUTE_TO_AGENT with specific agent_ids), and "Route if needed" git workflow step are removed; the `<routing>` tag format for signal emission is preserved in the Response Contract section | P0 | 1 | [REQ-SA-02], [US-19] | [REQ-RT-01] |
 | REQ-RT-03 | Remove agent identity routing section | The "Agent Identity" section in each SKILL.md that defines the agent's ID and the routing lookup table must be simplified. The agent ID is still useful for logging but the routing table is no longer needed. | WHO: As a SKILL.md maintainer GIVEN: agents no longer route to each other WHEN: SKILL.md files are updated THEN: the routing lookup table is removed; the agent ID is retained as a single line for identification purposes only | P1 | 1 | [REQ-SA-02], [US-19] | [REQ-RT-02] |
 
 ### 4.3 Document Status Removal (DS)
@@ -103,7 +103,7 @@ Requirements are grouped by the section of SKILL.md being modified.
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source | Dependencies |
 |----|-------|-------------|---------------------|----------|-------|--------|--------------|
 | REQ-RC-01 | Add response contract section | Each SKILL.md must include a "Response Contract" section that defines the agent's expected behavior after completing a task: (1) write artifact file using Write tool, (2) commit and push to feature branch, (3) return a routing signal. | WHO: As a SKILL.md maintainer GIVEN: the orchestrator relies on routing signals WHEN: SKILL.md files are updated THEN: each skill file includes a "Response Contract" section specifying: write artifact → commit/push → return routing signal | P0 | 1 | [REQ-SA-05], [US-19] | — |
-| REQ-RC-02 | Define routing signal semantics | The response contract must document the three routing signals: `LGTM` (task completed successfully), `ROUTE_TO_USER` (agent has a blocking question for the developer), `TASK_COMPLETE` (feature is done, terminal signal). Agents must understand when to use each. | WHO: As a SKILL.md maintainer GIVEN: the orchestrator interprets routing signals WHEN: SKILL.md files are updated THEN: the response contract section defines LGTM, ROUTE_TO_USER, and TASK_COMPLETE with usage guidance and examples | P0 | 1 | [REQ-SA-05], [US-19] | [REQ-RC-01] |
+| REQ-RC-02 | Define routing signal semantics with format examples | The response contract must document four routing signals with exact `<routing>` tag format examples: (1) `LGTM` — task completed successfully: `<routing>{"type":"LGTM"}</routing>`. (2) `ROUTE_TO_USER` — agent has a blocking question: `<routing>{"type":"ROUTE_TO_USER","question":"..."}</routing>`. (3) `TASK_COMPLETE` — feature is done, terminal signal: `<routing>{"type":"TASK_COMPLETE"}</routing>`. (4) `ROUTE_TO_AGENT` — ad-hoc coordination only (e.g., asking another agent a clarifying question): `<routing>{"type":"ROUTE_TO_AGENT","agent_id":"...","thread_action":"reply"}</routing>`. The contract must clarify that ROUTE_TO_AGENT is for ad-hoc coordination only, NOT for PDLC workflow routing. The orchestrator will log a warning and invoke the target for one turn without changing the PDLC phase. | WHO: As a SKILL.md maintainer GIVEN: the orchestrator parses `<routing>` tags from agent responses WHEN: SKILL.md files are updated THEN: the response contract section defines all four signals with exact `<routing>` tag JSON format, usage guidance, and examples; ROUTE_TO_AGENT includes explicit "ad-hoc only, not for workflow" guidance | P0 | 1 | [REQ-SA-05], [US-19] | [REQ-RC-01] |
 
 ### 4.5 Cross-Review Convention (CR)
 
@@ -128,7 +128,7 @@ Requirements are grouped by the section of SKILL.md being modified.
 |----|-------|-------------|---------------------|----------|-------|
 | REQ-NF-01 | Simultaneous update | All four SKILL.md files must be updated in a single commit or closely coordinated commits. Partial updates create inconsistency where some agents still route while others don't. | All four SKILL.md files are updated in a single atomic commit. | P0 | 1 |
 | REQ-NF-02 | Line count reduction | Each SKILL.md should be reduced by approximately 30-50% after removing PDLC workflow logic. This is a rough guide, not a strict target — the goal is complexity reduction, not line count minimization. | Each SKILL.md is shorter after the update, with the removed content being exclusively PDLC workflow logic (not domain content). | P1 | 1 |
-| REQ-NF-03 | No behavior change for managed features | Features managed by the PDLC state machine must continue to work identically after SKILL.md simplification. The orchestrator's task directives and signal handling are unchanged — only the SKILL.md instructions are simplified. | A managed feature can progress through the full PDLC lifecycle after SKILL.md simplification with no workflow regressions. | P0 | 1 |
+| REQ-NF-03 | No behavior change for managed features | Features managed by the PDLC state machine must continue to work identically after SKILL.md simplification. The orchestrator's task directives and signal handling are unchanged — only the SKILL.md instructions are simplified. Validation method: (1) the existing Feature 011 automated test suite (which does not depend on SKILL.md content) must pass unchanged; (2) manual end-to-end validation by running a managed feature through 2-3 PDLC phase transitions after SKILL.md update and verifying the orchestrator dispatches correctly. | The existing Feature 011 test suite passes with zero failures. A manual smoke test of a managed feature progressing through at least REQ_CREATION → REQ_REVIEW → REQ_APPROVED confirms correct orchestrator behavior after SKILL.md update. | P0 | 1 |
 
 ---
 
@@ -136,7 +136,7 @@ Requirements are grouped by the section of SKILL.md being modified.
 
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|-----------|--------|------------|
-| R-01 | Unmanaged features break — features started before Feature 011 that still use the old SKILL.md-driven routing will lose their workflow instructions. | Low | High | The orchestrator's backward compatibility (REQ-SM-NF-03) handles unmanaged features via the existing RoutingEngine path. The old routing logic in SKILL.md was never executed by the orchestrator — it only existed in the agent's prompt. Unmanaged features will continue using the old RoutingEngine decisions regardless of SKILL.md content. |
+| R-01 | Unmanaged features break — features started before Feature 011 that still use the old SKILL.md-driven routing will lose their workflow instructions. | Low | High | The orchestrator's backward compatibility (REQ-SM-NF-03) handles unmanaged features via the existing `RoutingEngine.decide()` path. For unmanaged features, the orchestrator processes whatever routing signal the agent emits — the orchestrator's behavior depends on the signal in the agent's response, not on whether the SKILL.md contains routing instructions. Agents may still emit `ROUTE_TO_AGENT` from cached knowledge. The simplified SKILL.md still includes signal emission format in the Response Contract, so agents can emit the signals the orchestrator expects. |
 | R-02 | Agents lose context about the PDLC — without task selection and routing context, agents may not understand where their task fits in the broader workflow. | Medium | Low | Add a brief "How the PDLC works" overview section to each SKILL.md explaining that the orchestrator manages workflow and the agent focuses on domain tasks. This provides context without embedding workflow logic. |
 | R-03 | Cross-review format breaks — if the cross-review instructions are accidentally modified during simplification, the orchestrator's parser may fail. | Low | High | REQ-CR-01 and REQ-CR-02 explicitly preserve the format. The cross-review section should be treated as a protected zone during editing. |
 
@@ -147,9 +147,10 @@ Requirements are grouped by the section of SKILL.md being modified.
 ### In Scope
 
 - Removing task selection decision tables from all four SKILL.md files
-- Removing routing logic (`<routing>` tags, agent ID lookup tables, routing task)
+- Removing PDLC workflow routing logic (agent ID lookup tables, routing task, workflow `ROUTE_TO_AGENT` examples)
+- Preserving `<routing>` tag signal emission format in the response contract
 - Removing document status management instructions
-- Adding response contract section (LGTM/ROUTE_TO_USER/TASK_COMPLETE)
+- Adding response contract section (LGTM/ROUTE_TO_USER/TASK_COMPLETE/ROUTE_TO_AGENT for ad-hoc)
 - Preserving cross-review file format and convention
 - Preserving all domain-specific instructions
 - Preserving git workflow (with simplified signaling)
@@ -168,10 +169,10 @@ Requirements are grouped by the section of SKILL.md being modified.
 
 | Skill | Sections to Remove | Sections to Preserve | Sections to Add |
 |-------|-------------------|---------------------|-----------------|
-| **backend-engineer** | Task Selection table, Task 3 (Route), routing lookup table, Document Status section, trigger descriptions, `<routing>` tag examples | Role & Mindset, Git Workflow (simplified), Web Search, Tasks 1/2/4/5/6 (domain content only), Review File Convention, TDD Principles, DI Principles, Working with Docs, Communication, Quality Checklist | Response Contract |
-| **frontend-engineer** | Task Selection table, Task 3 (Route), routing lookup table, Document Status section, trigger descriptions, `<routing>` tag examples | Role & Mindset, Git Workflow (simplified), Web Search, Tasks 1/2/4/5/6 (domain content only), Review File Convention, TDD Principles, DI Principles, Frontend Considerations, Working with Docs, Communication, Quality Checklist | Response Contract |
-| **product-manager** | Task Selection table, Task 3 (Route), routing lookup table, Document Status section, trigger descriptions, `<routing>` tag examples | Role & Mindset, Git Workflow (simplified), Phase 0 Bootstrap, Web Search, Tasks 1/2/4 (domain content only), Review File Convention, Feature & Release Model, Document Formats, Working with Docs, Communication, Quality Checklist | Response Contract |
-| **test-engineer** | Task Selection table, Task 3 (Route if applicable), routing lookup table, Document Status section, trigger descriptions, `<routing>` tag examples | Role & Mindset, Git Workflow (simplified), Web Search, Tasks 1/2/3/4 (domain content only), Review File Convention, Test Pyramid Principles, Property Derivation Guidelines, Working with Docs, Communication, Quality Checklist | Response Contract |
+| **backend-engineer** | Task Selection table, Route Documents task, routing lookup table, Document Status section, trigger descriptions, PDLC workflow `<routing>` examples | Role & Mindset, Git Workflow (simplified), Web Search, Create TSPEC, Create Execution Plan, Review Other Documents, Implement TSPEC (TDD), Address Review Feedback, Review File Convention, TDD Principles, DI Principles, Working with Docs, Communication, Quality Checklist | Response Contract |
+| **frontend-engineer** | Task Selection table, Route Documents task, routing lookup table, Document Status section, trigger descriptions, PDLC workflow `<routing>` examples | Role & Mindset, Git Workflow (simplified), Web Search, Create TSPEC, Create Execution Plan, Review Other Documents, Implement TSPEC (TDD), Address Review Feedback, Review File Convention, TDD Principles, DI Principles, Frontend Considerations, Working with Docs, Communication, Quality Checklist | Response Contract |
+| **product-manager** | Task Selection table, Route Documents task, routing lookup table, Document Status section, trigger descriptions, PDLC workflow `<routing>` examples | Role & Mindset, Git Workflow (simplified), Phase 0 Bootstrap, Web Search, Create REQ, Create FSPEC, Review Other Documents, Review File Convention, Feature & Release Model, Document Formats, Working with Docs, Communication, Quality Checklist | Response Contract |
+| **test-engineer** | Task Selection table, Route Documents task (if applicable), routing lookup table, Document Status section, trigger descriptions, PDLC workflow `<routing>` examples | Role & Mindset, Git Workflow (simplified), Web Search, Create Properties, Ensure Coverage, Route/Update Documents, Review Other Documents, Review File Convention, Test Pyramid Principles, Property Derivation Guidelines, Working with Docs, Communication, Quality Checklist | Response Contract |
 
 ---
 
@@ -180,6 +181,8 @@ Requirements are grouped by the section of SKILL.md being modified.
 | Role | Name | Date | Status |
 |------|------|------|--------|
 | Product Owner | — | — | Pending |
+| Backend Engineer | eng | March 15, 2026 | Approved with minor changes (addressed in v1.1) |
+| Test Engineer | qa | March 15, 2026 | Approved with minor changes (addressed in v1.1) |
 
 ---
 
@@ -188,6 +191,7 @@ Requirements are grouped by the section of SKILL.md being modified.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 15, 2026 | Product Manager | Initial requirements — 15 functional requirements + 3 NFRs across 6 domains, implementing REQ-SA-01 through REQ-SA-06 from Feature 011 |
+| 1.1 | March 15, 2026 | Product Manager | Addressed backend-engineer review (3 findings, 1 question) and test-engineer review (4 findings, 1 question). Changes: (BE F-01) Rewrote REQ-RT-02 to distinguish PDLC workflow routing (remove) from signal emission syntax (preserve). (BE F-02 + QA F-02 + BE Q-01 + QA Q-01) Expanded REQ-RC-02 to include all four signals with exact `<routing>` tag format examples; added `ROUTE_TO_AGENT` as fourth signal for ad-hoc coordination only. (QA F-01) Added manual validation method to REQ-NF-03. (BE F-03) Corrected R-01 mitigation reasoning. (QA F-04) Section 8 now uses domain function names instead of task numbers. Updated scope boundaries to clarify signal emission preservation. Status: Approved. |
 
 ---
 
