@@ -8,7 +8,7 @@
 | **Requirements** | [011-REQ-orchestrator-pdlc-state-machine](011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Functional Specification** | [011-FSPEC-orchestrator-pdlc-state-machine](011-FSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Date** | March 14, 2026 |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Status** | Draft |
 
 ---
@@ -467,15 +467,19 @@ When a `review_submitted` event is received in a `*_REVIEW` phase:
 
 ```
 1. Update reviewerStatuses[event.reviewerKey] = event.recommendation
-2. Check if any reviewer is still "pending":
-     IF yes → no action, return empty side effects (wait for remaining reviewers)
-3. All reviewers have responded. Evaluate outcome:
-     a. IF any reviewerStatus === "revision_requested":
-          i. Increment revisionCount
-          ii. IF revisionCount > 3:
+2. outcome = evaluateReviewOutcome(reviewPhaseState)
+3. SWITCH outcome:
+     "pending":
+          No transition — waiting for remaining reviewers. Return empty side effects.
+     "all_approved":
+          Transition to *_APPROVED phase.
+          Return { sideEffects: [auto_transition] }
+     "has_revision_requested":
+          a. Increment revisionCount
+          b. IF revisionCount > 3:
                Return { sideEffects: [pause_feature("Revision bound exceeded")] }
                State unchanged.
-          iii. ELSE:
+          c. ELSE:
                For fullstack multi-document reviews: determine which sub-documents
                were rejected vs. approved. Authors of approved sub-documents receive
                a "Resubmit" directive (no changes needed). Authors of rejected
@@ -483,10 +487,9 @@ When a `review_submitted` event is received in a `*_REVIEW` phase:
                Reset ALL reviewerStatuses to "pending"
                Transition to corresponding *_CREATION phase
                Return { sideEffects: [dispatch_agent(author, "Revise"/"Resubmit", docType)] }
-     b. IF all reviewerStatuses === "approved":
-          Transition to *_APPROVED phase
-          Return { sideEffects: [auto_transition] }
 ```
+
+**Single evaluation path:** The `transition()` function delegates to `evaluateReviewOutcome()` for all review outcome decisions, ensuring a single source of truth for the evaluation logic.
 
 **Key behavioral difference from early-exit:** A rejection from one reviewer does NOT immediately trigger the revision loop. The orchestrator waits for all other reviewers to complete, then evaluates. This means the author receives all feedback (approvals and rejections) in one round, avoiding ping-pong revision cycles.
 
@@ -972,6 +975,7 @@ When `contextDocuments` is provided, the assembler reads only the specified docu
 | Revision bound exceeded (>3 cycles) | state-machine | Return `pause_feature` side effect | User intervention required |
 | Feature already DONE | state-machine | Throw `InvalidTransitionError` | Caller ignores |
 | Disk full | state-store | Write fails, throw | Transition not committed (fail-closed) |
+| Reviewer agent crash / timeout | (not implemented) | Reviewer status remains `pending` indefinitely | **Known limitation (P1).** No reviewer timeout mechanism in P0. Feature remains in `*_REVIEW` until user intervenes manually or the reviewer is re-dispatched via startup recovery. Future enhancement: add a configurable review timeout (e.g., 30 minutes) after which the orchestrator pauses via ROUTE_TO_USER with message "Reviewer {agent_id} has not responded within the timeout period." |
 
 ---
 
@@ -1006,6 +1010,25 @@ export class FakeStateStore implements StateStore {
     this.state = structuredClone(state);
     this.saveCount++;
   }
+}
+
+// --- FakeFileSystem extension (add to existing FakeFileSystem) ---
+// The existing FakeFileSystem uses an in-memory Map<string, string>.
+// Add these methods to support StateStore tests:
+
+async rename(oldPath: string, newPath: string): Promise<void> {
+  if (this.renameError) throw this.renameError;
+  const content = this.files.get(oldPath);
+  if (!content && content !== "") throw Object.assign(new Error(`ENOENT: ${oldPath}`), { code: "ENOENT" });
+  this.files.set(newPath, content);
+  this.files.delete(oldPath);
+}
+renameError: Error | null = null;
+
+async copyFile(src: string, dest: string): Promise<void> {
+  const content = this.files.get(src);
+  if (!content && content !== "") throw Object.assign(new Error(`ENOENT: ${src}`), { code: "ENOENT" });
+  this.files.set(dest, content);
 }
 
 // --- FakePdlcDispatcher ---
@@ -1069,13 +1092,13 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
 |--------|-----------|----------|-------------|
 | state-machine | `tests/unit/orchestrator/pdlc/state-machine.test.ts` | Unit | ~40 |
 | state-store | `tests/unit/orchestrator/pdlc/state-store.test.ts` | Unit | ~15 |
-| review-tracker | `tests/unit/orchestrator/pdlc/review-tracker.test.ts` | Unit | ~20 |
+| review-tracker | `tests/unit/orchestrator/pdlc/review-tracker.test.ts` | Unit | ~25 |
 | cross-review-parser | `tests/unit/orchestrator/pdlc/cross-review-parser.test.ts` | Unit | ~15 |
 | context-matrix | `tests/unit/orchestrator/pdlc/context-matrix.test.ts` | Unit | ~15 |
 | pdlc-dispatcher | `tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | Unit | ~25 |
 | migrations | `tests/unit/orchestrator/pdlc/migrations.test.ts` | Unit | ~8 |
 | pdlc-lifecycle | `tests/integration/orchestrator/pdlc-lifecycle.test.ts` | Integration | ~10 |
-| **Total** | | | **~148** |
+| **Total** | | | **~153** |
 
 ### 7.4 Key Test Scenarios
 
@@ -1205,6 +1228,13 @@ This preserves the review integrity guarantee (no force-advance past unapproved 
 | OQ-01 | Should `REQ-SA-01` through `REQ-SA-06` (SKILL.md simplification) be tracked in this TSPEC's execution plan, or handled as a separate documentation task? | PLAN scope | Propose: separate task. SKILL.md changes are text edits, not code. They should be done after the state machine is deployed and validated, to avoid a mixed state during transition. **Transition note (per PM review F-05):** SKILL.md updates should be the immediate follow-up task before any new features use the PDLC state machine. During the transition period, the orchestrator's explicit task directives (ACTION lines) override the SKILL.md's self-selection logic, so the conflict is manageable but should be resolved promptly. |
 | OQ-02 | For fullstack features, should the orchestrator dispatch backend and frontend engineers truly in parallel (concurrent invocations) or sequentially? | Performance vs. complexity | Propose: sequential dispatch (P0). Concurrent dispatch adds complexity to the invocation guard and worktree management. REQ-RT-08 is P1. |
 
+### Resolved Questions (from QA review)
+
+| # | Question | Resolution |
+|---|----------|------------|
+| QA-Q-01 | Where does artifact validation retry live? | The retry loop lives in the **orchestrator's routing loop** (the caller), not inside `processAgentCompletion()`. The dispatcher returns `{ action: "retry_agent" }` on missing artifact. The orchestrator re-invokes the agent up to 2 more times (3 total attempts per FSPEC-AI-01). After 3 failures, the orchestrator escalates via `{ action: "pause" }`. Tests for retry logic belong in `orchestrator.test.ts`, not `pdlc-dispatcher.test.ts`. |
+| QA-Q-02 | How does `getNextAction()` handle fullstack TSPEC_REVIEW? | `getNextAction()` reads persisted `reviewPhases` state and dispatches **only reviewers whose status is still `pending`**. Previously completed reviews (persisted as `approved` or `revision_requested`) are NOT re-dispatched. This is efficient and correct because the persisted state includes per-reviewer-per-document status via composite keys. |
+
 ---
 
 ## 11. Quality Checklist
@@ -1224,6 +1254,7 @@ This preserves the review integrity guarantee (no force-advance past unapproved 
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Backend Engineer | Initial TSPEC — 8 new modules, 2 updated modules, ~148 estimated tests |
 | 1.1 | March 14, 2026 | Backend Engineer | Address PM review: F-01 fix REQ-SM-11 mapping, F-02 collect-all-then-evaluate review model, F-03 artifact retry note, F-04 add Resubmit task type, F-05 transition sequencing note, Q-01 add processResumeFromBound to interface |
+| 1.2 | March 14, 2026 | Backend Engineer | Address QA review: F-04 add FakeFileSystem extension, F-06 document reviewer timeout as P1 known limitation, F-07 transition() delegates to evaluateReviewOutcome(), F-08 update test estimates, resolve Q-01/Q-02 |
 
 ---
 
