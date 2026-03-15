@@ -89,7 +89,7 @@ export class DefaultInvocationGuard implements InvocationGuard {
 
       // Step 2: Check for malformed/missing routing signal (GR-R6)
       const hasRoutingTag = invocationResult.routingSignalRaw &&
-        /<routing>/.test(invocationResult.routingSignalRaw);
+        /<routing>\s*\{/.test(invocationResult.routingSignalRaw);
       if (!hasRoutingTag) {
         malformedSignalCount++;
         lastError = new Error(`Missing routing signal in response (count: ${malformedSignalCount})`);
