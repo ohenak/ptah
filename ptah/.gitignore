@@ -1,3 +1,4 @@
 .env
 ptah.config.json
 docs/
+state/
