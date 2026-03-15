@@ -27,6 +27,8 @@ import { DefaultPatternBContextBuilder } from "../src/orchestrator/pattern-b-con
 import { InMemoryWorktreeRegistry } from "../src/orchestrator/worktree-registry.js";
 import { InMemoryThreadStateManager } from "../src/orchestrator/thread-state-manager.js";
 import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js";
+import { FileStateStore } from "../src/orchestrator/pdlc/state-store.js";
+import { DefaultPdlcDispatcher } from "../src/orchestrator/pdlc/pdlc-dispatcher.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -181,6 +183,10 @@ async function main(): Promise<void> {
         logger,
       );
 
+      // Phase 11: PDLC State Machine
+      const stateStore = new FileStateStore(fs, logger, "ptah/state/pdlc-state.json");
+      const pdlcDispatcher = new DefaultPdlcDispatcher(stateStore, fs, logger, config.docs.root);
+
       orchestrator = new DefaultOrchestrator({
         discordClient: discord,
         routingEngine,
@@ -204,6 +210,8 @@ async function main(): Promise<void> {
         threadStateManager,
         worktreeRegistry,
         shutdownSignal: abortController.signal,
+        // Phase 11: PDLC State Machine
+        pdlcDispatcher,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {
