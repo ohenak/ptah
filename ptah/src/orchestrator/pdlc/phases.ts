@@ -92,7 +92,7 @@ export type SideEffect =
   | { type: "auto_transition" };
 
 export type TaskType = "Create" | "Review" | "Revise" | "Resubmit" | "Implement";
-export type DocumentType = "REQ" | "FSPEC" | "TSPEC" | "PLAN" | "PROPERTIES" | "";
+export type DocumentType = "REQ" | "FSPEC" | "TSPEC" | "PLAN" | "PROPERTIES" | "IMPLEMENTATION" | "";
 
 // --- Reviewer Manifest Entry (FSPEC-FC-01) ---
 
