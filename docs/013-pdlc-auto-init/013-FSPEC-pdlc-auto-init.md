@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-013 |
 | **Parent Document** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.0, Draft) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 15, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -108,19 +108,19 @@ After `initializeFeature()` completes:
 - Feature slug (string, derived from thread name)
 - Routing signal (from agent)
 - Full conversation history (to supply to age guard and keyword parsing)
-- Initial message text (the first message in the thread, for keyword parsing)
+- Initial message text (the first chronological message in the conversation history with `isBot === false`, i.e., the first user-authored message; used for keyword parsing)
 
 **Output:**
 - Feature state record created on disk (via `initializeFeature()`)
 - Info-level log message emitted
-- Debug channel notification posted
+- Debug channel notification posted (the debug channel is identified via `this.config.discord.channels.debug`)
 - Routing signal forwarded to managed PDLC path
 
 #### Edge Cases
 
 | Case | Behavior |
 |------|----------|
-| `initializeFeature()` is called but a state record already exists (race condition) | `initializeFeature()` must not overwrite the existing record. It detects the record and returns without modifying it. The current signal is still processed through the managed path. |
+| `initializeFeature()` is called but a state record already exists (race condition) | `initializeFeature()` must not overwrite the existing record. It detects the record and returns the existing `FeatureState` without modification (it does not throw). The orchestrator treats this as a successful no-op and proceeds to the managed PDLC path with the existing state record. |
 | Feature slug cannot be resolved from thread context | Orchestrator falls through to existing error handling. Auto-init is not attempted. |
 | Initial message is unavailable (conversation history is empty) | Default configuration is used — no keyword parsing attempted. Feature is initialized with `{ discipline: "backend-only", skipFspec: false }`. |
 
@@ -135,7 +135,7 @@ After `initializeFeature()` completes:
 
 | # | Test |
 |---|------|
-| AT-PI-01 | WHO: As the orchestrator GIVEN: a feature slug with no state record and 0 prior agent turns WHEN: an agent returns LGTM THEN: `initializeFeature()` is called, a state record is created at `REQ_CREATION`, and the LGTM signal is processed through the managed PDLC path |
+| AT-PI-01 | WHO: As the orchestrator GIVEN: a feature slug with no state record and 0 prior agent turns WHEN: an agent returns LGTM THEN: `initializeFeature()` is called, a state record is created at `REQ_CREATION`, the created state record has config `{ discipline: "backend-only", skipFspec: false }`, and the LGTM signal is processed through the managed PDLC path |
 | AT-PI-02 | WHO: As the orchestrator GIVEN: a feature slug that already has a state record WHEN: an agent returns LGTM THEN: `initializeFeature()` is NOT called; the signal is processed directly through the managed PDLC path |
 | AT-PI-03 | WHO: As the orchestrator GIVEN: `initializeFeature()` throws a filesystem error WHEN: the routing loop processes the signal THEN: the error is logged, neither managed nor legacy path is invoked, and the feature slug remains unmanaged |
 | AT-PI-04 | WHO: As the orchestrator GIVEN: two concurrent messages arrive for the same new feature, both triggering auto-init WHEN: both signals are processed THEN: exactly one state record is created; the second call detects the existing record and skips initialization |
@@ -166,7 +166,7 @@ Not every unmanaged feature should be auto-initialized. Features that were creat
 AGE GUARD ENTRY
 │
 ├─ 1. Count prior agent turns in conversation history
-│     (definition: messages where role = "assistant" or message is from an agent,
+│     (definition: messages where isBot === true AND content contains a <routing> tag,
 │      excluding the current incoming message)
 │
 ├─ 2. Compare count against threshold (threshold = 1)
@@ -181,9 +181,11 @@ AGE GUARD ENTRY
 #### Definition of "Agent Turn"
 
 A **prior agent turn** is any message in the conversation history, before the current message, where:
-- The message role is `"assistant"` (i.e., a response from an agent, not the user)
+- `isBot === true` **AND** the message content contains a `<routing>` tag
 
-The current incoming message (the one that triggered this routing loop invocation) is **excluded** from the count. The count is over *prior* turns only.
+Orchestrator-generated messages (progress embeds, completion embeds, debug notifications) have `isBot: true` but contain no `<routing>` tag and are therefore **excluded** from the count. This filter is intentional: it prevents false-positive non-eligibility on genuinely new threads where the orchestrator has already posted a progress or status embed.
+
+The current incoming message (the one that triggered this routing loop invocation) is also **excluded** from the count. The count is over *prior* turns only.
 
 #### Threshold: Why 1
 
@@ -205,7 +207,7 @@ The threshold is set at 1 prior agent turn because:
 #### Input/Output
 
 **Input:**
-- Conversation history (ordered list of messages with role and content)
+- Conversation history (ordered list of `ThreadMessage` objects, each with `isBot: boolean` and `content: string`)
 - Current message (excluded from count)
 
 **Output:**
@@ -234,7 +236,7 @@ The threshold is set at 1 prior agent turn because:
 |---|------|
 | AT-BC-01 | WHO: As the orchestrator GIVEN: a thread with 0 prior agent turns (first message from user) WHEN: the age guard is evaluated THEN: result is eligible |
 | AT-BC-02 | WHO: As the orchestrator GIVEN: a thread with exactly 1 prior agent turn WHEN: the age guard is evaluated THEN: result is eligible |
-| AT-BC-03 | WHO: As the orchestrator GIVEN: a thread with 2 prior agent turns WHEN: the age guard is evaluated THEN: result is not eligible; turnCount = 2 |
+| AT-BC-03 | WHO: As the orchestrator GIVEN: a thread with 2 prior agent turns WHEN: the age guard is evaluated THEN: result is not eligible; turnCount = 2; AND a debug-level log message is emitted matching `[ptah] Skipping PDLC auto-init for "{featureSlug}" — thread has 2 prior turns (threshold: 1)` |
 | AT-BC-04 | WHO: As the orchestrator GIVEN: a thread with 5 prior agent turns (existing unmanaged feature) WHEN: the age guard is evaluated THEN: result is not eligible; the orchestrator logs `[ptah] Skipping PDLC auto-init for "{featureSlug}" — thread has 5 prior turns (threshold: 1)` and routes to the legacy path |
 | AT-BC-05 | WHO: As the orchestrator GIVEN: a malformed conversation history WHEN: the age guard is evaluated THEN: result is eligible (fail-open) with a warning logged |
 
@@ -255,14 +257,14 @@ The threshold is set at 1 prior agent turn because:
 
 #### Description
 
-When a feature is eligible for auto-initialization, the orchestrator may find configuration keywords in the initial message text. These keywords allow the developer to specify the feature's discipline and whether to skip the FSPEC phase. If no keywords are found, default values are used.
+When a feature is eligible for auto-initialization, the orchestrator may find configuration keywords in the initial message text. The **initial message** is the first chronological message in the conversation history with `isBot === false` (i.e., the first user-authored message). These keywords allow the developer to specify the feature's discipline and whether to skip the FSPEC phase. If no keywords are found, default values are used.
 
 #### Behavioral Flow
 
 ```
 KEYWORD PARSING ENTRY
 │
-├─ Input: initial message text (first user message in the thread)
+├─ Input: initial message text (first chronological message with isBot === false)
 │
 ├─ 1. Extract all square-bracketed tokens from the message
 │     Pattern: all occurrences of [token] where token is one or more
@@ -302,7 +304,7 @@ KEYWORD PARSING ENTRY
 | BR-DC-03 | The `[skip-fspec]` keyword is not a discipline keyword. It is orthogonal and can appear alongside any discipline keyword. |
 | BR-DC-04 | If the initial message is empty or contains no text, default configuration is returned without error. |
 | BR-DC-05 | Unrecognized square-bracketed tokens are silently ignored. No warning or error is emitted. This prevents tag-like syntax used for other purposes (e.g., Markdown references, Discord formatting) from causing unexpected behavior. |
-| BR-DC-06 | Keyword parsing only applies to the **initial message** — the first user message in the thread. Subsequent messages are not scanned for keywords. |
+| BR-DC-06 | Keyword parsing only applies to the **initial message** — the first chronological message in the conversation history with `isBot === false` (i.e., the first user-authored message). Subsequent messages are not scanned for keywords. |
 
 #### Input/Output
 
@@ -344,6 +346,7 @@ KEYWORD PARSING ENTRY
 | AT-DC-06 | WHO: As the orchestrator GIVEN: initial message `"@pm create REQ [FULLSTACK]"` (wrong case) WHEN: keyword parsing runs THEN: keyword is ignored; result is `{ discipline: "backend-only", skipFspec: false }` |
 | AT-DC-07 | WHO: As the orchestrator GIVEN: initial message `"@pm create REQ [backend-only] [fullstack]"` (conflict) WHEN: keyword parsing runs THEN: last discipline wins; result is `{ discipline: "fullstack", skipFspec: false }` |
 | AT-DC-08 | WHO: As the orchestrator GIVEN: initial message `"@pm create REQ [some-random-tag]"` WHEN: keyword parsing runs THEN: unknown keyword is silently ignored; result is `{ discipline: "backend-only", skipFspec: false }` |
+| AT-DC-09 | WHO: As the orchestrator GIVEN: initial message `"@pm create REQ [fullstack] [backend-only]"` (reverse conflict) WHEN: keyword parsing runs THEN: last discipline wins; result is `{ discipline: "backend-only", skipFspec: false }` |
 
 #### Dependencies
 
@@ -359,6 +362,8 @@ KEYWORD PARSING ENTRY
 |---|----------|--------|
 | OQ-01 | Should keyword matching become case-insensitive in the future? BR-DC-01 specifies exact case-sensitive matching for simplicity. If developer feedback shows frequent mistakes with casing, this can be relaxed in a follow-on feature. | Deferred |
 | OQ-02 | Should there be a developer-facing document (in SKILL.md or a README) explaining the supported keywords and their syntax? This is out of scope for this feature but should be tracked. | Deferred |
+| OQ-03 (TE-Q-01) | Does the orchestrator ever post messages directly to the feature thread that could be miscounted as agent turns? **Resolved:** The `isBot + <routing>-tag` discriminator in FSPEC-BC-01 already handles this. Orchestrator-generated messages (progress embeds, status notifications) have `isBot: true` but contain no `<routing>` tag and are therefore excluded from the count. No additional business rule is needed. | Resolved |
+| OQ-04 (TE-Q-02) | Does Feature 013 need to verify that the `skipFspec: true` flag actually causes phase skipping at runtime? **Resolved:** No. Feature 013 only defines how the flag is parsed from the initial message and written into `FeatureConfig`. The runtime phase-skip behavior is owned by Feature 011's state machine. Testing the end-to-end phase-skip flow is out of scope for Feature 013. | Resolved — Out of scope |
 
 ---
 
@@ -377,6 +382,7 @@ KEYWORD PARSING ENTRY
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 15, 2026 | Product Manager | Initial FSPEC — 3 specifications (FSPEC-PI-01, FSPEC-BC-01, FSPEC-DC-01) covering auto-initialization decision flow, age guard evaluation, and keyword parsing |
+| 1.1 | March 15, 2026 | Product Manager | Address BE round-2 cross-review (F-01 through F-04) and TE cross-review (F-01, F-03 through F-05, Q-01, Q-02): (1) FSPEC-BC-01 agent-turn definition updated to use `isBot === true AND content contains <routing> tag`, replacing non-existent `role` field; behavioral flow and Input section aligned; (2) Race-condition edge case in FSPEC-PI-01 now specifies that `initializeFeature()` returns existing `FeatureState` without throwing; (3) "Initial message" consistently defined as first chronological message with `isBot === false` across FSPEC-PI-01, FSPEC-DC-01 Description, and BR-DC-06; (4) Debug channel config key `this.config.discord.channels.debug` cited in FSPEC-PI-01 Output; (5) AT-BC-03 THEN clause includes debug log assertion; (6) AT-DC-09 added for reverse keyword-order conflict; (7) AT-PI-01 THEN clause includes FeatureConfig assertion; (8) OQ-03 and OQ-04 added to resolve TE-Q-01 (orchestrator message exclusion) and TE-Q-02 (skipFspec scope) |
 
 ---
 
