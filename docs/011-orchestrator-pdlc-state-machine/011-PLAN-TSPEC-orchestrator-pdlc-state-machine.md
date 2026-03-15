@@ -19,11 +19,11 @@ This plan implements the PDLC state machine as 8 new modules within `ptah/src/or
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Define `PdlcPhase` enum, `Discipline`, `FeatureConfig`, event types, `FeatureState`, `ReviewPhaseState`, `ForkJoinState`, `PdlcStateFile`, `TransitionResult`, `SideEffect`, `TaskType`, `DocumentType`, `ReviewerManifestEntry`, `ContextDocument`, `ContextDocumentSet`, `DispatchAction`, `AgentDispatch`, `ParsedRecommendation` types | `tests/unit/orchestrator/pdlc/state-machine.test.ts` (import-only test) | `ptah/src/orchestrator/pdlc/phases.ts` | ⬚ Not Started |
-| 2 | Add `rename()` and `copyFile()` methods to `FileSystem` interface and `NodeFileSystem` | `ptah/tests/unit/services/filesystem.test.ts` (extend) | `ptah/src/services/filesystem.ts` | ⬚ Not Started |
-| 3 | Update `FakeFileSystem` with `rename()`, `copyFile()`, and error injection | `ptah/tests/unit/services/filesystem.test.ts` (extend) | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 4 | Add `state/` to `.gitignore` | — | `ptah/.gitignore` | ⬚ Not Started |
-| 5 | Add `FakeStateStore` to test fixtures (needed by Phase D tests) | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| 1 | Define `PdlcPhase` enum, `Discipline`, `FeatureConfig`, event types, `FeatureState`, `ReviewPhaseState`, `ForkJoinState`, `PdlcStateFile`, `TransitionResult`, `SideEffect`, `TaskType`, `DocumentType`, `ReviewerManifestEntry`, `ContextDocument`, `ContextDocumentSet`, `DispatchAction`, `AgentDispatch`, `ParsedRecommendation` types | `tests/unit/orchestrator/pdlc/state-machine.test.ts` (import-only test) | `ptah/src/orchestrator/pdlc/phases.ts` | ✅ Done |
+| 2 | Add `rename()` and `copyFile()` methods to `FileSystem` interface and `NodeFileSystem` | `ptah/tests/unit/services/filesystem.test.ts` (extend) | `ptah/src/services/filesystem.ts` | ✅ Done |
+| 3 | Update `FakeFileSystem` with `rename()`, `copyFile()`, and error injection | `ptah/tests/unit/services/filesystem.test.ts` (extend) | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 4 | Add `state/` to `.gitignore` | — | `ptah/.gitignore` | ✅ Done |
+| 5 | Add `FakeStateStore` to test fixtures (needed by Phase D tests) | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
 
 ### Phase B: Pure Function Modules
 

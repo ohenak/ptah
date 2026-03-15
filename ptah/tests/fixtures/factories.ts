@@ -40,6 +40,8 @@ import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-co
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
 import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
 import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
+import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
+import type { PdlcStateFile } from "../../src/orchestrator/pdlc/phases.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -50,6 +52,7 @@ export class FakeFileSystem implements FileSystem {
   writeFileError: Error | null = null;
   appendFileError: Error | null = null;
   appendFileCalls: Array<{ path: string; content: string }> = [];
+  renameError: Error | null = null;
 
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
@@ -125,6 +128,28 @@ export class FakeFileSystem implements FileSystem {
     if (this.appendFileError) throw this.appendFileError;
     const existing = this.files.get(path) ?? "";
     this.files.set(path, existing + content);
+  }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    if (this.renameError) throw this.renameError;
+    const content = this.files.get(oldPath);
+    if (content === undefined) {
+      const error = new Error(`ENOENT: no such file: ${oldPath}`) as NodeJS.ErrnoException;
+      error.code = "ENOENT";
+      throw error;
+    }
+    this.files.set(newPath, content);
+    this.files.delete(oldPath);
+  }
+
+  async copyFile(src: string, dest: string): Promise<void> {
+    const content = this.files.get(src);
+    if (content === undefined) {
+      const error = new Error(`ENOENT: no such file: ${src}`) as NodeJS.ErrnoException;
+      error.code = "ENOENT";
+      throw error;
+    }
+    this.files.set(dest, content);
   }
 }
 
@@ -1156,5 +1181,27 @@ export class FakePatternBContextBuilder implements PatternBContextBuilder {
     this.buildCalls.push({ question: params.question, worktreePath: params.worktreePath });
     if (this.buildError) throw this.buildError;
     return this.buildResult;
+  }
+}
+
+// --- Phase 11: PDLC State Machine ---
+
+export class FakeStateStore implements StateStore {
+  state: PdlcStateFile = { version: 1, features: {} };
+  loadError: Error | null = null;
+  saveError: Error | null = null;
+  saveCount = 0;
+  savedStates: PdlcStateFile[] = [];
+
+  async load(): Promise<PdlcStateFile> {
+    if (this.loadError) throw this.loadError;
+    return structuredClone(this.state);
+  }
+
+  async save(state: PdlcStateFile): Promise<void> {
+    if (this.saveError) throw this.saveError;
+    this.state = structuredClone(state);
+    this.savedStates.push(structuredClone(state));
+    this.saveCount++;
   }
 }

@@ -15,6 +15,10 @@ export interface FileSystem {
 
   // --- Phase 4 ---
   appendFile(path: string, content: string): Promise<void>;
+
+  // --- Phase 11: PDLC State Machine ---
+  rename(oldPath: string, newPath: string): Promise<void>;
+  copyFile(src: string, dest: string): Promise<void>;
 }
 
 export class NodeFileSystem implements FileSystem {
@@ -67,5 +71,19 @@ export class NodeFileSystem implements FileSystem {
 
   async appendFile(filePath: string, content: string): Promise<void> {
     await fs.appendFile(path.resolve(this._cwd, filePath), content, "utf-8");
+  }
+
+  async rename(oldFilePath: string, newFilePath: string): Promise<void> {
+    await fs.rename(
+      path.resolve(this._cwd, oldFilePath),
+      path.resolve(this._cwd, newFilePath),
+    );
+  }
+
+  async copyFile(src: string, dest: string): Promise<void> {
+    await fs.copyFile(
+      path.resolve(this._cwd, src),
+      path.resolve(this._cwd, dest),
+    );
   }
 }
