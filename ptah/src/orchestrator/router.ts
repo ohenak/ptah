@@ -26,7 +26,9 @@ export class RoutingError extends Error {
   }
 }
 
-const ROUTING_TAG_REGEX = /<routing>([\s\S]*?)<\/routing>/g;
+// Match <routing> tags containing JSON objects only (starts with {).
+// This avoids matching prose mentions like "I'll use the <routing> tag".
+const ROUTING_TAG_REGEX = /<routing>\s*(\{[\s\S]*?\})\s*<\/routing>/g;
 
 export class DefaultRoutingEngine implements RoutingEngine {
   private readonly logger: Logger;
