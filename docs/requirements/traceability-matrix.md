@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 14, 2026 |
-| **Version** | 2.5 |
+| **Version** | 2.7 |
 | **Status** | Draft |
 
 ---
@@ -418,10 +418,10 @@ This matrix provides full traceability from user scenarios through requirements 
 
 ### Phase 7 — Polish
 
-| Requirement | Specification | Priority | User Scenarios |
-|-------------|---------------|----------|----------------|
-| [REQ-DI-06] | Pending | P1 | [US-02] |
-| [REQ-NF-08] | Pending | P1 | [US-08] |
+| Requirement | FSPEC | Specification | Priority | User Scenarios |
+|-------------|-------|---------------|----------|----------------|
+| [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-ptah-polish.md) | Pending TSPEC | P1 | [US-02] |
+| [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-ptah-polish.md) | Pending TSPEC | P1 | [US-08] |
 
 ### Phase 9 — Auto Feature Bootstrap
 
@@ -556,6 +556,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.4 | March 14, 2026 | Product Manager | Phase 11 REQ v1.2 approved after test-engineer review. Added REQ-RT-09 (revision loop bound). Total Phase 11 requirements: 45. Total requirements: 124. Coverage: 57 of 79 prior + 0 of 45 Phase 11 = 57 of 124 specified (67 pending). |
 | 2.5 | March 14, 2026 | Product Manager | Added FSPEC mappings for Phase 11. 7 FSPECs created: FSPEC-SM-01 (transition logic), FSPEC-SM-02 (persistence/recovery), FSPEC-RT-01 (approval detection), FSPEC-RT-02 (review lifecycle), FSPEC-AI-01 (agent dispatch), FSPEC-FC-01 (reviewer computation), FSPEC-CA-01 (context assembly). 31 of 45 Phase 11 requirements FSPEC'd; 14 direct-to-TSPEC. Phase 11 view updated with FSPEC column. |
 | 2.6 | March 15, 2026 | Product Manager | Added Phase 13 (PDLC Auto-Initialization). 3 new user stories (US-20, US-21, US-22). 13 requirements added across 3 domains: PI (PDLC Initialization, 5 reqs), BC (Backward Compatibility, 2 reqs), DC (Discipline Configuration, 3 reqs), plus 3 non-functional (NF). 3 FSPECs created: FSPEC-PI-01 (auto-init decision flow), FSPEC-BC-01 (age guard), FSPEC-DC-01 (keyword parsing). 10 of 13 requirements FSPEC'd; 3 NFRs pending TSPEC. Total requirements: 137. |
+| 2.7 | March 15, 2026 | Product Manager | Added FSPEC mappings for Phase 7 (Polish). 2 FSPECs created: FSPEC-DI-02 (thread archiving on resolution), FSPEC-EX-01 (configuration-driven agent extensibility). Phase 7 view updated with FSPEC column. Both Phase 7 requirements now FSPEC'd; pending TSPEC. |
 
 ---
 
