@@ -54,10 +54,10 @@ This plan implements the PDLC state machine as 8 new modules within `ptah/src/or
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 26 | Implement `FileStateStore.load()` — no file → fresh state; valid file → parsed state; empty file → fresh state | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ⬚ Not Started |
-| 27 | Implement `FileStateStore.load()` — corrupted JSON → fresh state; version mismatch → migration or fresh state; future version → fresh state | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ⬚ Not Started |
-| 28 | Implement `FileStateStore.save()` — atomic write (write .tmp → rename), directory creation, error handling | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ⬚ Not Started |
-| 29 | Implement `FileStateStore.load()` migration path — backup to .bak on migration failure, sequential migration chain | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ⬚ Not Started |
+| 26 | Implement `FileStateStore.load()` — no file → fresh state; valid file → parsed state; empty file → fresh state | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ✅ Done |
+| 27 | Implement `FileStateStore.load()` — corrupted JSON → fresh state; version mismatch → migration or fresh state; future version → fresh state | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ✅ Done |
+| 28 | Implement `FileStateStore.save()` — atomic write (write .tmp → rename), directory creation, error handling | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ✅ Done |
+| 29 | Implement `FileStateStore.load()` migration path — backup to .bak on migration failure, sequential migration chain | `ptah/tests/unit/orchestrator/pdlc/state-store.test.ts` | `ptah/src/orchestrator/pdlc/state-store.ts` | ✅ Done |
 
 ### Phase D: Orchestration Layer — PdlcDispatcher
 
