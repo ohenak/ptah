@@ -6,6 +6,7 @@
 |-------|--------|
 | **Reviewer** | Backend Engineer (`eng`) |
 | **Document Reviewed** | `013-FSPEC-pdlc-auto-init.md` (v1.0, Draft) |
+| **Review Round** | 2 (re-review following REQ v1.1 / v1.2 updates) |
 | **Date** | March 15, 2026 |
 | **Recommendation** | **Needs revision** |
 
@@ -13,17 +14,34 @@
 
 ## Summary
 
-The FSPEC is well-reasoned and the three behavioral areas (auto-init decision flow, age guard, keyword parsing) are cleanly decomposed. Keyword parsing (FSPEC-DC-01) is fully implementation-ready as specified. However, two high-severity gaps would cause the TSPEC author to hit unresolvable contradictions during implementation: the age guard's `role` field assumption does not match the actual `ThreadMessage` type in the codebase, and the idempotency contract for `initializeFeature()` directly conflicts with constraint C-01. Both must be resolved at the FSPEC level before the TSPEC is authored.
+The REQ has been iterated to v1.2 and resolves the two blocking architectural decisions I raised in round 1 — the correct agent-turn discriminator (now in REQ-BC-01) and the idempotency ownership model (Option A, now in C-01). Both decisions are sound. However, the **FSPEC text itself has not been updated** to reflect these resolutions: FSPEC-BC-01 still defines an "agent turn" using `role = "assistant"`, which does not exist in `ThreadMessage`. A TSPEC author working from the FSPEC alone would implement the wrong turn counter. This is still a blocking gap.
+
+Three secondary issues from round 1 also remain unaddressed in the FSPEC. The TE's five open findings (from their parallel review) should be resolved in the same pass.
+
+---
+
+## Status of Round-1 Findings
+
+| Finding | Round-1 Severity | Current Status | Notes |
+|---------|-----------------|---------------|-------|
+| F-01: agent turn uses non-existent `role` field | High | **Still open in FSPEC** | REQ-BC-01 v1.2 fixes this at REQ level; FSPEC text has not been updated |
+| F-02: idempotency conflicts with C-01 | High | **Resolved at REQ level** | C-01 relaxed in REQ v1.2 to permit Option A; FSPEC edge-case row is correct; minor return-value gap remains (see F-02 below) |
+| F-03: "initial message" ambiguous definition | Medium | **Still open in FSPEC** | Inconsistency between "first message" and "first user message" remains |
+| F-04: debug channel config key unspecified | Low | **Still open in FSPEC** | `this.config.discord.channels.debug` exists and should be cited |
 
 ---
 
 ## Findings
 
-### F-01 — **High** — `ThreadMessage` has no `role` field; age guard definition is wrong
+### F-01 — **High** — FSPEC-BC-01 "agent turn" definition still uses non-existent `role` field
 
 **Location:** FSPEC-BC-01 — Definition of "Agent Turn"
 
-The age guard defines a prior agent turn as *"any message ... where the message role is `'assistant'`."* However, the `ThreadMessage` interface (defined in `ptah/src/types.ts`) has no `role` field at all:
+The FSPEC still reads:
+
+> *"A prior agent turn is any message in the conversation history, before the current message, where: The message role is `"assistant"`"*
+
+The `ThreadMessage` interface (in `ptah/src/types.ts`, line 75) has no `role` field:
 
 ```typescript
 export interface ThreadMessage {
@@ -33,119 +51,80 @@ export interface ThreadMessage {
   parentChannelId: string;
   authorId: string;
   authorName: string;
-  isBot: boolean;   // ← this is the only agent/human discriminator
+  isBot: boolean;    // ← sole bot/user discriminator
   content: string;
   timestamp: Date;
 }
 ```
 
-There is no `role` property on `ThreadMessage`. The only field that distinguishes agent messages from user messages is `isBot: boolean`. If the TSPEC author implements the age guard against this definition verbatim, the count will always return 0 (no messages have `role === "assistant"`) and every thread will be treated as a new feature — including old unmanaged ones — breaking backward compatibility.
+REQ-BC-01 (v1.2) has already resolved this with the correct definition:
 
-**Additionally**, the `isBot` field conflates *agent messages* with *orchestrator messages*. The orchestrator itself posts progress embeds to feature threads (e.g., "Routing to @eng…", completion embeds). These appear in the thread history with `isBot: true` but are not agent turns. A new feature thread with one user message and two orchestrator progress embeds would have `isBot: true` count = 2, causing the age guard to return not-eligible and preventing auto-initialization of a genuinely new feature.
+> *"A 'prior agent turn' is any message in the thread history, posted before the current routing signal, where `isBot === true` AND the message content contains a `<routing>` tag."*
 
-**Required fix:** Replace the `role = "assistant"` definition in FSPEC-BC-01 with a definition that:
-1. Uses `isBot === true` as the discriminator for bot messages, AND
-2. Explicitly excludes orchestrator-generated messages (progress embeds, completion embeds, debug notifications) from the agent turn count.
+The FSPEC-BC-01 definition must be updated to match REQ-BC-01 verbatim. The `<routing>`-tag filter is also correct — it excludes orchestrator progress embeds (which are `isBot: true` but contain no routing tag) from the count, preventing false-positive non-eligibility on genuinely new threads where the orchestrator has already posted a progress embed.
 
-The simplest behavioral specification is: *"A prior agent turn is any message in the conversation history, before the current message, where `isBot === true` AND the message content contains a `<routing>` tag."* This precisely identifies agent completion messages without counting orchestrator plumbing posts. If this definition is too strict, an alternative is: *"Any message where `isBot === true` and the message was not posted by the orchestrator itself"* — with the TSPEC defining how to distinguish orchestrator-authored messages from agent-authored messages.
+**Required fix:** Replace the "Agent Turn" definition in FSPEC-BC-01 with: *"A prior agent turn is any message in the conversation history, before the current message, where `isBot === true` AND the message content contains a `<routing>` tag. Orchestrator-generated messages (progress embeds, completion embeds, debug notifications) have `isBot: true` but contain no `<routing>` tag and are therefore excluded."*
 
 ---
 
-### F-02 — **High** — `initializeFeature()` is not idempotent; FSPEC's race condition contract conflicts with C-01
+### F-02 — **Low** — Idempotent `initializeFeature()` return value is unspecified
 
-**Location:** FSPEC-PI-01 — Edge Cases (race condition row); Constraint C-01 in REQ-013
+**Location:** FSPEC-PI-01 — Edge Cases (race condition row)
 
-The FSPEC edge case states: *"`initializeFeature()` must not overwrite the existing record. It detects the record and returns without modifying it."*
+The blocking part of round-1 F-02 is resolved: C-01 now permits the check-before-write guard in `initializeFeature()` (Option A). The FSPEC edge-case row is behaviorally correct — the second call must not overwrite.
 
-The actual implementation in `pdlc-dispatcher.ts` (lines 165–172) does **not** check for an existing record before writing:
+The remaining gap (also flagged by TE F-05): the edge-case row says *"returns without modifying it"* but does not specify **what** it returns. The `initializeFeature()` signature returns `Promise<FeatureState>`. The orchestrator needs to know whether the idempotent path returns the **existing** `FeatureState` or throws. If it throws, the orchestrator must catch and treat it as a no-op. If it returns the existing `FeatureState`, no special handling is needed.
 
-```typescript
-async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState> {
-  this.ensureLoaded();
-  const now = new Date().toISOString();
-  const featureState = createFeatureState(slug, config, now);
-  this.state!.features[slug] = featureState;  // ← unconditional overwrite
-  await this.stateStore.save(this.state!);
-  return featureState;
-}
-```
-
-If a second concurrent call reaches this line after the first has written, it will silently overwrite the state created by the first — corrupting the feature record.
-
-The FSPEC's proposed fix (add check-before-write to `initializeFeature()`) requires modifying `pdlc-dispatcher.ts`, which is a Feature 011 module. REQ-013 constraint C-01 explicitly prohibits this: *"Changes are limited to `orchestrator.ts`... No changes to the state machine, state store, or review tracker modules."*
-
-This is a direct contradiction. The FSPEC must choose one of two resolution paths:
-
-**Option A — Relax C-01 to permit a targeted change to `initializeFeature()`:** Add a check-before-write guard directly to `PdlcDispatcher.initializeFeature()`. The method returns the existing `FeatureState` if a record already exists rather than overwriting it. This is the cleanest contract (callers need not handle this case specially) and is the minimal change to Feature 011 (one conditional plus removal of unconditional write).
-
-**Option B — Place idempotency responsibility in the orchestrator, not `initializeFeature()`:** The orchestrator acquires an async mutex or re-checks `isManaged()` in a tight scope before calling `initializeFeature()`. This keeps Feature 011 unchanged but requires careful async coordination in `orchestrator.ts`. In Node.js's single-threaded event loop, two `await` chains can interleave on disk I/O, so a simple TOCTOU guard is not sufficient without a lock or a re-check-after-write pattern.
-
-The FSPEC must specify which option is intended and update the edge case row and C-01 accordingly. The TSPEC cannot make this architectural decision without FSPEC direction.
+**Required fix:** Add one sentence to the edge-case row: *"The second call returns the existing `FeatureState` record without modification (it does not throw). The orchestrator treats this as a successful no-op and proceeds to the managed PDLC path with the existing state record."*
 
 ---
 
-### F-03 — **Medium** — "Initial message" is ambiguous given the `ThreadMessage` type
+### F-03 — **Medium** — "Initial message" definition still inconsistent and incorrectly typed
 
 **Location:** FSPEC-PI-01 Input section; FSPEC-DC-01 Description and BR-DC-06
 
-The test engineer (F-02 in their review) already flagged the "first user message" vs "first message" inconsistency. From the engineering side, the fix must reference the actual type. Since `ThreadMessage` has no `role` field, "first user message" must be expressed as "first message where `isBot === false`."
+Two inconsistencies remain:
 
-Furthermore, the orchestrator currently reads thread history with `this.discord.readThreadHistory(triggerMessage.threadId)` (called once per routing loop iteration at line 378). The `triggerMessage` itself is also a `ThreadMessage`. The FSPEC should clarify whether `triggerMessage` (the message that triggered the current routing loop) is included in the history array or is separate from it — this determines whether the "initial message" search should start at index 0 of history or needs to account for the trigger message being excluded.
+1. FSPEC-PI-01 says *"the first message in the thread"*, while FSPEC-DC-01 says *"the first user message in the thread."* Neither matches the `ThreadMessage` type — there is no `role` field to distinguish user from agent messages.
 
-**Required fix:** Update both locations to say *"the first message in the conversation history with `isBot === false`"* and confirm whether the history array includes or excludes the trigger message.
+2. Now that REQ-BC-01 v1.2 uses `isBot` as the discriminator throughout, the "initial message" definition should use the same field: *"the first chronological message in the conversation history where `isBot === false`."*
 
----
-
-### F-04 — **Low** — Debug channel identification mechanism is unspecified
-
-**Location:** FSPEC-PI-01 — Output and Error Scenarios
-
-REQ-PI-04 and the FSPEC both require posting a notification to the "debug channel." The orchestrator already has access to `this.config` (a `PtahConfig` object), and `PtahConfig` contains channel IDs. However, the FSPEC does not specify which config field names the debug channel ID — leaving the TSPEC to discover this independently.
-
-If the debug channel ID is already present in `PtahConfig` (as a field like `channels.debug` or similar), a reference to the config key prevents the TSPEC author from using a different field or hardcoding a channel ID. If it is not yet present in `PtahConfig`, the FSPEC should note that a new config field is needed.
-
-**Recommendation:** Add a sentence to FSPEC-PI-01's Output section or REQ-PI-04: *"The debug channel is identified via the existing `[config field name]` configuration value."* If the config field does not yet exist, note it as a required addition.
+**Required fix:** Update both FSPEC-PI-01 Input and FSPEC-DC-01 Description/BR-DC-06 to read: *"The initial message is the first chronological message in the conversation history with `isBot === false` (i.e., the first user-authored message)."*
 
 ---
 
-## Clarification Questions
+### F-04 — **Low** — Debug channel config key still unspecified
 
-### Q-01 — Does the orchestrator post messages directly to feature threads, and if so, can they be reliably excluded from the agent turn count?
+**Location:** FSPEC-PI-01 — Output, Error Scenarios; REQ-PI-04
 
-**Location:** FSPEC-BC-01 — Definition of "Agent Turn"
+`PtahConfig` already includes `discord.channels.debug` (confirmed in `ptah/src/types.ts`, line 10). The FSPEC and REQ both require posting to "the debug channel" without naming the config field the orchestrator will use.
 
-The orchestrator currently posts progress embed messages to feature threads (e.g., "Routing to @eng…") as part of the routing loop. These appear in `readThreadHistory()` results as `isBot: true` messages. If the age guard counts them, a brand-new feature thread could accumulate 2+ "turns" before a single agent has responded — failing the age guard and preventing auto-initialization.
-
-This is the same concern the test engineer raised in their Q-01, but from the implementation side it is blocking: the decision about *how* to exclude orchestrator messages directly determines the implementation of the turn-counting function. The two viable options are:
-
-1. **Content-based exclusion:** Only count bot messages that contain a `<routing>` tag (which is present in all agent completion messages and absent from orchestrator plumbing posts).
-2. **Author-ID exclusion:** Record the orchestrator's Discord bot user ID and exclude messages authored by it. This requires the orchestrator to know its own author ID.
-
-Option 1 is simpler, aligns with existing signal parsing, and avoids storing orchestrator identity. Option 2 is more general but requires additional state. The FSPEC should specify which approach is intended.
+**Required fix:** Add to FSPEC-PI-01 Output section: *"The debug channel is identified via `this.config.discord.channels.debug`."* This prevents a TSPEC author from using a different config field or hard-coding a channel ID.
 
 ---
 
-### Q-02 — Should `initializeFeature()` become the canonical idempotency boundary (Option A), or should the orchestrator guard it externally (Option B)?
+## Unaddressed TE Findings (Round 1)
 
-**Location:** FSPEC-PI-01 — Edge Cases (race condition); C-01
+The following test-engineer findings from their parallel review remain open and should be addressed in the same FSPEC revision pass:
 
-This follows directly from F-02 above. The answer determines whether the TSPEC modifies `pdlc-dispatcher.ts` or adds locking logic to `orchestrator.ts`. Neither option is obviously wrong, but the FSPEC must make the call.
-
-My technical recommendation is **Option A**: add check-before-write to `initializeFeature()`. The method already encapsulates all state mutations, so placing idempotency there is architecturally coherent. The change is one `if`-guard on a single line. Placing idempotency in the orchestrator would require async coordination logic that duplicates what the state store should own.
+| TE Finding | Description | Action Needed |
+|-----------|-------------|--------------|
+| TE-F-01 | AT-BC-03 (2 prior turns → not eligible) omits the required debug log assertion | Add `AND: a debug-level log is emitted matching the exact format` to AT-BC-03's THEN clause |
+| TE-F-03 | AT-DC-07 only tests one direction of keyword conflict; reverse order `[fullstack] [backend-only]` is unspecified | Add AT-DC-09: `[fullstack] [backend-only]` → `{ discipline: "backend-only", skipFspec: false }` |
+| TE-F-04 | AT-PI-01 omits the resulting `FeatureConfig` from THEN clause | Append: `AND: the created state record has config { discipline: "backend-only", skipFspec: false }` |
+| TE-F-05 | Race-condition edge case doesn't specify what `initializeFeature()` returns for the second caller | Addressed by F-02 above |
 
 ---
 
 ## Positive Observations
 
-- **FSPEC-DC-01 is implementation-complete as written.** Keyword parsing is a pure function over a string input with no side effects. BR-DC-01 through BR-DC-06, the edge case table, and the 8 acceptance tests provide full coverage. This section can be handed to a TSPEC author and implemented in one TDD cycle without clarification.
+- **REQ v1.2 resolved both round-1 blocking issues cleanly.** The Option A decision (check-before-write in `initializeFeature()`) and the REQ-BC-01 agent-turn definition using `isBot + <routing>-tag` are correct architectural choices. Once the FSPEC text is updated to match, this feature has a consistent spec stack.
 
-- **The three-way routing decision maps cleanly to the existing code.** The `isManaged()` check at orchestrator.ts line 496 is exactly where the FSPEC's decision tree would be inserted. The unmanaged branch at line 553 is the legacy path. The integration point is precise and low-risk.
+- **FSPEC-DC-01 remains implementation-complete.** Keyword parsing is fully specified with unambiguous business rules, edge cases, and 8 acceptance tests. This section requires no changes.
 
-- **Error classification is correct.** Distinguishing fatal (`initializeFeature()` filesystem failure → halt) from non-fatal (debug channel post failure → warn and continue) matches the severity of each operation and is implementable with a simple try/catch split.
+- **The `<routing>`-tag filter for agent turn counting is elegant.** It reuses the signal-parsing contract that already exists in the orchestrator, avoids the need to track the orchestrator's own Discord user ID, and is trivially testable with a string-contains check.
 
-- **The age guard's fail-open default for malformed history is the right call.** Fail-open prevents new features from being blocked; fail-closed would silently route new features to the legacy path. The explicit justification in the FSPEC makes this a deliberate product decision, not an engineering shortcut.
-
-- **BR-BC-02 hard-codes the threshold in source.** This is correct. A configurable threshold would create a test surface problem and is unnecessary complexity for a binary new/old distinction.
+- **Error classification (fatal vs. non-fatal) is correct and unchanged.** Filesystem failure in `initializeFeature()` → halt; debug channel post failure → warn and continue. This is implementable with a split try/catch.
 
 ---
 
@@ -153,15 +132,9 @@ My technical recommendation is **Option A**: add check-before-write to `initiali
 
 **Needs revision.**
 
-F-01 and F-02 are high-severity and blocking. The TSPEC author cannot implement the age guard or the idempotency contract without resolving them, because both hit contradictions in the actual codebase. F-03 (initial message type clarification) should be fixed alongside F-01 since they affect the same implementation scope. F-04 is low-severity but prevents the TSPEC from fully specifying the debug channel notification without revisiting the FSPEC.
+The only blocking item is F-01: the FSPEC-BC-01 agent-turn definition must be updated to use `isBot` + `<routing>` tag, matching REQ-BC-01 v1.2. This is a text update — the architectural decision is already made. F-03 (initial message typing) should be fixed in the same pass. F-02 (return value) and F-04 (debug channel key) are minor; the TE findings can also be folded into the same revision.
 
-Suggested revision order:
-1. Fix F-01: redefine "agent turn" using `isBot` + content-based orchestrator exclusion (pending answer to Q-01)
-2. Fix F-02: choose Option A or B for idempotency ownership and update C-01 accordingly
-3. Fix F-03: update "initial message" definition to reference `isBot === false`
-4. Fix F-04: add debug channel config key reference
-
-The test engineer's findings (F-01: log in AT-BC-03, F-02: initial message clarification, F-03: reverse AT-DC-09, F-04: FeatureConfig in AT-PI-01, F-05: race condition return contract) remain valid and should also be addressed in the same revision pass.
+After a targeted v1.1 update to FSPEC-BC-01's agent-turn definition and the initial-message typing, the FSPEC can be approved and the TSPEC authored without further clarification.
 
 ---
 
