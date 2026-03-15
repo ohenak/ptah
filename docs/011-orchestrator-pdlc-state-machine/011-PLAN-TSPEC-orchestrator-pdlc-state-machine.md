@@ -7,7 +7,7 @@
 | **Functional Specification** | [011-FSPEC-orchestrator-pdlc-state-machine](011-FSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Date** | March 14, 2026 |
 | **Version** | 1.1 |
-| **Status** | Approved |
+| **Status** | Complete |
 
 ## 1. Summary
 
@@ -77,21 +77,21 @@ This plan implements the PDLC state machine as 8 new modules within `ptah/src/or
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 39 | Add `FakePdlcDispatcher` to test fixtures (needed by orchestrator integration tests) | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 40 | Add `pdlcDispatcher` to `OrchestratorDeps` interface | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| 41 | Implement managed-feature branch in `executeRoutingLoop()` — check `isManaged()`, route LGTM/TASK_COMPLETE to `processAgentCompletion()`, route review completion to `processReviewCompletion()` | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| 42 | Implement ROUTE_TO_AGENT handling for managed features — ad-hoc coordination (log warning, invoke target for one turn, phase unchanged) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| 43 | Implement `DispatchAction` processing in orchestrator — `dispatch` → set next agent(s), `retry_agent` → re-invoke with correction directive (up to 2 retries), `pause` → ROUTE_TO_USER, `done` → completion, `wait` → return | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| 44 | Implement `loadState()` call in `startup()`, backward compatibility for unmanaged features | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| 45 | Update `ContextAssembler.assemble()` — accept optional `contextDocuments` parameter, read only specified documents when provided | `ptah/tests/unit/orchestrator/context-assembler.test.ts` (extend) | `ptah/src/orchestrator/context-assembler.ts` | ⬚ Not Started |
-| 46 | Add composition root wiring for `FileStateStore` and `DefaultPdlcDispatcher` in entry point | — | `ptah/src/orchestrator/orchestrator.ts` (or `bin/ptah.ts`) | ⬚ Not Started |
-| 47 | Integration test: full PDLC lifecycle — backend-only feature from REQ_CREATION through DONE with all transitions, reviews, and state persistence | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 48 | Integration test: FSPEC skip path — feature with skipFspec=true skips FSPEC phases | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 49 | Integration test: fullstack fork/join — parallel TSPEC creation and review with composite reviewer keys | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 50 | Integration test: revision loop with mixed outcomes — one rejection + one approval in same round, author receives all feedback; rejection → revision → re-review → approval | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 51 | Integration test: revision bound escalation — 4 rejections → pause via ROUTE_TO_USER → developer resume via `processResumeFromBound()` → fresh review cycle → approval → advance | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 52 | Integration test: backward compatibility — unmanaged feature (no state record) routes via existing RoutingEngine, PdlcDispatcher not invoked | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
-| 53 | Integration test: state persistence and recovery — persist state, simulate restart, verify recovery via `getNextAction()` | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ⬚ Not Started |
+| 39 | Add `FakePdlcDispatcher` to test fixtures (needed by orchestrator integration tests) | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 40 | Add `pdlcDispatcher` to `OrchestratorDeps` interface | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ✅ Done |
+| 41 | Implement managed-feature branch in `executeRoutingLoop()` — check `isManaged()`, route LGTM/TASK_COMPLETE to `processAgentCompletion()`, route review completion to `processReviewCompletion()` | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ✅ Done |
+| 42 | Implement ROUTE_TO_AGENT handling for managed features — ad-hoc coordination (log warning, invoke target for one turn, phase unchanged) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ✅ Done |
+| 43 | Implement `DispatchAction` processing in orchestrator — `dispatch` → set next agent(s), `retry_agent` → re-invoke with correction directive (up to 2 retries), `pause` → ROUTE_TO_USER, `done` → completion, `wait` → return | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ✅ Done |
+| 44 | Implement `loadState()` call in `startup()`, backward compatibility for unmanaged features | `ptah/tests/unit/orchestrator/orchestrator.test.ts` (extend) | `ptah/src/orchestrator/orchestrator.ts` | ✅ Done |
+| 45 | Update `ContextAssembler.assemble()` — accept optional `contextDocuments` parameter, read only specified documents when provided | `ptah/tests/unit/orchestrator/context-assembler.test.ts` (extend) | `ptah/src/orchestrator/context-assembler.ts` | ✅ Done |
+| 46 | Add composition root wiring for `FileStateStore` and `DefaultPdlcDispatcher` in entry point | — | `ptah/src/orchestrator/orchestrator.ts` (or `bin/ptah.ts`) | ✅ Done |
+| 47 | Integration test: full PDLC lifecycle — backend-only feature from REQ_CREATION through DONE with all transitions, reviews, and state persistence | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 48 | Integration test: FSPEC skip path — feature with skipFspec=true skips FSPEC phases | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 49 | Integration test: fullstack fork/join — parallel TSPEC creation and review with composite reviewer keys | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 50 | Integration test: revision loop with mixed outcomes — one rejection + one approval in same round, author receives all feedback; rejection → revision → re-review → approval | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 51 | Integration test: revision bound escalation — 4 rejections → pause via ROUTE_TO_USER → developer resume via `processResumeFromBound()` → fresh review cycle → approval → advance | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 52 | Integration test: backward compatibility — unmanaged feature (no state record) routes via existing RoutingEngine, PdlcDispatcher not invoked | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
+| 53 | Integration test: state persistence and recovery — persist state, simulate restart, verify recovery via `getNextAction()` | `ptah/tests/integration/orchestrator/pdlc-lifecycle.test.ts` | (multiple source files) | ✅ Done |
 
 Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green) | 🔵 Refactored | ✅ Done
 

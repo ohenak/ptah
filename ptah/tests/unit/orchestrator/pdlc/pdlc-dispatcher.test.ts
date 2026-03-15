@@ -1068,7 +1068,7 @@ describe("DefaultPdlcDispatcher", () => {
       const { dispatcher, fs } = await setupInReviewPhase(PdlcPhase.IMPLEMENTATION_REVIEW);
 
       fs.addExisting(
-        `${WORKTREE}/docs/${SLUG}/CROSS-REVIEW-test-engineer-.md`,
+        `${WORKTREE}/docs/${SLUG}/CROSS-REVIEW-test-engineer-IMPLEMENTATION.md`,
         "## Recommendation\n\nApproved",
       );
 
