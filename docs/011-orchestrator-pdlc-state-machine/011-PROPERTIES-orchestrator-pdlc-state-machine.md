@@ -7,12 +7,12 @@
 | **Document ID** | PROPERTIES-011 |
 | **Requirements** | [011-REQ-orchestrator-pdlc-state-machine](011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Specifications** | [011-FSPEC-orchestrator-pdlc-state-machine](011-FSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved), [011-TSPEC-orchestrator-pdlc-state-machine](011-TSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
-| **Execution Plan** | [011-PLAN-TSPEC-orchestrator-pdlc-state-machine](011-PLAN-TSPEC-orchestrator-pdlc-state-machine.md) (v1.0, Approved) |
-| **Version** | 1.0 |
+| **Execution Plan** | [011-PLAN-TSPEC-orchestrator-pdlc-state-machine](011-PLAN-TSPEC-orchestrator-pdlc-state-machine.md) (v1.1, Approved) |
+| **Version** | 1.1 |
 | **Date** | March 14, 2026 |
 | **Author** | Test Engineer |
-| **Status** | Draft |
-| **Approval Date** | Pending |
+| **Status** | Approved |
+| **Approval Date** | March 14, 2026 |
 
 ---
 
@@ -43,9 +43,9 @@ The architecture follows a pure-function reducer pattern: `transition(state, eve
 
 | Input | Count | Source |
 |-------|-------|--------|
-| Requirements analyzed | 44 | [REQ-011](011-REQ-orchestrator-pdlc-state-machine.md) (38 P0, 6 P1) |
+| Requirements analyzed | 45 | [REQ-011](011-REQ-orchestrator-pdlc-state-machine.md) (39 P0, 6 P1) |
 | Specifications analyzed | 2 | [FSPEC-011](011-FSPEC-orchestrator-pdlc-state-machine.md), [TSPEC-011](011-TSPEC-orchestrator-pdlc-state-machine.md) |
-| Plan tasks reviewed | 50 | [PLAN-011](011-PLAN-TSPEC-orchestrator-pdlc-state-machine.md) |
+| Plan tasks reviewed | 53 | [PLAN-011](011-PLAN-TSPEC-orchestrator-pdlc-state-machine.md) |
 | Integration boundaries identified | 4 | orchestrator.ts, context-assembler.ts, filesystem.ts, factories.ts |
 | Implementation files reviewed | 0 | N/A — not yet implemented |
 
@@ -55,7 +55,7 @@ The architecture follows a pure-function reducer pattern: `transition(state, eve
 
 | Category | Count | Requirements Covered | Test Level |
 |----------|-------|----------------------|------------|
-| Functional | 42 | REQ-SM-01–11, REQ-RT-01–09, REQ-AI-01–05, REQ-FC-01–05, REQ-CA-01–03 | Unit |
+| Functional | 45 | REQ-SM-01–11, REQ-RT-01–09, REQ-AI-01–05, REQ-FC-01–05, REQ-CA-01–03 | Unit |
 | Contract | 8 | REQ-SM-NF-04, REQ-AI-04, TSPEC 4.3 | Unit / Integration |
 | Error Handling | 14 | REQ-SM-10, REQ-RT-04, REQ-AI-04–05, REQ-SM-NF-02, TSPEC 6 | Unit |
 | Data Integrity | 6 | REQ-SM-02, REQ-SM-05, REQ-SM-06, REQ-SM-10 | Unit |
@@ -63,7 +63,7 @@ The architecture follows a pure-function reducer pattern: `transition(state, eve
 | Performance | 1 | REQ-SM-NF-01 | Integration |
 | Idempotency | 3 | REQ-SM-03, REQ-FC-04 | Unit |
 | Observability | 4 | REQ-SM-NF-05, FSPEC-RT-01 | Unit |
-| **Total** | **86** | | |
+| **Total** | **89** | | |
 
 ---
 
@@ -117,6 +117,9 @@ Core business logic and behavior.
 | PROP-FC-01 | `initializeFeature()` must default discipline to `"backend-only"` when no discipline is specified | REQ-FC-03 | Unit | P1 |
 | PROP-AI-01 | `processAgentCompletion()` must validate artifact exists at expected path before transitioning | REQ-AI-05, BR-SM-04 | Unit | P1 |
 | PROP-AI-02 | `processAgentCompletion()` must return `{ action: "retry_agent" }` when artifact is missing after LGTM | REQ-AI-05, TSPEC 5.6 | Unit | P1 |
+| PROP-SM-20 | `processResumeFromBound()` must reset `revisionCount` to 0 for the paused review phase | REQ-RT-09, FSPEC-RT-02 | Unit | P0 |
+| PROP-SM-21 | `processResumeFromBound()` must reset all `reviewerStatuses` to `"pending"` for the paused review phase | REQ-RT-09, FSPEC-RT-02 | Unit | P0 |
+| PROP-SM-22 | `processResumeFromBound()` must return `{ action: "dispatch" }` with reviewer dispatch entries for the review phase — it must NOT advance the phase past review | REQ-RT-09, FSPEC-RT-02 | Unit | P0 |
 
 ### 3.2 Contract Properties
 
@@ -215,7 +218,7 @@ Properties that define what the system must NOT do.
 |----|----------|--------|------------|----------|
 | PROP-NEG-01 | `transition()` must NOT allow skipping phases — only adjacent transitions as defined in the transition map are valid | REQ-SM-03 | Unit | P0 |
 | PROP-NEG-02 | `transition()` must NOT accept any events for a feature in `DONE` phase | REQ-SM-09, BR-SM-03 | Unit | P0 |
-| PROP-NEG-03 | `transition()` must NOT transition on `review_submitted` when any reviewers are still `pending` (collect-all-then-evaluate) | FSPEC-RT-02, BR-RL-03 | Unit | P0 |
+| PROP-NEG-03 | `transition()` must NOT transition on `review_submitted` when any reviewers are still `pending` (collect-all-then-evaluate) | FSPEC-RT-02 v1.1, BR-RL-03 | Unit | P0 |
 | PROP-NEG-04 | `transition()` must NOT advance from a `*_REVIEW` phase when any reviewer has status `revision_requested` | REQ-RT-05 | Unit | P0 |
 | PROP-NEG-05 | `transition()` must NOT transition on revision when `revisionCount > 3` — must pause instead | REQ-RT-09 | Unit | P0 |
 | PROP-NEG-06 | `transition()` must NOT process `lgtm` events in `*_REVIEW` phases — must ignore with warning | FSPEC-SM-01 edge case | Unit | P0 |
@@ -255,7 +258,7 @@ Properties that define what the system must NOT do.
 | REQ-RT-06 | PROP-SM-15, PROP-SM-16, PROP-SM-17 | Full |
 | REQ-RT-07 | PROP-CA-04 | Full |
 | REQ-RT-08 | — | Not in scope (P1 concurrent dispatch — sequential is P0) |
-| REQ-RT-09 | PROP-SM-18, PROP-NEG-05 | Full |
+| REQ-RT-09 | PROP-SM-18, PROP-SM-20, PROP-SM-21, PROP-SM-22, PROP-NEG-05 | Full |
 | REQ-AI-01 | PROP-INT-01 | Full |
 | REQ-AI-02 | PROP-SM-06 (dispatch_agent side effects use phase-to-agent mapping) | Full |
 | REQ-AI-03 | PROP-INT-01 (directive constructed in dispatcher) | Full |
@@ -310,10 +313,10 @@ Properties that define what the system must NOT do.
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 78 | 91% |
+| Unit | 81 | 91% |
 | Integration | 8 | 9% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **86** | **100%** |
+| **Total** | **89** | **100%** |
 
 **E2E justification:** No E2E tests are recommended. The pure-function architecture means all state machine logic is testable at the unit level. The integration tests in PROP-INT-01 through PROP-INT-08 cover the cross-module boundaries (dispatcher ↔ state store ↔ state machine ↔ context matrix). The full lifecycle integration test (PROP-INT-08) verifies the complete PDLC progression without requiring E2E infrastructure.
 
@@ -326,7 +329,7 @@ Properties that define what the system must NOT do.
 | 1 | REQ-SA-01 through REQ-SA-06 (SKILL.md simplification) have no properties | SKILL.md changes are documentation-only, not testable as code properties | Low | Defer — these are text edits verified by manual review, not automated tests |
 | 2 | REQ-RT-08 (concurrent review dispatch) is P1 and not covered | Sequential dispatch is P0; concurrent is a future enhancement | Low | Accept — sequential dispatch is tested; concurrent can be added later |
 | 3 | Reviewer timeout mechanism is not implemented | A crashed reviewer agent leaves the feature stuck in `*_REVIEW` | Medium | Acknowledged as P1 known limitation in TSPEC. No property needed until timeout is implemented. |
-| 4 | `processResumeFromBound()` has no dedicated properties | This method resets revision count and re-enters review | Medium | Covered implicitly by PROP-SM-18 (revision bound) and integration test PROP-INT-08. Consider adding explicit unit properties if test coverage is insufficient during implementation. |
+| 4 | ~~`processResumeFromBound()` has no dedicated properties~~ | ~~Resolved in v1.1~~ | — | Addressed: added PROP-SM-20, PROP-SM-21, PROP-SM-22 per PM and eng review feedback. |
 
 ---
 
@@ -334,8 +337,8 @@ Properties that define what the system must NOT do.
 
 | Role | Name | Date | Status |
 |------|------|------|--------|
-| Product Owner | — | — | Pending |
-| Technical Lead | — | — | Pending |
+| Product Owner | pm | March 14, 2026 | Approved |
+| Technical Lead | eng | March 14, 2026 | Approved with minor changes (addressed in v1.1) |
 
 ---
 
@@ -344,6 +347,7 @@ Properties that define what the system must NOT do.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Test Engineer | Initial properties document — 86 properties across 8 categories covering 38/44 requirements (6 out-of-scope SKILL.md documentation requirements) |
+| 1.1 | March 14, 2026 | Test Engineer | Addressed PM and eng cross-review feedback. (PM F-01) Fixed requirement count to 45. (Eng F-01) Updated PLAN reference to v1.1 with 53 tasks. (PM F-02 + Eng F-02) Added PROP-SM-20, PROP-SM-21, PROP-SM-22 for explicit `processResumeFromBound()` coverage. (Eng F-03) Updated PROP-NEG-03 source citation to include FSPEC version. Total: 89 properties. Status: Approved. |
 
 ---
 
