@@ -323,22 +323,23 @@ These files are committed and pushed to the feature branch so that other agents 
 
 ## Response Contract
 
-When you finish a task, your response **must** end with a structured signal so the orchestrator can parse the outcome. Do NOT emit `<routing>` tags — the orchestrator handles all routing.
+When you finish a task, your response **must** end with a `<routing>` tag so the orchestrator can parse the outcome.
 
-**Format:**
+**Signals:**
 
-```
-<task_done>
-action: {CREATE_REQ | CREATE_FSPEC | PROCESS_FEEDBACK | REVIEW}
-status: {DONE | BLOCKED}
-artifact: {relative path to the primary output file, if any}
-summary: {one-line description of what was produced or why you are blocked}
-</task_done>
-```
+| Signal | When to use | Format |
+|--------|-------------|--------|
+| **LGTM** | Task completed successfully | `<routing>{"type":"LGTM"}</routing>` |
+| **ROUTE_TO_USER** | You have a blocking question | `<routing>{"type":"ROUTE_TO_USER","question":"your question here"}</routing>` |
+| **TASK_COMPLETE** | Feature is fully done (terminal) | `<routing>{"type":"TASK_COMPLETE"}</routing>` |
+| **ROUTE_TO_AGENT** | Ad-hoc coordination only (NOT for PDLC workflow routing) | `<routing>{"type":"ROUTE_TO_AGENT","agent_id":"...","thread_action":"reply"}</routing>` |
 
 **Rules:**
-- Exactly one `<task_done>` block per response, always at the end.
-- `status: BLOCKED` means you cannot proceed and need clarification — include the question in `summary`.
+- Exactly one `<routing>` tag per response, always at the end.
+- Use `LGTM` for normal task completion — the orchestrator handles what comes next.
+- Use `ROUTE_TO_USER` when you cannot proceed without clarification.
+- Use `TASK_COMPLETE` only when the entire feature is done.
+- `ROUTE_TO_AGENT` is for ad-hoc coordination only — the orchestrator manages PDLC workflow routing.
 
 ---
 
