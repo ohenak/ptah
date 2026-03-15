@@ -148,6 +148,17 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-13] | [REQ-SM-NF-04] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-13], [US-17] | [REQ-SM-NF-05] | Pending Spec | P1 | 11 | Pending Spec |
 
+| [US-20], [REQ-SM-02] | [REQ-PI-01] | Pending Spec | P0 | 13 | Pending Spec |
+| [US-20], [US-22] | [REQ-PI-02] | Pending Spec | P0 | 13 | Pending Spec |
+| [US-20] | [REQ-PI-03] | Pending Spec | P0 | 13 | Pending Spec |
+| [US-20] | [REQ-PI-04] | Pending Spec | P1 | 13 | Pending Spec |
+| [US-20] | [REQ-PI-05] | Pending Spec | P0 | 13 | Pending Spec |
+| [US-21] | [REQ-BC-01] | Pending Spec | P0 | 13 | Pending Spec |
+| [US-21] | [REQ-BC-02] | Pending Spec | P1 | 13 | Pending Spec |
+| [US-22] | [REQ-DC-01] | Pending Spec | P1 | 13 | Pending Spec |
+| [US-22] | [REQ-DC-02] | Pending Spec | P1 | 13 | Pending Spec |
+| [US-22] | [REQ-DC-03] | Pending Spec | P1 | 13 | Pending Spec |
+
 ---
 
 ## 3. Coverage Analysis
