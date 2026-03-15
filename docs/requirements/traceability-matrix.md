@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 14, 2026 |
-| **Version** | 2.4 |
+| **Version** | 2.5 |
 | **Status** | Draft |
 
 ---
@@ -311,7 +311,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 67 of 124 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phase 10: 17 pending; Phase 11: 45 pending; Phases 2, 7: 5 pending)
+- 67 of 124 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phase 10: 17 pending; Phase 11: 31 FSPEC'd + 14 direct-to-TSPEC; Phases 2, 7: 5 pending)
 
 ---
 
@@ -442,52 +442,52 @@ This matrix provides full traceability from user scenarios through requirements 
 
 ### Phase 11 — Orchestrator PDLC State Machine
 
-| Requirement | Specification | Priority | User Scenarios |
-|-------------|---------------|----------|----------------|
-| [REQ-SM-01] | Pending | P0 | [US-13] |
-| [REQ-SM-02] | Pending | P0 | [US-13], [US-17] |
-| [REQ-SM-03] | Pending | P0 | [US-13] |
-| [REQ-SM-04] | Pending | P1 | [US-13] |
-| [REQ-SM-05] | Pending | P0 | [US-17] |
-| [REQ-SM-06] | Pending | P0 | [US-17] |
-| [REQ-SM-07] | Pending | P0 | [US-13], [US-15] |
-| [REQ-SM-08] | Pending | P0 | [US-13], [US-15] |
-| [REQ-SM-09] | Pending | P0 | [US-13] |
-| [REQ-SM-10] | Pending | P0 | [US-17] |
-| [REQ-SM-11] | Pending | P0 | [US-13], [US-15] |
-| [REQ-RT-01] | Pending | P0 | [US-14], [US-15] |
-| [REQ-RT-02] | Pending | P0 | [US-14] |
-| [REQ-RT-03] | Pending | P0 | [US-14] |
-| [REQ-RT-04] | Pending | P0 | [US-14], [US-16] |
-| [REQ-RT-05] | Pending | P0 | [US-14] |
-| [REQ-RT-06] | Pending | P0 | [US-16] |
-| [REQ-RT-07] | Pending | P0 | [US-16] |
-| [REQ-RT-08] | Pending | P1 | [US-14] |
-| [REQ-RT-09] | Pending | P0 | [US-16] |
-| [REQ-AI-01] | Pending | P0 | [US-13], [US-18] |
-| [REQ-AI-02] | Pending | P0 | [US-13] |
-| [REQ-AI-03] | Pending | P0 | [US-18] |
-| [REQ-AI-04] | Pending | P0 | [US-13] |
-| [REQ-AI-05] | Pending | P1 | [US-13] |
-| [REQ-FC-01] | Pending | P0 | [US-15] |
-| [REQ-FC-02] | Pending | P0 | [US-15] |
-| [REQ-FC-03] | Pending | P1 | [US-15] |
-| [REQ-FC-04] | Pending | P0 | [US-14], [US-15] |
-| [REQ-FC-05] | Pending | P0 | [US-14], [US-15] |
-| [REQ-SA-01] | Pending | P0 | [US-18] |
-| [REQ-SA-02] | Pending | P0 | [US-18] |
-| [REQ-SA-03] | Pending | P0 | [US-18] |
-| [REQ-SA-04] | Pending | P0 | [US-18] |
-| [REQ-SA-05] | Pending | P0 | [US-18] |
-| [REQ-SA-06] | Pending | P0 | [US-14], [US-18] |
-| [REQ-CA-01] | Pending | P0 | [US-18] |
-| [REQ-CA-02] | Pending | P0 | [US-18] |
-| [REQ-CA-03] | Pending | P0 | [US-16] |
-| [REQ-SM-NF-01] | Pending | P1 | [US-13], [US-17] |
-| [REQ-SM-NF-02] | Pending | P0 | [US-17] |
-| [REQ-SM-NF-03] | Pending | P0 | [US-13] |
-| [REQ-SM-NF-04] | Pending | P0 | [US-13] |
-| [REQ-SM-NF-05] | Pending | P1 | [US-13], [US-17] |
+| Requirement | FSPEC | Specification | Priority | User Scenarios |
+|-------------|-------|---------------|----------|----------------|
+| [REQ-SM-01] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13] |
+| [REQ-SM-02] | — (data model) | Pending TSPEC | P0 | [US-13], [US-17] |
+| [REQ-SM-03] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13] |
+| [REQ-SM-04] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P1 | [US-13] |
+| [REQ-SM-05] | [FSPEC-SM-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-17] |
+| [REQ-SM-06] | [FSPEC-SM-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-17] |
+| [REQ-SM-07] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13], [US-15] |
+| [REQ-SM-08] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13], [US-15] |
+| [REQ-SM-09] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13] |
+| [REQ-SM-10] | [FSPEC-SM-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-17] |
+| [REQ-SM-11] | [FSPEC-SM-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13], [US-15] |
+| [REQ-RT-01] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14], [US-15] |
+| [REQ-RT-02] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14] |
+| [REQ-RT-03] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14] |
+| [REQ-RT-04] | [FSPEC-RT-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14], [US-16] |
+| [REQ-RT-05] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14] |
+| [REQ-RT-06] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-16] |
+| [REQ-RT-07] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-16] |
+| [REQ-RT-08] | — (P1, simple) | Pending TSPEC | P1 | [US-14] |
+| [REQ-RT-09] | [FSPEC-RT-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-16] |
+| [REQ-AI-01] | [FSPEC-AI-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13], [US-18] |
+| [REQ-AI-02] | [FSPEC-AI-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13] |
+| [REQ-AI-03] | [FSPEC-AI-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-18] |
+| [REQ-AI-04] | [FSPEC-AI-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-13] |
+| [REQ-AI-05] | [FSPEC-AI-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P1 | [US-13] |
+| [REQ-FC-01] | [FSPEC-FC-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-15] |
+| [REQ-FC-02] | — (config setting) | Pending TSPEC | P0 | [US-15] |
+| [REQ-FC-03] | — (default value) | Pending TSPEC | P1 | [US-15] |
+| [REQ-FC-04] | [FSPEC-FC-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14], [US-15] |
+| [REQ-FC-05] | [FSPEC-FC-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-14], [US-15] |
+| [REQ-SA-01] | — (SKILL.md change) | Pending TSPEC | P0 | [US-18] |
+| [REQ-SA-02] | — (SKILL.md change) | Pending TSPEC | P0 | [US-18] |
+| [REQ-SA-03] | — (SKILL.md change) | Pending TSPEC | P0 | [US-18] |
+| [REQ-SA-04] | — (SKILL.md change) | Pending TSPEC | P0 | [US-18] |
+| [REQ-SA-05] | — (SKILL.md change) | Pending TSPEC | P0 | [US-18] |
+| [REQ-SA-06] | — (SKILL.md change) | Pending TSPEC | P0 | [US-14], [US-18] |
+| [REQ-CA-01] | [FSPEC-CA-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-18] |
+| [REQ-CA-02] | [FSPEC-CA-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-18] |
+| [REQ-CA-03] | [FSPEC-CA-01](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-16] |
+| [REQ-SM-NF-01] | — (NF constraint) | Pending TSPEC | P1 | [US-13], [US-17] |
+| [REQ-SM-NF-02] | [FSPEC-SM-02](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Pending TSPEC | P0 | [US-17] |
+| [REQ-SM-NF-03] | — (NF constraint) | Pending TSPEC | P0 | [US-13] |
+| [REQ-SM-NF-04] | — (NF constraint) | Pending TSPEC | P0 | [US-13] |
+| [REQ-SM-NF-05] | — (NF constraint) | Pending TSPEC | P1 | [US-13], [US-17] |
 
 ---
 
@@ -513,6 +513,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | FSPEC — auto feature bootstrap | [009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Functional specification for Phase 9 — 1 FSPEC (FSPEC-AF-01) |
 | Requirements — Phase 10 | [010-REQ-ptah-parallel-feature-development](../010-parallel-feature-development/010-REQ-ptah-parallel-feature-development.md) | Phase 10 (Parallel Feature Development) requirements — 17 requirements |
 | Requirements — Phase 11 | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) | Phase 11 (Orchestrator PDLC State Machine) requirements — 45 requirements (v1.2 approved by eng + qa) |
+| FSPEC — Phase 11 | [011-FSPEC-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Functional specification for Phase 11 — 7 FSPECs (SM-01, SM-02, RT-01, RT-02, AI-01, FC-01, CA-01) |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -536,6 +537,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.2 | March 14, 2026 | Product Manager | Added Phase 11 (Orchestrator PDLC State Machine). 6 new user stories (US-13 through US-18). 42 requirements added across 6 domains: SM (State Machine, 9 reqs), RT (Review Tracking, 8 reqs), AI (Agent Invocation, 5 reqs), FC (Feature Configuration, 5 reqs), SA (Skill Alignment, 6 reqs), CA (Context Assembly, 3 reqs), plus 5 non-functional (SM-NF). Phase 11 view added. Total requirements: 121. Coverage: 57 of 79 prior + 0 of 42 Phase 11 = 57 of 121 specified (64 pending). |
 | 2.3 | March 14, 2026 | Product Manager | Phase 11 REQ v1.1 approved after backend-engineer review. Added REQ-SM-10 (state file schema versioning) and REQ-SM-11 (parallel implementation fork/join). Total Phase 11 requirements: 44. Total requirements: 123. Coverage: 57 of 79 prior + 0 of 44 Phase 11 = 57 of 123 specified (66 pending). |
 | 2.4 | March 14, 2026 | Product Manager | Phase 11 REQ v1.2 approved after test-engineer review. Added REQ-RT-09 (revision loop bound). Total Phase 11 requirements: 45. Total requirements: 124. Coverage: 57 of 79 prior + 0 of 45 Phase 11 = 57 of 124 specified (67 pending). |
+| 2.5 | March 14, 2026 | Product Manager | Added FSPEC mappings for Phase 11. 7 FSPECs created: FSPEC-SM-01 (transition logic), FSPEC-SM-02 (persistence/recovery), FSPEC-RT-01 (approval detection), FSPEC-RT-02 (review lifecycle), FSPEC-AI-01 (agent dispatch), FSPEC-FC-01 (reviewer computation), FSPEC-CA-01 (context assembly). 31 of 45 Phase 11 requirements FSPEC'd; 14 direct-to-TSPEC. Phase 11 view updated with FSPEC column. |
 
 ---
 
