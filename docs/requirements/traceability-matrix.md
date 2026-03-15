@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Date** | March 14, 2026 |
-| **Version** | 2.2 |
+| **Version** | 2.3 |
 | **Status** | Draft |
 
 ---
@@ -112,6 +112,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-13], [US-15] | [REQ-SM-07] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-13], [US-15] | [REQ-SM-08] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-13] | [REQ-SM-09] | Pending Spec | P0 | 11 | Pending Spec |
+| [US-17] | [REQ-SM-10] | Pending Spec | P0 | 11 | Pending Spec |
+| [US-13], [US-15] | [REQ-SM-11] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-14], [US-15] | [REQ-RT-01] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-14] | [REQ-RT-02] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-14] | [REQ-RT-03] | Pending Spec | P0 | 11 | Pending Spec |
@@ -263,6 +265,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-SM-07] | Parallel TSPEC creation (fork) | 0 | Pending |
 | [REQ-SM-08] | Parallel PLAN creation (fork) | 0 | Pending |
 | [REQ-SM-09] | Terminal state | 0 | Pending |
+| [REQ-SM-10] | State file schema versioning | 0 | Pending |
+| [REQ-SM-11] | Parallel implementation (fork) | 0 | Pending |
 | [REQ-RT-01] | Reviewer manifest per phase | 0 | Pending |
 | [REQ-RT-02] | Review rules definition | 0 | Pending |
 | [REQ-RT-03] | Per-reviewer status tracking | 0 | Pending |
@@ -305,7 +309,7 @@ This matrix provides full traceability from user scenarios through requirements 
 - None
 
 **Unspecified requirements** (no specification):
-- 64 of 121 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phase 10: 17 pending; Phase 11: 42 pending; Phases 2, 7: 5 pending)
+- 66 of 123 requirements are pending specification (Phase 1: 9 TSPEC'd; Phase 3: 21 FSPEC'd; Phase 4: 6 FSPEC'd; Phase 5: 7 FSPEC'd; Phase 6: 6 FSPEC'd; Phase 9: 8 FSPEC'd; Phase 10: 17 pending; Phase 11: 44 pending; Phases 2, 7: 5 pending)
 
 ---
 
@@ -447,6 +451,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-SM-07] | Pending | P0 | [US-13], [US-15] |
 | [REQ-SM-08] | Pending | P0 | [US-13], [US-15] |
 | [REQ-SM-09] | Pending | P0 | [US-13] |
+| [REQ-SM-10] | Pending | P0 | [US-17] |
+| [REQ-SM-11] | Pending | P0 | [US-13], [US-15] |
 | [REQ-RT-01] | Pending | P0 | [US-14], [US-15] |
 | [REQ-RT-02] | Pending | P0 | [US-14] |
 | [REQ-RT-03] | Pending | P0 | [US-14] |
@@ -503,7 +509,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | Requirements — Phase 9 | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | Phase 9 (Auto Feature Bootstrap) requirements — 8 requirements |
 | FSPEC — auto feature bootstrap | [009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | Functional specification for Phase 9 — 1 FSPEC (FSPEC-AF-01) |
 | Requirements — Phase 10 | [010-REQ-ptah-parallel-feature-development](../010-parallel-feature-development/010-REQ-ptah-parallel-feature-development.md) | Phase 10 (Parallel Feature Development) requirements — 17 requirements |
-| Requirements — Phase 11 | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) | Phase 11 (Orchestrator PDLC State Machine) requirements — 42 requirements |
+| Requirements — Phase 11 | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) | Phase 11 (Orchestrator PDLC State Machine) requirements — 44 requirements (v1.1 approved) |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
 
 ---
@@ -525,6 +531,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.0 | March 13, 2026 | Product Manager | Added Phase 9 (Auto Feature Bootstrap). New user story US-09. 8 requirements added (REQ-AF-01 through REQ-AF-07, REQ-AF-NF-01). 1 FSPEC created: FSPEC-AF-01 (Feature Folder Bootstrap). Phase 9 view added. Total requirements: 62. Coverage: 49 of 54 original + 8 of 8 Phase 9 FSPEC'd = 57 of 62 specified (5 pending — Phases 2 and 7). |
 | 2.1 | March 14, 2026 | Product Manager | Added Phase 10 (Parallel Feature Development). 3 new user stories (US-10, US-11, US-12). 17 requirements added across 4 domains: FB (Feature Branching, 4 reqs), AB (Agent Branching, 4 reqs), MG (Merge Strategy, 3 reqs), SK (Skill Alignment, 2 reqs), plus 3 non-functional (PF-NF). Phase 10 view added. Total requirements: 79. Coverage: 57 of 62 prior + 0 of 17 Phase 10 = 57 of 79 specified (22 pending). |
 | 2.2 | March 14, 2026 | Product Manager | Added Phase 11 (Orchestrator PDLC State Machine). 6 new user stories (US-13 through US-18). 42 requirements added across 6 domains: SM (State Machine, 9 reqs), RT (Review Tracking, 8 reqs), AI (Agent Invocation, 5 reqs), FC (Feature Configuration, 5 reqs), SA (Skill Alignment, 6 reqs), CA (Context Assembly, 3 reqs), plus 5 non-functional (SM-NF). Phase 11 view added. Total requirements: 121. Coverage: 57 of 79 prior + 0 of 42 Phase 11 = 57 of 121 specified (64 pending). |
+| 2.3 | March 14, 2026 | Product Manager | Phase 11 REQ v1.1 approved after backend-engineer review. Added REQ-SM-10 (state file schema versioning) and REQ-SM-11 (parallel implementation fork/join). Total Phase 11 requirements: 44. Total requirements: 123. Coverage: 57 of 79 prior + 0 of 44 Phase 11 = 57 of 123 specified (66 pending). |
 
 ---
 
