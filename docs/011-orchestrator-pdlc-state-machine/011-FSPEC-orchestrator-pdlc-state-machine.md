@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-011 |
 | **Parent Document** | [011-REQ-orchestrator-pdlc-state-machine](011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 14, 2026 |
 | **Author** | Product Manager |
 | **Status** | Approved |
@@ -241,6 +241,7 @@ The orchestrator persists the full PDLC state to a JSON file after every transit
 | AT-PS-05 | WHO: As the orchestrator GIVEN: migration from v1 to v2 fails WHEN: the orchestrator starts up THEN: original file is copied to `.bak`, fresh state is initialized, and error is logged with both versions |
 | AT-PS-06 | WHO: As the orchestrator GIVEN: the state file has version 3 and current version is 2 WHEN: the orchestrator starts up THEN: error is logged and fresh state is initialized |
 | AT-PS-07 | WHO: As the orchestrator GIVEN: no state file exists WHEN: the orchestrator starts up THEN: fresh state is initialized with current version and empty features map |
+| AT-PS-08 | WHO: As the orchestrator GIVEN: state file contains valid JSON with no `version` field and a v0→v1 migration exists WHEN: the orchestrator starts up THEN: state is treated as version 0, migration runs from v0 to current version, and migrated state is persisted |
 
 #### Dependencies
 
@@ -304,7 +305,7 @@ The orchestrator parses cross-review files to detect whether a reviewer approved
 |------|-------------|
 | BR-AD-01 | Matching is case-insensitive and whitespace-tolerant. "APPROVED", "approved", "Approved " are all valid. |
 | BR-AD-02 | "Approved with minor changes" takes precedence over bare "Approved" when both substrings are present (the longer match wins). |
-| BR-AD-03 | Only the FIRST Recommendation heading is used. If multiple exist, the file is treated as unparseable (Failure Case 3). |
+| BR-AD-03 | If multiple headings containing "Recommendation" are found, the file is treated as unparseable (Failure Case 3). |
 | BR-AD-04 | The skill-name-to-agent-ID mapping is hardcoded: `{backend-engineer: "eng", frontend-engineer: "fe", product-manager: "pm", test-engineer: "qa"}`. |
 | BR-AD-05 | All failure cases result in `ROUTE_TO_USER` with a specific, actionable error message identifying the reviewer and file. |
 
@@ -314,7 +315,7 @@ The orchestrator parses cross-review files to detect whether a reviewer approved
 |------|----------|
 | Recommendation value is "Approved." (with trailing period) | Normalized to "approved." — contains "approved" → `approved`. |
 | Recommendation value is "Approved with minor changes — see F-01" | Contains "approved with minor changes" → `approved`. Extra text after is ignored. |
-| File is valid markdown but Recommendation heading is inside a code block | Code blocks should be ignored during heading search. Only top-level headings are parsed. |
+| File is valid markdown but Recommendation heading is inside a fenced code block | Fenced code blocks (delimited by `` ``` `` or `~~~`) are excluded from heading search. Indented code blocks (4+ spaces) are NOT excluded — they are uncommon in cross-review files and not worth the parsing complexity. Inline code within a heading IS still matched (e.g., `` ## `Recommendation` `` is a valid match). HTML comment blocks are NOT excluded. |
 | Cross-review file from an unknown skill name (e.g., `CROSS-REVIEW-devops-engineer-REQ.md`) | Unknown skill name cannot be mapped to agent ID → log warning, treat as Failure Case 1. |
 
 #### Acceptance Tests
@@ -413,7 +414,8 @@ When a feature is paused due to revision bound escalation and the developer resp
 | All reviewers approve but one previously rejected (in an earlier revision cycle) | Current cycle's status is what matters. If all show `approved` in the current cycle, phase advances. |
 | Multiple reviewers reject in the same round | All rejection feedback is collected. The author receives ALL cross-review files and can address all feedback in a single revision, reducing total revision cycles. |
 | Feature is paused (ROUTE_TO_USER) due to revision bound, then developer resumes | Developer response resets the revision count to 0 and re-enters the review phase. All statuses reset to `pending`. Force-advance is not supported — see "Revision bound resume behavior" above. |
-| Fullstack TSPEC_REVIEW: pm approves backend TSPEC but rejects frontend TSPEC | Status entries: `pm:be_tspec = approved`, `pm:fe_tspec = revision_requested`. After all reviewers complete, the presence of any `revision_requested` triggers revision. Both TSPECs go back to creation for revision (the entire TSPEC_CREATION phase restarts). |
+| Fullstack TSPEC_REVIEW: pm approves backend TSPEC but rejects frontend TSPEC | Status entries: `pm:be_tspec = approved`, `pm:fe_tspec = revision_requested`. After all reviewers complete, the presence of any `revision_requested` triggers revision. The entire `TSPEC_CREATION` phase restarts. The orchestrator invokes each sub-task author with appropriate directives: the rejected sub-task's author (e.g., `fe`) receives a "Revise" directive with rejection cross-review files; the approved sub-task's author (e.g., `eng`) receives a "Resubmit" directive: "ACTION: Resubmit TSPEC\n\nYour backend TSPEC was approved but the review phase is restarting because the frontend TSPEC was rejected. Please resubmit your TSPEC (no changes needed unless you want to incorporate the latest feedback)." This ensures the approved author is aware of the restart without confusingly asking them to "revise" an approved document. |
+| Reviewer agent crashes or times out during collect-all-then-evaluate | The existing invocation-guard retry mechanism handles agent failures. If the agent ultimately fails after all retries, the reviewer's status remains `pending`. Since the orchestrator waits for ALL reviewers, the feature is effectively stuck. The orchestrator detects the stuck state (reviewer `pending` after agent invocation exhausted) and pauses the feature via `ROUTE_TO_USER`: "Reviewer {agent_id} failed to produce a cross-review file after all retry attempts. Developer intervention required." |
 
 #### Acceptance Tests
 
@@ -426,6 +428,7 @@ When a feature is paused due to revision bound escalation and the developer resp
 | AT-RL-05 | WHO: As the orchestrator GIVEN: feature in `PLAN_REVIEW`, first reviewer submits `revision_requested` WHEN: second reviewer has not yet responded THEN: orchestrator waits for second reviewer to complete before evaluating; both review results are collected |
 | AT-RL-06 | WHO: As the orchestrator GIVEN: feature in fullstack `TSPEC_REVIEW` with status entries `pm:be_tspec`, `pm:fe_tspec`, `qa:be_tspec`, `qa:fe_tspec`, `fe:be_tspec`, `eng:fe_tspec` WHEN: all 6 entries are `approved` THEN: phase transitions to `TSPEC_APPROVED` |
 | AT-RL-07 | WHO: As the orchestrator GIVEN: feature paused at revision bound WHEN: developer resumes THEN: revision count resets to 0, review phase re-entered, all statuses reset to `pending` |
+| AT-RL-08 | WHO: As the orchestrator GIVEN: fullstack feature in `TSPEC_REVIEW` where backend TSPEC is approved by all reviewers but frontend TSPEC has `revision_requested` WHEN: all reviewers have completed THEN: phase transitions to `TSPEC_CREATION`, `fe` receives "Revise" directive with rejection cross-review files, `eng` receives "Resubmit" directive indicating no changes needed |
 
 #### Dependencies
 
@@ -524,7 +527,7 @@ After `LGTM` is received for a creation phase:
 | Case | Behavior |
 |------|----------|
 | Agent returns no routing signal at all | Treat as an error. Re-invoke agent once with: "Your previous response did not include a routing signal. Please complete the task and include an LGTM, ROUTE_TO_USER, or TASK_COMPLETE signal." After 1 retry, pause via ROUTE_TO_USER. |
-| Agent returns `TASK_COMPLETE` during a non-terminal phase | Log warning. Do NOT transition to DONE. Treat as LGTM (agent may have misinterpreted). |
+| Agent returns `TASK_COMPLETE` during a non-terminal phase | Log warning. Do NOT transition to DONE. Treat as LGTM (agent may have misinterpreted). If subsequent artifact validation fails, the ROUTE_TO_USER message must include: "Agent {agent_id} signaled TASK_COMPLETE during {phase}, which is not a terminal phase. The expected artifact was not found at {path}. Developer intervention required." |
 | Agent returns `LGTM` with extra metadata (e.g., `{"skip_fspec": true}`) | Ignore metadata. The FSPEC skip decision is configuration-only (per REQ-SM-04 / FSPEC-SM-01 BR-SM-05). |
 
 #### Acceptance Tests
@@ -537,6 +540,7 @@ After `LGTM` is received for a creation phase:
 | AT-DI-04 | WHO: As the orchestrator GIVEN: agent returns `LGTM` for `REQ_CREATION` WHEN: artifact at expected path does NOT exist THEN: agent is re-invoked with correction directive |
 | AT-DI-05 | WHO: As the orchestrator GIVEN: agent returns `ROUTE_TO_USER` WHEN: signal is processed THEN: feature is paused, question stored, phase unchanged |
 | AT-DI-06 | WHO: As the orchestrator GIVEN: agent returns `ROUTE_TO_AGENT` targeting `qa` WHEN: signal is processed THEN: `qa` is invoked for ad-hoc coordination, warning logged, phase unchanged |
+| AT-DI-07 | WHO: As the orchestrator GIVEN: agent returns `LGTM` for `REQ_CREATION` WHEN: artifact is missing after 3 total invocation attempts (1 original + 2 re-invocations) THEN: feature pauses via ROUTE_TO_USER with message identifying the agent and expected artifact path |
 
 #### Dependencies
 
@@ -691,7 +695,7 @@ For each document in the matrix, resolve the path:
 |------|----------|
 | FSPEC is listed in context but file does not exist (skipFspec was false but FSPEC was never created — should not happen with valid state machine) | Log warning. Proceed without FSPEC in context. |
 | Revision context: no cross-review files found from the failed review round | Log warning. Proceed with standard creation-phase context only. The agent won't have feedback to address, but the revision directive still instructs them to re-examine. |
-| Multiple revision rounds: should context include cross-reviews from ALL previous rounds or only the latest? | Only the latest review round's cross-review files. Previous rounds' files are superseded. |
+| Multiple revision rounds: should context include cross-reviews from ALL previous rounds or only the latest? | Only the latest review round's cross-review files. Previous rounds' files are superseded. Cross-review files are identified by globbing `CROSS-REVIEW-*-{doc-type}.md` in the feature directory. Because reviewers overwrite their cross-review file each round (same filename convention), the files on disk always represent the most recent round. No round-tracking metadata is needed. |
 
 #### Acceptance Tests
 
@@ -752,7 +756,8 @@ None — all questions were resolved during REQ review (backend-engineer Q-01 th
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Product Manager | Initial FSPEC — 7 functional specifications covering state machine transitions, persistence/recovery, approval detection, review lifecycle, agent dispatch, reviewer computation, and context assembly. |
-| 1.1 | March 14, 2026 | Product Manager | Addressed backend-engineer cross-review (6 findings, 2 questions). Changes: (F-01) FSPEC-RT-02 now uses `reviewer_id:document_scope` pair tracking for fullstack multi-document reviews; added BR-RL-06. (F-02) Changed from early-exit to collect-all-then-evaluate dispatch model; updated BR-RL-03, edge cases, AT-RL-05. (F-05) Defined revision bound resume behavior: reset count + re-enter review; force-advance not supported. (Q-01) "Approved with minor changes" treated identically to "Approved"; added BR-RL-07. (Q-02) Clarified BR-CA-04: fullstack PLAN_CREATION gives each engineer only their own discipline's TSPEC. F-03, F-04, F-06 deferred to TSPEC (low severity). Status: Approved. |
+| 1.1 | March 14, 2026 | Product Manager | Addressed backend-engineer cross-review (6 findings, 2 questions). Changes: (F-01) Reviewer-document pair tracking for fullstack reviews; added BR-RL-06. (F-02) Collect-all-then-evaluate dispatch model; updated BR-RL-03. (F-05) Revision bound resume: reset count + re-enter review. (Q-01) "Approved with minor changes" = "Approved"; added BR-RL-07. (Q-02) Fullstack PLAN_CREATION context clarified in BR-CA-04. |
+| 1.2 | March 14, 2026 | Product Manager | Addressed test-engineer cross-review (6 findings, 2 questions). Changes: (F-01) Fullstack partial-rejection: approved sub-task author gets "Resubmit" directive, rejected gets "Revise"; added AT-RL-08. (F-02) Added AT-DI-07 for artifact validation 3-attempt escalation. (F-03) Fixed BR-AD-03 contradictory wording. (F-04) Specified code block exclusion rules (fenced excluded, indented not, inline matched). (F-05) Added AT-PS-08 for missing version field migration. (F-06) Clarified TASK_COMPLETE + failed artifact validation message. (Q-01) Reviewer crash/timeout: invocation-guard retries, then ROUTE_TO_USER; added edge case. (Q-02) Cross-review file round identification: files overwritten each round, glob for latest. Status: Approved. |
 
 ---
 
