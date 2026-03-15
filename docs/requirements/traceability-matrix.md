@@ -148,16 +148,19 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-13] | [REQ-SM-NF-04] | Pending Spec | P0 | 11 | Pending Spec |
 | [US-13], [US-17] | [REQ-SM-NF-05] | Pending Spec | P1 | 11 | Pending Spec |
 
-| [US-20], [REQ-SM-02] | [REQ-PI-01] | Pending Spec | P0 | 13 | Pending Spec |
-| [US-20], [US-22] | [REQ-PI-02] | Pending Spec | P0 | 13 | Pending Spec |
-| [US-20] | [REQ-PI-03] | Pending Spec | P0 | 13 | Pending Spec |
-| [US-20] | [REQ-PI-04] | Pending Spec | P1 | 13 | Pending Spec |
-| [US-20] | [REQ-PI-05] | Pending Spec | P0 | 13 | Pending Spec |
-| [US-21] | [REQ-BC-01] | Pending Spec | P0 | 13 | Pending Spec |
-| [US-21] | [REQ-BC-02] | Pending Spec | P1 | 13 | Pending Spec |
-| [US-22] | [REQ-DC-01] | Pending Spec | P1 | 13 | Pending Spec |
-| [US-22] | [REQ-DC-02] | Pending Spec | P1 | 13 | Pending Spec |
-| [US-22] | [REQ-DC-03] | Pending Spec | P1 | 13 | Pending Spec |
+| [US-20] | [REQ-PI-01] | [FSPEC-PI-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P0 | 13 | FSPEC Complete |
+| [US-20], [US-22] | [REQ-PI-02] | [FSPEC-PI-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P0 | 13 | FSPEC Complete |
+| [US-20] | [REQ-PI-03] | [FSPEC-PI-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P0 | 13 | FSPEC Complete |
+| [US-20] | [REQ-PI-04] | [FSPEC-PI-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P1 | 13 | FSPEC Complete |
+| [US-20] | [REQ-PI-05] | [FSPEC-PI-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P0 | 13 | FSPEC Complete |
+| [US-21] | [REQ-BC-01] | [FSPEC-BC-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P0 | 13 | FSPEC Complete |
+| [US-21] | [REQ-BC-02] | [FSPEC-BC-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P1 | 13 | FSPEC Complete |
+| [US-22] | [REQ-DC-01] | [FSPEC-DC-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P1 | 13 | FSPEC Complete |
+| [US-22] | [REQ-DC-02] | [FSPEC-DC-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P1 | 13 | FSPEC Complete |
+| [US-22] | [REQ-DC-03] | [FSPEC-DC-01](../013-pdlc-auto-init/013-FSPEC-pdlc-auto-init.md) | P1 | 13 | FSPEC Complete |
+| [US-20], [US-21], [US-22] | [REQ-NF-01] | Pending TSPEC | P1 | 13 | Pending Spec |
+| [US-20], [US-21], [US-22] | [REQ-NF-02] | Pending TSPEC | P0 | 13 | Pending Spec |
+| [US-20], [US-21], [US-22] | [REQ-NF-03] | Pending TSPEC | P0 | 13 | Pending Spec |
 
 ---
 
@@ -185,6 +188,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-16] | Rejected Reviews Trigger Revision Loops | 5 | No (0 of 5 specified) |
 | [US-17] | PDLC State Survives Orchestrator Restarts | 7 | No (0 of 7 specified) |
 | [US-18] | Simplified Agent Skills Focus on Domain Tasks | 15 | No (0 of 15 specified) |
+| [US-20] | New Feature Auto-Registers in PDLC | 5 | Yes (5 of 5 FSPEC'd) |
+| [US-21] | Existing Unmanaged Features Are Not Disrupted | 2 | Yes (2 of 2 FSPEC'd) |
+| [US-22] | Developer Specifies Feature Discipline | 3 | Yes (3 of 3 FSPEC'd) |
 
 ### 3.2 Requirement Coverage
 
@@ -549,6 +555,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.3 | March 14, 2026 | Product Manager | Phase 11 REQ v1.1 approved after backend-engineer review. Added REQ-SM-10 (state file schema versioning) and REQ-SM-11 (parallel implementation fork/join). Total Phase 11 requirements: 44. Total requirements: 123. Coverage: 57 of 79 prior + 0 of 44 Phase 11 = 57 of 123 specified (66 pending). |
 | 2.4 | March 14, 2026 | Product Manager | Phase 11 REQ v1.2 approved after test-engineer review. Added REQ-RT-09 (revision loop bound). Total Phase 11 requirements: 45. Total requirements: 124. Coverage: 57 of 79 prior + 0 of 45 Phase 11 = 57 of 124 specified (67 pending). |
 | 2.5 | March 14, 2026 | Product Manager | Added FSPEC mappings for Phase 11. 7 FSPECs created: FSPEC-SM-01 (transition logic), FSPEC-SM-02 (persistence/recovery), FSPEC-RT-01 (approval detection), FSPEC-RT-02 (review lifecycle), FSPEC-AI-01 (agent dispatch), FSPEC-FC-01 (reviewer computation), FSPEC-CA-01 (context assembly). 31 of 45 Phase 11 requirements FSPEC'd; 14 direct-to-TSPEC. Phase 11 view updated with FSPEC column. |
+| 2.6 | March 15, 2026 | Product Manager | Added Phase 13 (PDLC Auto-Initialization). 3 new user stories (US-20, US-21, US-22). 13 requirements added across 3 domains: PI (PDLC Initialization, 5 reqs), BC (Backward Compatibility, 2 reqs), DC (Discipline Configuration, 3 reqs), plus 3 non-functional (NF). 3 FSPECs created: FSPEC-PI-01 (auto-init decision flow), FSPEC-BC-01 (age guard), FSPEC-DC-01 (keyword parsing). 10 of 13 requirements FSPEC'd; 3 NFRs pending TSPEC. Total requirements: 137. |
 
 ---
 
