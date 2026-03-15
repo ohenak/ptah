@@ -137,6 +137,17 @@ export function skillNameToAgentId(skillName: string): string | null {
   return SKILL_TO_AGENT[skillName] ?? null;
 }
 
+const AGENT_TO_SKILL: Record<string, string> = Object.fromEntries(
+  Object.entries(SKILL_TO_AGENT).map(([k, v]) => [v, k]),
+);
+
+/**
+ * Map agent ID to skill name (reverse lookup).
+ */
+export function agentIdToSkillName(agentId: string): string | null {
+  return AGENT_TO_SKILL[agentId] ?? null;
+}
+
 /**
  * Derive expected cross-review file path.
  */
