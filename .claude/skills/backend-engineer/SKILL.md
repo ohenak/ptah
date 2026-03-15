@@ -47,6 +47,7 @@ Every task you perform follows this git workflow. No exceptions.
    - If the branch does not exist locally, create it from `main`: `git checkout -b feat-{feature-name} main`
    - If the branch already exists locally, switch to it and pull latest: `git checkout feat-{feature-name} && git pull origin feat-{feature-name}`
    - If the branch exists on remote but not locally: `git fetch origin && git checkout -b feat-{feature-name} origin/feat-{feature-name}`
+3. **Always pull the latest from remote after checkout.** Other agents push their work (REQ, FSPEC, TSPEC, cross-reviews) to the remote branch. You MUST run `git pull origin feat-{feature-name}` after checkout to ensure you have all artifacts. Skipping this step is the #1 cause of "file not found" errors when reading documents created by other agents.
 
 ### After Completing the Task
 
