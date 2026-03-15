@@ -8,15 +8,16 @@ Ptah connects a team of AI agents — product manager, backend engineer, fronten
 
 ```
 ptah/                       — Ptah CLI (TypeScript, ESM, Vitest)
-  bin/ptah.ts               — CLI entry point
+  bin/ptah.ts               — CLI entry point and composition root
   src/
     commands/               — CLI commands (init, start)
     config/                 — Config loader and defaults
     orchestrator/           — Core orchestration engine
+      pdlc/                 — Product Development Lifecycle state machine
     services/               — Discord, Git, Claude Code, filesystem adapters
     shutdown.ts             — 7-step graceful shutdown
     types.ts                — Shared type definitions
-  ptah.config.json          — Example configuration
+  ptah.config.json          — Orchestrator configuration
 .claude/skills/             — Claude Code skill definitions:
   product-manager           — Discovery, requirements, and product planning
   frontend-engineer         — Frontend features with TDD and spec-driven development
@@ -30,6 +31,11 @@ docs/                       — Feature-based documentation (each folder maps to
   005-user-questions/       — Human-in-the-loop question escalation
   006-guardrails/           — Safety and resource controls
   007-polish/               — Logging, observability, and UX refinements
+  008-conversation-logging/ — Conversation history and logging
+  009-auto-feature-bootstrap/ — Feature folder creation on first mention
+  010-parallel-feature-development/ — Multi-threaded feature work with worktree isolation
+  011-orchestrator-pdlc-state-machine/ — PDLC state machine for document lifecycle
+  012-skill-simplification/ — Skill definition simplification
   requirements/             — Master requirements and traceability matrix
   templates/                — Markdown templates for specs, plans, and traceability
 ```
@@ -43,6 +49,67 @@ Scaffolds the Ptah documentation structure into a Git repository — creates dir
 ### `ptah start`
 
 Starts the orchestrator as a Discord bot. Connects to Discord, listens for messages, and routes agent tasks through the orchestration loop.
+
+## Configuration
+
+Ptah is configured via `ptah/ptah.config.json`. Below is a reference for each section.
+
+### `project`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `name` | string | Project name |
+| `version` | string | Project version (semver) |
+
+### `discord`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `server_id` | string | Discord server (guild) ID |
+| `bot_token_env` | string | Environment variable name holding the Discord bot token (default: `DISCORD_BOT_TOKEN`) |
+| `channels.updates` | string | Channel name for creating task threads (default: `ptah-updates`) |
+| `channels.questions` | string | Channel name for human-in-the-loop question escalation (default: `open-questions`) |
+| `channels.debug` | string | Channel name for diagnostic output (default: `debug`) |
+| `mention_user_id` | string | Discord user ID to mention when escalating questions |
+
+### `agents`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `active` | string[] | Agent IDs to activate (e.g., `["pm", "eng", "fe", "qa"]`) |
+| `skills` | object | Map of agent ID → relative path to its `SKILL.md` file |
+| `model` | string | Claude model to use for agent invocations (e.g., `claude-sonnet-4-6`) |
+| `max_tokens` | number | Maximum token budget per invocation (default: `800000`) |
+| `role_mentions` | object | Map of Discord role ID → agent ID, used to route @mentions to the correct agent |
+
+### `orchestrator`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `max_turns_per_thread` | number | Maximum agent turns per thread before stopping (default: `15`) |
+| `pending_poll_seconds` | number | Interval in seconds to poll for pending question answers (default: `30`) |
+| `retry_attempts` | number | Number of retry attempts on transient invocation failures (default: `3`) |
+| `invocation_timeout_ms` | number | Timeout per agent invocation in milliseconds (default: `1800000` / 30 min) |
+
+### `git`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `commit_prefix` | string | Prefix for auto-committed messages (default: `[ptah]`) |
+| `auto_commit` | boolean | Whether to auto-commit artifact changes after each invocation (default: `true`) |
+
+### `docs`
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `root` | string | Relative path to the docs directory (default: `../docs`) |
+| `templates` | string | Relative path to the templates directory (default: `../docs/templates`) |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DISCORD_BOT_TOKEN` | Discord bot token (referenced by `discord.bot_token_env`) |
 
 ## How It Works
 
@@ -77,30 +144,105 @@ Available agents (configured in `ptah/ptah.config.json`):
 
 ### 3. What happens next
 
-The orchestrator picks up the message and:
+The orchestrator picks up the message and runs a **routing loop**:
 
-1. **Assembles context** — agent skill prompt + `docs/{feature}/` files + thread history (with token budget management)
-2. **Invokes the skill** — runs via Claude Agent SDK in an isolated git worktree, with retry/backoff via InvocationGuard
-3. **Commits artifacts** — any file changes in `docs/` are auto-committed and merged to main
-4. **Routes based on the response** — the skill's `<routing>` tag determines the next step:
-   - **`ROUTE_TO_AGENT`** — hands off to another agent in the same thread
-   - **`ROUTE_TO_USER`** — posts a question to `#open-questions` for a human to answer
-   - **`TASK_COMPLETE`** / **`LGTM`** — done
+1. **Dedup & guard** — skips duplicate messages, checks turn limits, and drops messages for paused threads
+2. **Resolve agent** — maps the Discord @role mention to an agent ID via `role_mentions` config
+3. **Create worktree** — derives the feature branch (`feat-{slug}`) from the thread name, creates it from main if needed, then spins up an isolated git worktree on a per-invocation agent sub-branch (`ptah/{slug}/{agentId}/{invocationId}`) based off the feature branch
+4. **Assemble context** — builds a 3-layer prompt within the token budget:
+   - **Layer 1 (system):** agent skill prompt (`SKILL.md`) + feature `overview.md` + ACTION directives
+   - **Layer 2 (feature files):** other `docs/{feature}/` files (REQ, FSPEC, TSPEC, etc.), trimmed to budget
+   - **Layer 3 (user message):** the trigger message or previous agent's routing response
+5. **Invoke skill** — runs via Claude Agent SDK inside the worktree, with exponential backoff retry via InvocationGuard (configurable attempts, timeout)
+6. **Commit & merge** — two-tier merge: only `docs/` changes are staged and committed on the agent sub-branch, then merged (`--no-ff`) into the feature branch and pushed to remote. Non-docs changes are filtered out. Worktree is cleaned up after merge. A merge lock serializes concurrent merges.
+7. **Post response** — posts the agent's text response as a Discord embed in the thread
+8. **Route** — parses the `<routing>` tag from the agent's response to determine the next step:
+
+   **For PDLC-managed features** (state machine tracks document lifecycle):
+   - **`TASK_COMPLETE` / `LGTM`** — the PDLC dispatcher advances to the next phase and dispatches the appropriate agent automatically (e.g., REQ creation → REQ review → FSPEC creation → ...)
+   - **`ROUTE_TO_AGENT`** — ad-hoc coordination; invokes the target agent for one turn without changing the PDLC phase
+   - **`ROUTE_TO_USER`** — pauses the thread, posts a question to `#open-questions`, and polls for the human answer (Pattern B resume)
+
+   **For unmanaged features** (backward-compatible path):
+   - **`ROUTE_TO_AGENT`** — hands off to another agent in the same thread (reply) or spawns a new coordination thread (new_thread)
+   - **`ROUTE_TO_USER`** — same pause/poll/resume behavior as above
+   - **`TASK_COMPLETE`** / **`LGTM`** — posts a completion embed and stops
+
+   The routing loop continues until a terminal signal is reached or the turn limit is hit.
 
 ### Discord Channels
 
 | Channel | Purpose |
 |---------|---------|
 | `#ptah-updates` | Main channel for creating task threads |
-| `#open-questions` | Where agents escalate questions to humans |
-| `#debug` | Debug/diagnostic output |
+| `#open-questions` | Where agents escalate questions to humans; replies from the configured user are matched back to pending questions |
+| `#debug` | Debug/diagnostic output (turn limit closures, merge conflicts, retry warnings) |
+
+## Product Development Lifecycle (PDLC)
+
+The orchestrator owns the entire document lifecycle for each feature through a **deterministic state machine** (`ptah/src/orchestrator/pdlc/`). Agents no longer decide what to do next — the state machine advances phases, dispatches agents, and enforces review gates automatically.
+
+### Phases
+
+Each feature progresses through 18 phases in a fixed order. Each document goes through creation → review → approved before the next begins:
+
+```
+REQ_CREATION (PM) → REQ_REVIEW → REQ_APPROVED →
+FSPEC_CREATION (PM) → FSPEC_REVIEW → FSPEC_APPROVED →
+TSPEC_CREATION (Eng) → TSPEC_REVIEW → TSPEC_APPROVED →
+PLAN_CREATION (Eng) → PLAN_REVIEW → PLAN_APPROVED →
+PROPERTIES_CREATION (QA) → PROPERTIES_REVIEW → PROPERTIES_APPROVED →
+IMPLEMENTATION (Eng) → IMPLEMENTATION_REVIEW → DONE
+```
+
+FSPEC can be skipped (`skipFspec: true` in feature config) — the state machine transitions directly from `REQ_APPROVED` to `TSPEC_CREATION`.
+
+### Documents
+
+| Document | Owner | Description |
+|----------|-------|-------------|
+| REQ | Product Manager | Requirements with user stories, acceptance criteria, and priorities |
+| FSPEC | Product Manager | Functional specifications for complex behavioral flows |
+| TSPEC | Backend/Frontend Engineer | Technical specification with architecture and design decisions |
+| PLAN | Backend/Frontend Engineer | Step-by-step execution plan for implementation |
+| PROPERTIES | Test Engineer | Testable properties, coverage analysis, and test strategy |
+
+### Cross-Skill Reviews
+
+When a document enters a review phase, the state machine computes the required reviewers and dispatches them automatically:
+
+| Review Phase | Reviewers |
+|-------------|-----------|
+| REQ | eng + qa (or fe + qa, or eng + fe + qa for fullstack) |
+| FSPEC | eng + qa (or fe + qa, or eng + fe + qa for fullstack) |
+| TSPEC | pm + qa |
+| PLAN | pm + qa |
+| PROPERTIES | pm + eng (or pm + fe, or pm + eng + fe for fullstack) |
+| IMPLEMENTATION | qa |
+
+Reviewers write a `CROSS-REVIEW-{skill}-{docType}.md` file with a recommendation: **Approved**, **Approved with minor changes**, or **Needs revision**. The dispatcher parses these files and evaluates: if all reviewers approve, the phase advances; if any request revision, the original author is re-dispatched to revise (up to 3 revision cycles before pausing for human intervention).
+
+### Fullstack Fork-Join
+
+For fullstack features (`discipline: "fullstack"`), TSPEC creation, PLAN creation, and implementation phases **fork** work to both `eng` and `fe` agents in parallel. The state machine tracks each agent's completion independently and only advances to the review phase once both finish.
+
+### Context Matrix
+
+The state machine selects which documents to include as context for each agent invocation based on the current phase. For example, during TSPEC creation the agent receives the overview, REQ, and FSPEC (if present) — but not documents from later phases. During revision, the relevant cross-review files are added so the author can see reviewer feedback.
+
+### State Persistence
+
+Feature state is persisted to `ptah/state/pdlc-state.json` using atomic writes (write to `.tmp`, then rename). State is loaded on startup and survives orchestrator restarts.
 
 ## Key Capabilities
 
 - **Multi-agent orchestration** — coordinates 4 specialized agents with automatic inter-agent routing
-- **Token budget management** — layered token allocation across context assembly
-- **Git workflow** — feature branches, worktrees, auto-commits, merge-lock serialization
+- **PDLC state machine** — enforces document lifecycle phases and cross-skill review gates
+- **Token budget management** — layered token allocation across context assembly (skill prompt, feature context, thread history)
+- **Git workflow** — two-tier merge (agent sub-branch → feature branch), isolated worktrees per invocation, auto-commits, merge-lock serialization
 - **Question escalation** — persistent question store with polling for human answers
+- **Auto feature bootstrap** — automatically creates feature folders and overview files on first mention
+- **Parallel feature development** — concurrent work on multiple features via isolated git worktrees
 - **Graceful shutdown** — 7-step sequence: signal handling, drain in-flight work, commit pending changes, disconnect
 - **Resilient invocation** — exponential backoff retries with transient/unrecoverable failure classification
 - **Message deduplication** — prevents duplicate processing of Discord messages
@@ -108,7 +250,7 @@ The orchestrator picks up the message and:
 
 ## Development
 
-All commands run from the `ptah/` directory:
+Requires Node.js 20 LTS. All commands run from the `ptah/` directory:
 
 ```bash
 export PATH="/opt/homebrew/opt/node@20/bin:$PATH"
