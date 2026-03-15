@@ -8,6 +8,7 @@
 | **Requirements** | [011-REQ-orchestrator-pdlc-state-machine](011-REQ-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Functional Specification** | [011-FSPEC-orchestrator-pdlc-state-machine](011-FSPEC-orchestrator-pdlc-state-machine.md) (v1.2, Approved) |
 | **Date** | March 14, 2026 |
+| **Version** | 1.1 |
 | **Status** | Draft |
 
 ---
@@ -203,7 +204,7 @@ export type SideEffect =
   | { type: "log_warning"; message: string }
   | { type: "auto_transition" };
 
-export type TaskType = "Create" | "Review" | "Revise" | "Implement";
+export type TaskType = "Create" | "Review" | "Revise" | "Resubmit" | "Implement";
 export type DocumentType = "REQ" | "FSPEC" | "TSPEC" | "PLAN" | "PROPERTIES" | "";
 
 // --- Reviewer Manifest Entry (FSPEC-FC-01) ---
@@ -229,6 +230,7 @@ export interface ContextDocumentSet {
 
 export type DispatchAction =
   | { action: "dispatch"; agents: AgentDispatch[] }
+  | { action: "retry_agent"; reason: string; message: string }
   | { action: "pause"; reason: string; message: string }
   | { action: "done" }
   | { action: "wait" };
@@ -322,6 +324,9 @@ export interface PdlcDispatcher {
 
   /** Get the next action for a feature based on its current phase (used on startup recovery) */
   getNextAction(featureSlug: string): Promise<DispatchAction>;
+
+  /** Resume a feature paused at the revision bound. Resets revision count and re-enters review. */
+  processResumeFromBound(featureSlug: string): Promise<DispatchAction>;
 
   /** Load all state from disk (called on startup) */
   loadState(): Promise<void>;
@@ -430,9 +435,10 @@ The `transition()` function implements the following state machine:
 | Current Phase | Event | Next Phase | Side Effects | Condition |
 |---|---|---|---|---|
 | `REQ_CREATION` | `lgtm` | `REQ_REVIEW` | `dispatch_reviewers` | — |
-| `REQ_REVIEW` | `review_submitted(approved)` | (see evaluation) | — | Per-reviewer update |
-| `REQ_REVIEW` | `review_submitted(revision_requested)` | `REQ_CREATION` | `dispatch_agent(pm, Revise, REQ)` | revisionCount <= 3 |
-| `REQ_REVIEW` | `review_submitted(revision_requested)` | (no change) | `pause_feature` | revisionCount > 3 |
+| `REQ_REVIEW` | `review_submitted(*)` | (see evaluation) | — | Per-reviewer update; no transition until all reviewers complete |
+| `REQ_REVIEW` | (all complete, any rejected) | `REQ_CREATION` | `dispatch_agent(pm, Revise, REQ)` | revisionCount <= 3 |
+| `REQ_REVIEW` | (all complete, any rejected) | (no change) | `pause_feature` | revisionCount > 3 |
+| `REQ_REVIEW` | (all complete, all approved) | `REQ_APPROVED` | `auto_transition` | — |
 | `REQ_APPROVED` | `auto` | `FSPEC_CREATION` or `TSPEC_CREATION` | `dispatch_agent` | skipFspec flag |
 | `FSPEC_CREATION` | `lgtm` | `FSPEC_REVIEW` | `dispatch_reviewers` | — |
 | `FSPEC_REVIEW` | `review_submitted(*)` | (same pattern as REQ_REVIEW) | — | — |
@@ -455,26 +461,34 @@ The `transition()` function implements the following state machine:
 
 #### Review Phase Evaluation Algorithm
 
+The review phase uses a **collect-all-then-evaluate** model per FSPEC-RT-02 v1.1: all reviewers must complete before the outcome is evaluated. This ensures the author receives ALL feedback in a single revision round.
+
 When a `review_submitted` event is received in a `*_REVIEW` phase:
 
 ```
 1. Update reviewerStatuses[event.reviewerKey] = event.recommendation
-2. IF event.recommendation === "revision_requested":
-     a. Increment revisionCount
-     b. IF revisionCount > 3:
-          Return { sideEffects: [pause_feature("Revision bound exceeded")] }
-          State unchanged.
-     c. ELSE:
-          Reset ALL reviewerStatuses to "pending"
-          Transition to corresponding *_CREATION phase
-          Return { sideEffects: [dispatch_agent(author, "Revise", docType)] }
-3. ELSE (approved):
-     a. IF all reviewerStatuses === "approved":
+2. Check if any reviewer is still "pending":
+     IF yes → no action, return empty side effects (wait for remaining reviewers)
+3. All reviewers have responded. Evaluate outcome:
+     a. IF any reviewerStatus === "revision_requested":
+          i. Increment revisionCount
+          ii. IF revisionCount > 3:
+               Return { sideEffects: [pause_feature("Revision bound exceeded")] }
+               State unchanged.
+          iii. ELSE:
+               For fullstack multi-document reviews: determine which sub-documents
+               were rejected vs. approved. Authors of approved sub-documents receive
+               a "Resubmit" directive (no changes needed). Authors of rejected
+               sub-documents receive a "Revise" directive with cross-review feedback.
+               Reset ALL reviewerStatuses to "pending"
+               Transition to corresponding *_CREATION phase
+               Return { sideEffects: [dispatch_agent(author, "Revise"/"Resubmit", docType)] }
+     b. IF all reviewerStatuses === "approved":
           Transition to *_APPROVED phase
           Return { sideEffects: [auto_transition] }
-     b. ELSE:
-          Some reviewers still pending — no transition, no side effects.
 ```
+
+**Key behavioral difference from early-exit:** A rejection from one reviewer does NOT immediately trigger the revision loop. The orchestrator waits for all other reviewers to complete, then evaluates. This means the author receives all feedback (approvals and rejections) in one round, avoiding ping-pong revision cycles.
 
 #### Fork/Join Algorithm
 
@@ -789,7 +803,10 @@ This is the orchestration layer that connects the pure state machine to the I/O 
      NO: Build lgtm event
 4. Validate artifact exists at expected path (using fs.exists())
      IF missing:
-       Return { action: "pause", reason: "artifact_missing", message: "Expected artifact at {path} not found" }
+       Return { action: "retry_agent", reason: "artifact_missing", message: "Expected artifact at {path} not found" }
+       Note: The orchestrator routing loop handles the retry (per FSPEC-AI-01 step 5):
+       re-invoke the agent with a correction directive up to 2 times (3 total attempts).
+       After 3 failed attempts, escalate via { action: "pause" } with ROUTE_TO_USER.
 5. Call transition(state, event, now)
 6. Persist new state via stateStore.save()
 7. Process side effects → return DispatchAction
@@ -1038,6 +1055,10 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
     return this.nextAction;
   }
 
+  async processResumeFromBound(): Promise<DispatchAction> {
+    return this.nextAction;
+  }
+
   async loadState(): Promise<void> {}
 }
 ```
@@ -1106,7 +1127,7 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
 | REQ-SM-08 | `transition()` fork/join logic | Parallel PLAN creation |
 | REQ-SM-09 | `transition()` DONE guard | Terminal state enforcement |
 | REQ-SM-10 | `migrations.ts`, `FileStateStore.load()` | Schema versioning and migration |
-| REQ-SM-11 | `transition()` revision bound check | 3-cycle revision limit per phase |
+| REQ-SM-11 | `transition()` fork/join logic, `ForkJoinState` | Parallel implementation for fullstack features |
 | REQ-RT-01 | `computeReviewerManifest()` in `review-tracker.ts` | Reviewer manifest per phase |
 | REQ-RT-02 | `computeReviewerManifest()` lookup table | Review rules encoded in code |
 | REQ-RT-03 | `ReviewPhaseState.reviewerStatuses` | Per-reviewer status tracking |
@@ -1181,7 +1202,7 @@ This preserves the review integrity guarantee (no force-advance past unapproved 
 
 | # | Question | Impact | Proposed Resolution |
 |---|----------|--------|---------------------|
-| OQ-01 | Should `REQ-SA-01` through `REQ-SA-06` (SKILL.md simplification) be tracked in this TSPEC's execution plan, or handled as a separate documentation task? | PLAN scope | Propose: separate task. SKILL.md changes are text edits, not code. They should be done after the state machine is deployed and validated, to avoid a mixed state during transition. |
+| OQ-01 | Should `REQ-SA-01` through `REQ-SA-06` (SKILL.md simplification) be tracked in this TSPEC's execution plan, or handled as a separate documentation task? | PLAN scope | Propose: separate task. SKILL.md changes are text edits, not code. They should be done after the state machine is deployed and validated, to avoid a mixed state during transition. **Transition note (per PM review F-05):** SKILL.md updates should be the immediate follow-up task before any new features use the PDLC state machine. During the transition period, the orchestrator's explicit task directives (ACTION lines) override the SKILL.md's self-selection logic, so the conflict is manageable but should be resolved promptly. |
 | OQ-02 | For fullstack features, should the orchestrator dispatch backend and frontend engineers truly in parallel (concurrent invocations) or sequentially? | Performance vs. complexity | Propose: sequential dispatch (P0). Concurrent dispatch adds complexity to the invocation guard and worktree management. REQ-RT-08 is P1. |
 
 ---
@@ -1202,6 +1223,7 @@ This preserves the review integrity guarantee (no force-advance past unapproved 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 14, 2026 | Backend Engineer | Initial TSPEC — 8 new modules, 2 updated modules, ~148 estimated tests |
+| 1.1 | March 14, 2026 | Backend Engineer | Address PM review: F-01 fix REQ-SM-11 mapping, F-02 collect-all-then-evaluate review model, F-03 artifact retry note, F-04 add Resubmit task type, F-05 transition sequencing note, Q-01 add processResumeFromBound to interface |
 
 ---
 
