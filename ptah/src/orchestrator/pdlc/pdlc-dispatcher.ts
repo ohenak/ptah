@@ -82,6 +82,7 @@ function phaseToDocumentType(phase: PdlcPhase): DocumentType {
   if (phase === Phase.TSPEC_CREATION || phase === Phase.TSPEC_REVIEW) return "TSPEC";
   if (phase === Phase.PLAN_CREATION || phase === Phase.PLAN_REVIEW) return "PLAN";
   if (phase === Phase.PROPERTIES_CREATION || phase === Phase.PROPERTIES_REVIEW) return "PROPERTIES";
+  if (phase === Phase.IMPLEMENTATION || phase === Phase.IMPLEMENTATION_REVIEW) return "IMPLEMENTATION";
   return "";
 }
 

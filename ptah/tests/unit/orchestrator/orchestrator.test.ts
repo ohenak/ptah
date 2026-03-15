@@ -17,6 +17,7 @@ import {
   FakeInvocationGuard,
   FakeThreadStateManager,
   FakeWorktreeRegistry,
+  FakePdlcDispatcher,
   createThreadMessage,
   createPendingQuestion,
   createChannelMessage,
@@ -47,6 +48,7 @@ describe("DefaultOrchestrator", () => {
   let invocationGuard: FakeInvocationGuard;
   let threadStateManager: FakeThreadStateManager;
   let worktreeRegistry: FakeWorktreeRegistry;
+  let pdlcDispatcher: FakePdlcDispatcher;
   let abortController: AbortController;
   let orchestrator: DefaultOrchestrator;
 
@@ -70,6 +72,7 @@ describe("DefaultOrchestrator", () => {
     invocationGuard.results = [{ status: "success", invocationResult: { textResponse: "fake response", routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>', artifactChanges: [], durationMs: 1000 }, commitResult: defaultCommitResult() }];
     threadStateManager = new FakeThreadStateManager();
     worktreeRegistry = new FakeWorktreeRegistry();
+    pdlcDispatcher = new FakePdlcDispatcher();
     abortController = new AbortController();
 
     orchestrator = new DefaultOrchestrator({
@@ -92,6 +95,7 @@ describe("DefaultOrchestrator", () => {
       threadStateManager,
       worktreeRegistry,
       shutdownSignal: abortController.signal,
+      pdlcDispatcher,
     });
   });
 
@@ -1638,6 +1642,7 @@ describe("DefaultOrchestrator", () => {
         threadStateManager,
         worktreeRegistry,
         shutdownSignal: abortController.signal,
+        pdlcDispatcher,
       });
     });
 
@@ -1892,6 +1897,7 @@ describe("DefaultOrchestrator", () => {
         threadStateManager,
         worktreeRegistry,
         shutdownSignal: abortController.signal,
+        pdlcDispatcher,
       });
 
       // Set up open-questions channel and startup

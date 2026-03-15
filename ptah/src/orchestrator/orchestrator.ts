@@ -21,6 +21,9 @@ import type { PatternBContextBuilder } from "./pattern-b-context-builder.js";
 import type { InvocationGuard } from "./invocation-guard.js";
 import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
+import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
+import type { DispatchAction } from "./pdlc/phases.js";
+import { extractFeatureName, featureNameToSlug } from "./feature-branch.js";
 
 export interface Orchestrator {
   handleMessage(message: ThreadMessage): Promise<void>;
@@ -55,6 +58,9 @@ export interface OrchestratorDeps {
   threadStateManager: ThreadStateManager;
   worktreeRegistry: WorktreeRegistry;
   shutdownSignal: AbortSignal;
+
+  // --- Phase 11: PDLC State Machine (new) ---
+  pdlcDispatcher: PdlcDispatcher;
 }
 
 export class DefaultOrchestrator implements Orchestrator {
@@ -77,6 +83,7 @@ export class DefaultOrchestrator implements Orchestrator {
   private readonly threadStateManager: ThreadStateManager;
   private readonly worktreeRegistry: WorktreeRegistry;
   private readonly shutdownSignal: AbortSignal;
+  private readonly pdlcDispatcher: PdlcDispatcher;
   private pausedThreadIds = new Set<string>();
   private openQuestionsChannelId: string | null = null;
   private debugChannelId: string | null = null;
@@ -108,6 +115,7 @@ export class DefaultOrchestrator implements Orchestrator {
     this.threadStateManager = deps.threadStateManager;
     this.worktreeRegistry = deps.worktreeRegistry;
     this.shutdownSignal = deps.shutdownSignal;
+    this.pdlcDispatcher = deps.pdlcDispatcher;
   }
 
   async handleMessage(message: ThreadMessage): Promise<void> {
@@ -201,6 +209,16 @@ export class DefaultOrchestrator implements Orchestrator {
 
     if (pendingQuestions.length > 0) {
       this.logger.info(`Restored ${pendingQuestions.length} pending question(s) from pending.md`);
+    }
+
+    // Phase 11: Load PDLC state from disk
+    try {
+      await this.pdlcDispatcher.loadState();
+      this.logger.info("Loaded PDLC state");
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load PDLC state: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -473,7 +491,66 @@ export class DefaultOrchestrator implements Orchestrator {
         // Parse routing signal
         const signal = this.routingEngine.parseSignal(result.routingSignalRaw);
 
-        // Decide next action
+        // Phase 11: Check if this is a PDLC-managed feature
+        const featureSlug = featureNameToSlug(extractFeatureName(triggerMessage.threadName));
+        const isManaged = await this.pdlcDispatcher.isManaged(featureSlug);
+
+        if (isManaged) {
+          // PDLC-managed feature path
+          if (signal.type === "LGTM" || signal.type === "TASK_COMPLETE") {
+            const dispatchAction = await this.pdlcDispatcher.processAgentCompletion({
+              featureSlug,
+              agentId: currentAgentId,
+              signal: signal.type as "LGTM" | "TASK_COMPLETE",
+              worktreePath,
+            });
+            const loopResult = await this.handleDispatchAction(
+              dispatchAction,
+              triggerMessage,
+              currentAgentId,
+              result.textResponse,
+              worktreePath,
+            );
+            if (loopResult === "continue") {
+              // dispatchAction set a new agent — handled inside handleDispatchAction
+              // We return here because handleDispatchAction already started new routing loop iterations
+              return;
+            }
+            return;
+          }
+
+          if (signal.type === "ROUTE_TO_USER") {
+            // Handle via existing Pattern B (PDLC phase unchanged)
+            const questionText = (signal as { question?: string }).question ?? "Awaiting user input.";
+            await this.handleRouteToUser(questionText, triggerMessage, currentAgentId);
+            return;
+          }
+
+          if (signal.type === "ROUTE_TO_AGENT") {
+            // Ad-hoc coordination — log warning, invoke target for one turn, phase unchanged
+            this.logger.warn(
+              `Agent used ROUTE_TO_AGENT in PDLC-managed feature — ad-hoc coordination`,
+            );
+            const targetAgentId = (signal as { agentId?: string }).agentId;
+            if (targetAgentId) {
+              const nextAgentLabel = formatAgentName(targetAgentId);
+              await this.responsePoster.postProgressEmbed(
+                triggerMessage.threadId,
+                `Routing to **${nextAgentLabel}**...`,
+              );
+              currentAgentId = targetAgentId;
+              routingMessage = result.textResponse;
+              // Continue the while loop for one ad-hoc turn
+              continue;
+            }
+            return;
+          }
+
+          // Unknown signal type in managed feature — treat as terminal
+          return;
+        }
+
+        // Unmanaged feature: use existing RoutingEngine.decide() path (backward compatibility)
         const decision = this.routingEngine.decide(signal, this.config);
 
         // Handle decision
@@ -606,6 +683,57 @@ export class DefaultOrchestrator implements Orchestrator {
       agentId,
       threadId: triggerMessage.threadId,
     });
+  }
+
+  private async handleDispatchAction(
+    dispatchAction: DispatchAction,
+    triggerMessage: ThreadMessage,
+    currentAgentId: string,
+    _lastResponse: string,
+    _worktreePath: string,
+  ): Promise<"continue" | "stop"> {
+    switch (dispatchAction.action) {
+      case "dispatch": {
+        // Set next agent(s) and continue loop — dispatch first agent sequentially
+        for (const agentDispatch of dispatchAction.agents) {
+          await this.executeRoutingLoop(agentDispatch.agentId, triggerMessage);
+        }
+        return "continue";
+      }
+      case "retry_agent": {
+        // Re-invoke with correction directive (up to 2 retries, 3 total attempts)
+        this.logger.warn(
+          `PDLC retry_agent: ${dispatchAction.reason} — ${dispatchAction.message}`,
+        );
+        // Post the retry message and re-enter routing loop
+        await this.responsePoster.postProgressEmbed(
+          triggerMessage.threadId,
+          `Retrying agent: ${dispatchAction.message}`,
+        );
+        await this.executeRoutingLoop(currentAgentId, triggerMessage);
+        return "continue";
+      }
+      case "pause": {
+        // Handle via ROUTE_TO_USER mechanism
+        await this.handleRouteToUser(dispatchAction.message, triggerMessage, currentAgentId);
+        return "stop";
+      }
+      case "done": {
+        // Post completion embed
+        await this.responsePoster.postCompletionEmbed(
+          triggerMessage.threadId,
+          currentAgentId,
+          this.config,
+        );
+        return "stop";
+      }
+      case "wait": {
+        // Return — waiting for more results (fork/join)
+        return "stop";
+      }
+      default:
+        return "stop";
+    }
   }
 
   private formatQuestionNotification(question: PendingQuestion): string {

@@ -18,6 +18,7 @@ import {
   FakeInvocationGuard,
   FakeThreadStateManager,
   FakeWorktreeRegistry,
+  FakePdlcDispatcher,
   defaultTestConfig,
   defaultCommitResult,
   createThreadMessage,
@@ -221,6 +222,7 @@ describe("StartCommand", () => {
         threadStateManager: new FakeThreadStateManager(),
         worktreeRegistry: new FakeWorktreeRegistry(),
         shutdownSignal: new AbortController().signal,
+        pdlcDispatcher: new FakePdlcDispatcher(),
       });
 
       command = new StartCommand(configLoader, discord, logger, {
@@ -324,6 +326,7 @@ describe("StartCommand", () => {
         threadStateManager: new FakeThreadStateManager(),
         worktreeRegistry: new FakeWorktreeRegistry(),
         shutdownSignal: new AbortController().signal,
+        pdlcDispatcher: new FakePdlcDispatcher(),
       });
 
       const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
@@ -361,6 +364,7 @@ describe("StartCommand", () => {
         threadStateManager: new FakeThreadStateManager(),
         worktreeRegistry: new FakeWorktreeRegistry(),
         shutdownSignal: new AbortController().signal,
+        pdlcDispatcher: new FakePdlcDispatcher(),
       });
 
       discord.channels.set("agent-debug", "debug-channel-id");

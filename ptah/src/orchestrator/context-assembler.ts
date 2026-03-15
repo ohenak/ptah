@@ -9,6 +9,7 @@ import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
 import type { TokenCounter } from "./token-counter.js";
 import { extractFeatureName as extractFeatureNameFromModule } from "./feature-branch.js";
+import type { ContextDocumentSet } from "./pdlc/phases.js";
 
 export interface ContextAssembler {
   assemble(params: {
@@ -20,6 +21,7 @@ export interface ContextAssembler {
     config: PtahConfig;
     worktreePath?: string;  // Phase 4: read Layer 2 from worktree when provided
     routingMessage?: string; // The previous agent's response text when routing between agents
+    contextDocuments?: ContextDocumentSet; // Phase 11: PDLC phase-aware document set
   }): Promise<ContextBundle>;
 }
 
@@ -57,8 +59,9 @@ export class DefaultContextAssembler implements ContextAssembler {
     config: PtahConfig;
     worktreePath?: string;
     routingMessage?: string;
+    contextDocuments?: ContextDocumentSet;
   }): Promise<ContextBundle> {
-    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage } = params;
+    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments } = params;
 
     const featureName = this.extractFeatureName(threadName);
     const resumePattern = this.detectResumePattern(agentId, threadHistory);
@@ -107,7 +110,13 @@ export class DefaultContextAssembler implements ContextAssembler {
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
-    let layer2Files = await this.readFeatureFilesFromBase(featureName, docsRoot);
+    // Phase 11: when contextDocuments is provided, read only specified documents
+    let layer2Files: Array<{ name: string; content: string }>;
+    if (contextDocuments) {
+      layer2Files = await this.readContextDocuments(contextDocuments, docsRoot);
+    } else {
+      layer2Files = await this.readFeatureFilesFromBase(featureName, docsRoot);
+    }
 
     // Token budget enforcement
     const budget = config.orchestrator.token_budget ?? DEFAULT_TOKEN_BUDGET;
@@ -248,6 +257,30 @@ export class DefaultContextAssembler implements ContextAssembler {
 
     const botTurns = threadHistory.filter((m) => m.isBot && m.authorId === agentId);
     return botTurns.length + 1; // +1 for current turn
+  }
+
+  private async readContextDocuments(
+    contextDocs: ContextDocumentSet,
+    docsRoot: string,
+  ): Promise<Array<{ name: string; content: string }>> {
+    const files: Array<{ name: string; content: string }> = [];
+    for (const doc of contextDocs.documents) {
+      // Skip overview — already in Layer 1
+      if (doc.type === "overview") continue;
+      // Skip glob patterns for cross-review (read all matching)
+      if (doc.relativePath.includes("*")) continue;
+
+      const filePath = this.fs.joinPath(docsRoot, doc.relativePath);
+      try {
+        const content = await this.fs.readFile(filePath);
+        files.push({ name: this.fs.basename(filePath), content });
+      } catch {
+        if (doc.required) {
+          this.logger.warn(`Required context document not found: ${filePath}`);
+        }
+      }
+    }
+    return files;
   }
 
   private async readFeatureFiles(

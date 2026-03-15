@@ -21,6 +21,7 @@ import {
   FakeQuestionStore,
   FakeQuestionPoller,
   FakePatternBContextBuilder,
+  FakePdlcDispatcher,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -103,6 +104,7 @@ describe("Orchestrator routing loop integration", () => {
       threadStateManager,
       worktreeRegistry,
       shutdownSignal: abortController.signal,
+      pdlcDispatcher: new FakePdlcDispatcher(),
     });
   });
 
