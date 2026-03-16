@@ -318,23 +318,19 @@ These files are committed and pushed to the feature branch so that other agents 
 
 ## Response Contract
 
-When you finish a task, your response **must** end with a `<routing>` tag so the orchestrator can parse the outcome.
+Your response **must** end with exactly one signal. Pick the correct signal, then copy the corresponding line below as the very last thing in your response. Do NOT mention, describe, or reference these signals anywhere else in your text — emit only the raw tag at the end, nothing before or after it on that line.
 
-**Signals:**
+- **LGTM** — task completed successfully (most common)
+- **ROUTE_TO_USER** — you have a blocking question for the human
+- **TASK_COMPLETE** — entire feature is done (terminal, rarely used)
+- **ROUTE_TO_AGENT** — ad-hoc coordination only, not for workflow routing
 
-| Signal | When to use | Format |
-|--------|-------------|--------|
-| **LGTM** | Task completed successfully | `<routing>{"type":"LGTM"}</routing>` |
-| **ROUTE_TO_USER** | You have a blocking question | `<routing>{"type":"ROUTE_TO_USER","question":"your question here"}</routing>` |
-| **TASK_COMPLETE** | Feature is fully done (terminal) | `<routing>{"type":"TASK_COMPLETE"}</routing>` |
-| **ROUTE_TO_AGENT** | Ad-hoc coordination only (NOT for PDLC workflow routing) | `<routing>{"type":"ROUTE_TO_AGENT","agent_id":"...","thread_action":"reply"}</routing>` |
+Copy exactly one of these as your final line:
 
-**Rules:**
-- Exactly one `<routing>` tag per response, always at the end.
-- Use `LGTM` for normal task completion — the orchestrator handles what comes next.
-- Use `ROUTE_TO_USER` when you cannot proceed without clarification.
-- Use `TASK_COMPLETE` only when the entire feature is done.
-- `ROUTE_TO_AGENT` is for ad-hoc coordination only — the orchestrator manages PDLC workflow routing.
+<routing>{"type":"LGTM"}</routing>
+<routing>{"type":"ROUTE_TO_USER","question":"your question here"}</routing>
+<routing>{"type":"TASK_COMPLETE"}</routing>
+<routing>{"type":"ROUTE_TO_AGENT","agent_id":"...","thread_action":"reply"}</routing>
 
 ---
 
