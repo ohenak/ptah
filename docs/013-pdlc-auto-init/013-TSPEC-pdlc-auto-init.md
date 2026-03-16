@@ -8,8 +8,8 @@
 | **Requirements** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.2, Approved) |
 | **Functional Specification** | [013-FSPEC-pdlc-auto-init](013-FSPEC-pdlc-auto-init.md) (v1.2, Approved) |
 | **Date** | 2026-03-15 |
-| **Version** | 1.1 |
-| **Status** | Draft |
+| **Version** | 1.2 |
+| **Status** | Approved |
 
 ---
 
@@ -278,7 +278,7 @@ const isManaged = await this.pdlcDispatcher.isManaged(featureSlug);
 let effectivelyManaged = isManaged;
 
 if (!isManaged) {
-  const guardResult = evaluateAgeGuard(threadHistory);
+  const guardResult = evaluateAgeGuard(threadHistory, this.logger);
   if (guardResult.eligible) {
     const initialMessage = threadHistory.find(m => !m.isBot) ?? null;
     const config = parseKeywords(initialMessage?.content ?? null);
@@ -325,13 +325,13 @@ const decision = this.routingEngine.decide(signal, this.config);
 
 **`threadHistory` availability:** The variable `threadHistory` is already declared earlier in the same loop iteration (line: `const threadHistory = await this.discord.readThreadHistory(...)`). The auto-init block reuses it directly. No second `readThreadHistory()` call is issued (per FSPEC-PI-01 Input note and BE cross-review F-03).
 
-#### 4.4.4 `evaluateAgeGuard(history: ThreadMessage[]): AgeGuardResult`
+#### 4.4.4 `evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult`
 
 **Location:** `ptah/src/orchestrator/orchestrator.ts` (module-level private helper)
 
 **Signature:**
 ```typescript
-function evaluateAgeGuard(history: ThreadMessage[]): AgeGuardResult
+function evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult
 ```
 
 **Algorithm:**
@@ -716,7 +716,10 @@ it("auto-initializes new feature and routes through managed path", async () => {
   expect(pdlcDispatcher.initializeFeatureCalls).toHaveLength(1);
   expect(pdlcDispatcher.initializeFeatureCalls[0].config).toEqual({ discipline: "backend-only", skipFspec: false });
   expect(pdlcDispatcher.processAgentCompletionCalls).toHaveLength(1);
-  expect(logger.messages.some(m => m.message.includes("Auto-initialized PDLC state"))).toBe(true);
+  expect(logger.messages.some(m =>
+    m.level === "info" &&
+    m.message.includes("Auto-initialized PDLC state")
+  )).toBe(true);
 });
 ```
 
@@ -876,6 +879,7 @@ The `initResult` must be configured to a valid `FeatureState` for any test that 
 |---------|------|--------|---------|
 | 1.0 | 2026-03-15 | Backend Engineer | Initial TSPEC — module architecture, concrete implementations for `countPriorAgentTurns`, `parseKeywords`, `evaluateAgeGuard`, auto-init block in `executeRoutingLoop()`, idempotency guard in `initializeFeature()`, test strategy |
 | 1.1 | 2026-03-15 | Backend Engineer | Address PM and Test Engineer cross-review findings: add `debug` to Logger interface (resolves OQ-01, PM-F-01, QA-F-01); remove dual code block in §4.4.3 (PM-F-02); remove duck-type debug? check in §4.4.5 (PM-F-03); add UT-AG-06 fail-open test (QA-F-02); clarify AT-PI-04 unit-vs-integration coverage (QA-F-03); add UT-ORC-SLUG-01 test body with positive legacy-path assert (QA-F-04); document createThreadMessage as existing factory (QA-F-05); replace toBe(first) with field-level assertions in UT-IDP-01 (QA-F-06); add UT-KW-10 duplicate skip-fspec; add FakeStateStore.saveCount note (QA-Q-03); add out-of-scope note for thread-name parsing (QA-Q-01); update §6 log levels for REQ-BC-02 and idempotency row; update §8 REQ-BC-02 row; update §9.2 observable side effects |
+| 1.2 | 2026-03-15 | Backend Engineer | Address round-2 Test Engineer findings: add `this.logger` as second argument to `evaluateAgeGuard()` call in §4.4.3 (QA-F-07); fix §4.4.4 section header signature to match two-parameter definition; add `m.level === "info" &&` to UT-ORC-AI-01 log assertion in §7.4 (QA-F-08); promote status to Approved |
 
 ---
 
