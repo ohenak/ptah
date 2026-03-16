@@ -128,9 +128,13 @@ describe("evaluateAgeGuard", () => {
     expect(evaluateAgeGuard(history, logger)).toEqual({ eligible: false, turnCount: 5 });
   });
 
-  it("UT-AG-05: empty array → eligible", () => {
+  it("UT-AG-05: user-only messages (no bot turns) → eligible", () => {
     const logger = new FakeLogger();
-    expect(evaluateAgeGuard([], logger)).toEqual({ eligible: true });
+    const history = [
+      createThreadMessage({ isBot: false, content: "@pm create REQ" }),
+      createThreadMessage({ isBot: false, content: "another user msg" }),
+    ];
+    expect(evaluateAgeGuard(history, logger)).toEqual({ eligible: true });
   });
 
   it("UT-AG-06: malformed history — fail-open and warn", () => {

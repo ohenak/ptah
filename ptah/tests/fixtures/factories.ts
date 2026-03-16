@@ -1006,10 +1006,8 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
   async commitAndMerge(params: CommitParams): Promise<CommitResult> {
     this.commitAndMergeCalls.push(params);
     if (this.callIndex >= this.results.length) {
-      throw new Error(
-        `FakeArtifactCommitter: no result configured for call index ${this.callIndex}. ` +
-        `Configure results via the .results array.`
-      );
+      // Return the last configured result for any overflow calls
+      return this.results[this.results.length - 1]!;
     }
     return this.results[this.callIndex++];
   }

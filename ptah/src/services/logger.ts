@@ -19,6 +19,6 @@ export class ConsoleLogger implements Logger {
   }
 
   debug(message: string): void {
-    console.log(`[ptah] DEBUG: ${message}`);
+    console.debug(`[ptah] DEBUG: ${message}`);
   }
 }
