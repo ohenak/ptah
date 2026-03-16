@@ -5,7 +5,7 @@
 | **Technical Specification** | [013-TSPEC-pdlc-auto-init](013-TSPEC-pdlc-auto-init.md) |
 | **Requirements** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) |
 | **Date** | 2026-03-15 |
-| **Status** | Draft |
+| **Status** | Approved (v1.1 — addressed PM F-01/F-02 and TE Properties gaps 1–5) |
 
 ---
 
@@ -38,8 +38,8 @@ These are module-level private helpers in `orchestrator.ts`. They are tested via
 | B-2 | Implement `countPriorAgentTurns(history: ThreadMessage[]): number` — filter for `isBot === true AND content.includes("<routing>")`, return count | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | B-3 | Write failing unit tests for `parseKeywords` (UT-KW-01 through UT-KW-10): null/undefined/empty → defaults; `[backend-only]`, `[frontend-only]`, `[fullstack]`, `[skip-fspec]` recognized; `[FULLSTACK]` and `[ fullstack ]` ignored (case/space sensitivity); last discipline wins; unknown token ignored; duplicate `[skip-fspec]` idempotent | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | B-4 | Implement `parseKeywords(text: string \| null \| undefined): FeatureConfig` — extract `\[([^\s\[\]]+)\]` tokens, process left-to-right, last discipline wins, default `{ discipline: "backend-only", skipFspec: false }` | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| B-5 | Write failing unit tests for `evaluateAgeGuard` (UT-AG-01 through UT-AG-06): 0 turns → eligible; 1 turn → eligible (boundary); 2 turns → ineligible (boundary); 5 turns → ineligible; empty array → eligible; malformed history (countPriorAgentTurns throws) → fail-open + warn log | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| B-6 | Implement `evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult` — calls `countPriorAgentTurns`, returns `{ eligible: true }` if count ≤ 1, `{ eligible: false, turnCount }` otherwise; catch block: `logger.warn(...)` + return `{ eligible: true }` (fail-open); define `const AGE_GUARD_THRESHOLD = 1` as module-level constant; define `type AgeGuardResult` inline | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| B-5 | Write failing unit tests for `evaluateAgeGuard` (UT-AG-01 through UT-AG-06): 0 turns → eligible; 1 turn → eligible (boundary); 2 turns → ineligible (boundary); 5 turns → ineligible; empty array → eligible; **UT-AG-06** malformed history (countPriorAgentTurns throws) → fail-open: return value must be `{ eligible: true }` AND `logger.warn` must have been called with the malformed-history message (assert both, per PROP-BC-08 and gap recommendation #3) | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| B-6 | Implement `evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult` — calls `countPriorAgentTurns`, returns `{ eligible: true }` if count ≤ 1, `{ eligible: false, turnCount }` otherwise; catch block: `logger.warn(...)` + return `{ eligible: true }` (fail-open); define `const AGE_GUARD_THRESHOLD = 1` as module-level constant; define `type AgeGuardResult` inline. **Note (TE F-07):** The call site in `executeRoutingLoop()` (§4.4.3 of TSPEC) must pass `this.logger` as the second argument — the illustrative TSPEC code block omits it; the implementation must include it or the call will not type-check | `ptah/tests/unit/orchestrator/pdlc/auto-init.test.ts` | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 
 **Dependency note:** B-1/B-2 before B-5/B-6 (evaluateAgeGuard wraps countPriorAgentTurns). B-3/B-4 is independent of B-5/B-6. All of Phase B depends on A-2 (FakeLogger typed correctly).
 
@@ -72,8 +72,8 @@ These are module-level private helpers in `orchestrator.ts`. They are tested via
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E-1 | Write failing orchestrator unit tests for happy-path auto-init (UT-ORC-AI-01 to UT-ORC-AI-06): new feature with 0 prior turns → `initializeFeature()` called once, config matches keyword parsing, managed path invoked, info log emitted; `[fullstack]` keyword → discipline fullstack; `[skip-fspec]` → skipFspec true; `[backend-only] [fullstack]` → discipline fullstack (last wins) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E-2 | Write failing orchestrator unit tests for error and edge cases (UT-ORC-AI-03, UT-ORC-AI-04, UT-ORC-AI-05, UT-ORC-AI-06): `initializeFeature()` throws → error logged, neither managed nor legacy path called; logger.info throws during success log → error swallowed, routing proceeds; `postToDebugChannel` fails → warn logged, routing proceeds; already-managed feature → auto-init not re-triggered | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| E-1 | Write failing orchestrator unit tests for happy-path auto-init (**UT-ORC-AI-01 and UT-ORC-AI-02** only): new feature with 0 prior turns → `initializeFeature()` called once, config matches keyword parsing, managed path invoked, info log emitted (verify `m.level === "info"` filter per TE F-08); `[fullstack]` keyword → discipline fullstack. **Additional assertions in UT-ORC-AI-01** (per PROP-PI-10 gap #1): verify `parseKeywords` receives the content of the first `isBot === false` message — not the thread name, not a bot message; (per PROP-PI-16 gap #2): verify the info log entry appears in `FakeLogger.messages` **before** the debug channel post appears in `FakeDiscordClient.postedMessages` | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
+| E-2 | Write failing orchestrator unit tests for error and edge cases (**UT-ORC-AI-03 through UT-ORC-AI-06**): UT-ORC-AI-03 `[skip-fspec]` → skipFspec true; UT-ORC-AI-04 `[backend-only] [fullstack]` → discipline fullstack (last wins); UT-ORC-AI-05 `initializeFeature()` throws → error logged, neither managed nor legacy path called; UT-ORC-AI-06 logger.info throws during success log → error swallowed, routing proceeds; also cover: `postToDebugChannel` fails → warn logged, routing proceeds; already-managed feature → auto-init not re-triggered. **Note (PM F-02):** UT-ORC-AI-03/04 are happy-path keyword tests, UT-ORC-AI-05/06 are error cases — all four IDs live in this task (E-2), none overlap with E-1 | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | E-3 | Write failing orchestrator unit tests for age guard + backward compat (UT-ORC-BC-01 to UT-ORC-BC-05): thread with 2 prior agent turns → no auto-init, debug skip log emitted, `routingEngine.decide()` IS called; thread with 1 prior turn → auto-init eligible; thread with 0 prior turns (empty history) → auto-init eligible; orchestrator progress messages (bot but no `<routing>` tag) excluded from count | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | E-4 | Write failing orchestrator unit tests for discipline keyword parsing (UT-ORC-DC-01 to UT-ORC-DC-09): each valid keyword sets correct discipline; `[FULLSTACK]` ignored → default; `[ fullstack ]` ignored → default; unknown token ignored → default; no keywords → default `{ discipline: "backend-only", skipFspec: false }` | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
 | E-5 | Write failing orchestrator unit test for unresolvable slug (UT-ORC-SLUG-01): thread name that produces falsy slug → no auto-init attempted, age guard not evaluated, `routingEngine.decide()` IS called (no silent drop) | `ptah/tests/unit/orchestrator/orchestrator.test.ts` [UPDATED] | `ptah/src/orchestrator/orchestrator.ts` | ⬚ Not Started |
@@ -87,9 +87,10 @@ These are module-level private helpers in `orchestrator.ts`. They are tested via
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| F-1 | Write and implement integration tests IT-01 through IT-05: IT-01 new feature (0 prior turns) auto-inits and enters managed path; IT-02 old feature (3 prior turns) routes legacy; IT-03 keyword parsing end-to-end (`[fullstack]` → correct discipline in state); IT-04 `initializeFeature()` failure halts routing loop; IT-05 two routing loop invocations for same slug both with `isManaged → false` → `initializeFeature` called twice, single state record, no config overwrite (AT-PI-04 observable) | `ptah/tests/integration/orchestrator/pdlc-auto-init.test.ts` [NEW] | (no new source files — exercises existing orchestrator with all fakes) | ⬚ Not Started |
+| F-1 | Write and implement integration tests IT-01 through IT-05: IT-01 new feature (0 prior turns) auto-inits and enters managed path; IT-02 old feature (3 prior turns) routes legacy; IT-03 keyword parsing end-to-end (`[fullstack]` → correct discipline in state); IT-04 `initializeFeature()` failure halts routing loop — **extended per gap #4 (PROP-PI-22):** after asserting the first invocation halts, clear the fake error and invoke the routing loop a second time; assert it succeeds, calls `initializeFeature()` again, and enters the managed path (verifies no permanent blockage after transient failure); IT-05 two routing loop invocations for same slug both with `isManaged → false` → `initializeFeature` called twice, single state record, no config overwrite (AT-PI-04 observable) | `ptah/tests/integration/orchestrator/pdlc-auto-init.test.ts` [NEW] | (no new source files — exercises existing orchestrator with all fakes) | ⬚ Not Started |
+| F-2 | Write and implement latency benchmark smoke test for REQ-NF-01: invoke the auto-init block 100 times via the integration harness (with FakeStateStore, FakeLogger, FakePdlcDispatcher — no real I/O); measure wall-clock time per invocation; assert p95 < 100ms. Can be appended to `pdlc-auto-init.test.ts` as a separate `describe` block and skipped in standard CI runs via a `PERF_TEST=true` environment flag. Addresses PM F-01 Option B and PROP-NF-02 | `ptah/tests/integration/orchestrator/pdlc-auto-init.test.ts` | (no new source files) | ⬚ Not Started |
 
-**Dependency note:** F-1 depends on all of Phases A–E being complete. Integration tests use the full orchestrator setup with all fakes wired together.
+**Dependency note:** F-1 and F-2 depend on all of Phases A–E being complete. Integration tests use the full orchestrator setup with all fakes wired together.
 
 ---
 
@@ -119,6 +120,7 @@ B-2 + B-4 + B-6 + D-2 + A-1 (all helpers + idempotency guard)
 
 All of A–E
   └─→ F-1 (integration tests)
+  └─→ F-2 (latency benchmark, same file, depends on F-1 harness)
 ```
 
 **Parallelism opportunities:**
@@ -156,7 +158,8 @@ All existing Feature 011 unit and integration tests must continue to pass withou
 - [ ] All tasks completed and status updated to ✅
 - [ ] All tests pass (`npx vitest run`) — 0 failures
 - [ ] No skipped or pending tests
-- [ ] Code reviewed against requirement acceptance criteria (REQ-PI-01–05, REQ-BC-01–02, REQ-DC-01–03, REQ-NF-02–03)
+- [ ] Code reviewed against requirement acceptance criteria (REQ-PI-01–05, REQ-BC-01–02, REQ-DC-01–03, REQ-NF-01, REQ-NF-02–03)
+- [ ] REQ-NF-01 latency — covered by F-2 benchmark; assert p95 < 100ms across 100 runs with fakes (run with `PERF_TEST=true npx vitest run`)
 - [ ] Implementation matches TSPEC: `countPriorAgentTurns`, `parseKeywords`, `evaluateAgeGuard` behave per §4.4; auto-init block in `executeRoutingLoop()` matches §4.4.3; idempotency guard in `initializeFeature()` matches §4.4.5
 - [ ] Feature 011 test suite continues to pass — 1068 existing tests unmodified (REQ-NF-03)
 - [ ] No changes to `state-machine.ts`, `state-store.ts`, `review-tracker.ts`, `phases.ts`, `context-matrix.ts`, `cross-review-parser.ts`, `migrations.ts` (C-01)
