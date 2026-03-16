@@ -50,11 +50,12 @@ Every task you perform follows this git workflow. No exceptions.
 
 > **⚠ HARD RULE: Every file you create MUST be committed and pushed before you output any routing tags or summary messages. If you skip this, the file only exists in your local workspace and no other agent can read it. This is the #1 cause of lost review artifacts.**
 
-3. **Write all artifacts to disk using the Write tool.** Do NOT just include document content in your response text — you must use the Write tool to create the file. Verify the file exists afterward.
-4. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use clear, descriptive commit messages. **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
-5. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any routing, so the receiving agent can pull and read the files.
-6. **Verify the push succeeded** by running `git log --oneline -1` and confirming the commit is present.
-7. **Signal completion** — see Response Contract below.
+4. **Write all artifacts to disk using the Write tool.** Do NOT just include document content in your response text — you must use the Write tool to create the file. Verify the file exists afterward.
+5. **Check for uncommitted files.** Run `git status` and ensure EVERY file you created or modified is staged. If any files are untracked or modified, `git add` them before committing.
+6. **Commit ALL generated artifacts in logical commits.** This includes documents, cross-review files, and any other files created during the task. Each commit should represent a coherent unit of work. Use clear, descriptive commit messages. **Nothing should be left uncommitted — other agents depend on reading these files from the branch.**
+7. **Push to the remote branch:** `git push origin feat-{feature-name}` — this must happen before any signal emission, so the receiving agent can pull and read the files.
+8. **Verify the push succeeded** by running `git log --oneline origin/feat-{feature-name} -1` (note: `origin/` prefix — this checks the REMOTE ref, not local). If the push failed, retry before signaling.
+9. **Signal completion** — see Response Contract below.
 
 ---
 
