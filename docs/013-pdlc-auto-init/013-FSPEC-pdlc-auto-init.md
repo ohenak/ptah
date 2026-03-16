@@ -5,11 +5,11 @@
 | Field | Detail |
 |-------|--------|
 | **Document ID** | FSPEC-013 |
-| **Parent Document** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.0, Draft) |
+| **Parent Document** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.2, Approved) |
 | **Version** | 1.2 |
 | **Date** | March 15, 2026 |
 | **Author** | Product Manager |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
