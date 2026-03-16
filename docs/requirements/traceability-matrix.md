@@ -4,7 +4,7 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | March 14, 2026 |
+| **Date** | March 16, 2026 |
 | **Version** | 2.7 |
 | **Status** | Draft |
 
@@ -38,7 +38,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02], [US-04] | [REQ-DI-03] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-05] | [REQ-DI-04] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-02] | [REQ-DI-06] | Pending Spec | P1 | 7 | Pending Spec |
+| [US-02] | [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-ptah-polish.md) | P1 | 7 | FSPEC Complete |
+| [US-02], [US-07] | [REQ-DI-10] | Pending FSPEC | P1 | 7 | Pending FSPEC |
+| [US-03], [US-07] | [REQ-RP-06] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-03] | [REQ-DI-07] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
 | [US-02], [US-07] | [REQ-DI-08] | [FSPEC-GR-02](../006-guardrails/006-FSPEC-ptah-guardrails.md) | P0 | 6 | FSPEC Complete |
 | [US-02], [US-04] | [REQ-DI-09] | [FSPEC-RP-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
@@ -78,7 +80,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-06] | [REQ-NF-05] | [FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md), [FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
 | [US-01], [US-05] | [REQ-NF-06] | [TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md) | P0 | 1 | Specified |
 | [US-04], [US-06] | [REQ-NF-07] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-08] | [REQ-NF-08] | Pending Spec | P1 | 7 | Pending Spec |
+| [US-08] | [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-ptah-polish.md) | P1 | 7 | FSPEC Complete |
+| [US-05] | [REQ-NF-09] | Pending FSPEC | P1 | 7 | Pending FSPEC |
+| [US-05], [US-07] | [REQ-NF-10] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-09] | [REQ-AF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
 | [US-09] | [REQ-AF-02] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
 | [US-09] | [REQ-AF-03] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
