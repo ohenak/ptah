@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-013 |
 | **Parent Document** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.0, Draft) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 15, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -110,6 +110,8 @@ After `initializeFeature()` completes:
 - Full conversation history (to supply to age guard and keyword parsing)
 - Initial message text (the first chronological message in the conversation history with `isBot === false`, i.e., the first user-authored message; used for keyword parsing)
 
+> **Note on conversation history availability:** The conversation history required by the age guard ([FSPEC-BC-01]) and keyword parsing ([FSPEC-DC-01]) is already fetched by the orchestrator before the agent invocation and must be reused at the auto-init decision point. A second `readThreadHistory()` call must not be issued — issuing one would add an unnecessary Discord API round-trip per routing loop invocation and introduce a potential state inconsistency if a message arrives between the two calls.
+
 **Output:**
 - Feature state record created on disk (via `initializeFeature()`)
 - Info-level log message emitted
@@ -120,7 +122,7 @@ After `initializeFeature()` completes:
 
 | Case | Behavior |
 |------|----------|
-| `initializeFeature()` is called but a state record already exists (race condition) | `initializeFeature()` must not overwrite the existing record. It detects the record and returns the existing `FeatureState` without modification (it does not throw). The orchestrator treats this as a successful no-op and proceeds to the managed PDLC path with the existing state record. |
+| `initializeFeature()` is called but a state record already exists (race condition) | `initializeFeature()` must not overwrite the existing record. It detects the record and returns the existing `FeatureState` without modification (it does not throw). The orchestrator treats this as a successful no-op and proceeds to the managed PDLC path with the existing state record. The orchestrator emits a debug-level log message `[ptah] PDLC auto-init skipped: "{featureSlug}" already initialized (concurrent request)` to provide an observable artifact for tests without requiring filesystem inspection. |
 | Feature slug cannot be resolved from thread context | Orchestrator falls through to existing error handling. Auto-init is not attempted. |
 | Initial message is unavailable (conversation history is empty) | Default configuration is used — no keyword parsing attempted. Feature is initialized with `{ discipline: "backend-only", skipFspec: false }`. |
 
@@ -138,7 +140,9 @@ After `initializeFeature()` completes:
 | AT-PI-01 | WHO: As the orchestrator GIVEN: a feature slug with no state record and 0 prior agent turns WHEN: an agent returns LGTM THEN: `initializeFeature()` is called, a state record is created at `REQ_CREATION`, the created state record has config `{ discipline: "backend-only", skipFspec: false }`, and the LGTM signal is processed through the managed PDLC path |
 | AT-PI-02 | WHO: As the orchestrator GIVEN: a feature slug that already has a state record WHEN: an agent returns LGTM THEN: `initializeFeature()` is NOT called; the signal is processed directly through the managed PDLC path |
 | AT-PI-03 | WHO: As the orchestrator GIVEN: `initializeFeature()` throws a filesystem error WHEN: the routing loop processes the signal THEN: the error is logged, neither managed nor legacy path is invoked, and the feature slug remains unmanaged |
-| AT-PI-04 | WHO: As the orchestrator GIVEN: two concurrent messages arrive for the same new feature, both triggering auto-init WHEN: both signals are processed THEN: exactly one state record is created; the second call detects the existing record and skips initialization |
+| AT-PI-04 | WHO: As the orchestrator GIVEN: two messages arrive on **different Discord threads** whose names resolve to the same feature slug (cross-thread concurrency — each thread enters its own queue lane and calls `isManaged()` concurrently, both seeing `false`) WHEN: both signals are processed THEN: exactly one state record is created; the second `initializeFeature()` call detects the existing record and skips initialization; the orchestrator emits a debug log `[ptah] PDLC auto-init skipped: "{featureSlug}" already initialized (concurrent request)`. **Note:** same-thread concurrency is already prevented by the per-thread message queue and is not the target scenario for this test. |
+| AT-PI-05 | WHO: As the orchestrator GIVEN: a feature is eligible for auto-initialization AND the logger throws when emitting the info-level log WHEN: the routing loop processes the signal THEN: the logger error is swallowed; `initializeFeature()` has already been called and the state record exists on disk; routing proceeds through the managed PDLC path |
+| AT-PI-06 | WHO: As the orchestrator GIVEN: a feature is eligible for auto-initialization AND the conversation history is empty (no messages) WHEN: the routing loop processes the signal THEN: keyword parsing is not attempted; `initializeFeature()` is called with `{ discipline: "backend-only", skipFspec: false }`; routing proceeds through the managed PDLC path |
 
 #### Dependencies
 
@@ -383,6 +387,7 @@ KEYWORD PARSING ENTRY
 |---------|------|--------|---------|
 | 1.0 | March 15, 2026 | Product Manager | Initial FSPEC — 3 specifications (FSPEC-PI-01, FSPEC-BC-01, FSPEC-DC-01) covering auto-initialization decision flow, age guard evaluation, and keyword parsing |
 | 1.1 | March 15, 2026 | Product Manager | Address BE round-2 cross-review (F-01 through F-04) and TE cross-review (F-01, F-03 through F-05, Q-01, Q-02): (1) FSPEC-BC-01 agent-turn definition updated to use `isBot === true AND content contains <routing> tag`, replacing non-existent `role` field; behavioral flow and Input section aligned; (2) Race-condition edge case in FSPEC-PI-01 now specifies that `initializeFeature()` returns existing `FeatureState` without throwing; (3) "Initial message" consistently defined as first chronological message with `isBot === false` across FSPEC-PI-01, FSPEC-DC-01 Description, and BR-DC-06; (4) Debug channel config key `this.config.discord.channels.debug` cited in FSPEC-PI-01 Output; (5) AT-BC-03 THEN clause includes debug log assertion; (6) AT-DC-09 added for reverse keyword-order conflict; (7) AT-PI-01 THEN clause includes FeatureConfig assertion; (8) OQ-03 and OQ-04 added to resolve TE-Q-01 (orchestrator message exclusion) and TE-Q-02 (skipFspec scope) |
+| 1.2 | March 15, 2026 | Product Manager | Address BE round-3 cross-review (F-02, F-03) and TE round-2 cross-review (F-01, F-02, F-03, Q-01): (1) AT-PI-04 rewritten to specify cross-thread concurrency (two different `threadId` values resolving to same slug) as the target scenario — distinguishing it from same-thread concurrency which is already prevented by the per-thread message queue; (2) AT-PI-05 added — negative test for logger-throws fault path (REQ-PI-03 requirement that logger failures are swallowed and routing proceeds); (3) AT-PI-06 added — end-to-end test for empty-history → default-config path (no keyword parsing attempted, defaults applied directly); (4) Race-condition edge case row updated with observable debug log `[ptah] PDLC auto-init skipped: "{featureSlug}" already initialized (concurrent request)` enabling deterministic test assertions without filesystem inspection (TE Q-01); (5) FSPEC-PI-01 Input section augmented with note that conversation history is already fetched before the agent invocation and must be reused — a second `readThreadHistory()` call must not be issued (BE F-03) |
 
 ---
 
