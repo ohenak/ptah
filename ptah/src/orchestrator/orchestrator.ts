@@ -22,7 +22,7 @@ import type { InvocationGuard } from "./invocation-guard.js";
 import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
-import type { DispatchAction } from "./pdlc/phases.js";
+import type { DispatchAction, FeatureConfig, Discipline } from "./pdlc/phases.js";
 import { extractFeatureName, featureNameToSlug } from "./feature-branch.js";
 
 export interface Orchestrator {
@@ -493,11 +493,55 @@ export class DefaultOrchestrator implements Orchestrator {
         // Parse routing signal
         const signal = this.routingEngine.parseSignal(result.routingSignalRaw);
 
-        // Phase 11: Check if this is a PDLC-managed feature
-        const featureSlug = featureNameToSlug(extractFeatureName(triggerMessage.threadName));
-        const isManaged = await this.pdlcDispatcher.isManaged(featureSlug);
+        // Phase 11 + 13: Resolve slug, check PDLC state, auto-initialize if eligible
+        let featureSlug: string;
+        try {
+          featureSlug = featureNameToSlug(extractFeatureName(triggerMessage.threadName));
+        } catch {
+          // Slug resolution threw — fall through to unmanaged path (REQ-PI-01, A-06)
+          featureSlug = "";
+        }
 
-        if (isManaged) {
+        const isManaged = featureSlug ? await this.pdlcDispatcher.isManaged(featureSlug) : false;
+        let effectivelyManaged = isManaged;
+
+        if (featureSlug && !isManaged) {
+          const guardResult = evaluateAgeGuard(threadHistory, this.logger);
+          if (guardResult.eligible) {
+            const initialMessage = threadHistory.find(m => !m.isBot) ?? null;
+            const autoInitConfig = parseKeywords(initialMessage?.content ?? null);
+            try {
+              await this.pdlcDispatcher.initializeFeature(featureSlug, autoInitConfig);
+              effectivelyManaged = true;
+            } catch (initError) {
+              this.logger.error(
+                `[ptah] Failed to auto-initialize PDLC state for "${featureSlug}": ${
+                  initError instanceof Error ? initError.message : String(initError)
+                }`
+              );
+              return; // BR-PI-03: do NOT proceed to managed or legacy path
+            }
+            // Log init success (REQ-PI-03) — swallow logger errors
+            try {
+              this.logger.info(
+                `[ptah] Auto-initialized PDLC state for feature "${featureSlug}" with discipline "${autoInitConfig.discipline}"`
+              );
+            } catch {
+              // logger threw — swallow and continue (REQ-PI-03)
+            }
+            // Post debug channel notification (REQ-PI-04) — non-fatal
+            await this.postToDebugChannel(
+              `[ptah] PDLC auto-init: feature "${featureSlug}" registered with discipline "${autoInitConfig.discipline}", starting at REQ_CREATION`
+            );
+          } else {
+            // Age guard: thread is too old for auto-init — log at debug and fall through to legacy path
+            this.logger.debug(
+              `[ptah] Skipping PDLC auto-init for "${featureSlug}" — thread has ${guardResult.turnCount} prior turns (threshold: 1)`
+            );
+          }
+        }
+
+        if (effectivelyManaged) {
           // PDLC-managed feature path
           if (signal.type === "LGTM" || signal.type === "TASK_COMPLETE") {
             const dispatchAction = await this.pdlcDispatcher.processAgentCompletion({
@@ -514,22 +558,18 @@ export class DefaultOrchestrator implements Orchestrator {
               worktreePath,
             );
             if (loopResult === "continue") {
-              // dispatchAction set a new agent — handled inside handleDispatchAction
-              // We return here because handleDispatchAction already started new routing loop iterations
               return;
             }
             return;
           }
 
           if (signal.type === "ROUTE_TO_USER") {
-            // Handle via existing Pattern B (PDLC phase unchanged)
             const questionText = (signal as { question?: string }).question ?? "Awaiting user input.";
             await this.handleRouteToUser(questionText, triggerMessage, currentAgentId);
             return;
           }
 
           if (signal.type === "ROUTE_TO_AGENT") {
-            // Ad-hoc coordination — log warning, invoke target for one turn, phase unchanged
             this.logger.warn(
               `Agent used ROUTE_TO_AGENT in PDLC-managed feature — ad-hoc coordination`,
             );
@@ -542,7 +582,6 @@ export class DefaultOrchestrator implements Orchestrator {
               );
               currentAgentId = targetAgentId;
               routingMessage = result.textResponse;
-              // Continue the while loop for one ad-hoc turn
               continue;
             }
             return;
@@ -1124,4 +1163,69 @@ function formatAgentName(agentId: string): string {
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+// --- PDLC Auto-Init Helpers (Feature 013) ---
+
+/** @internal — exported for testing only */
+export function countPriorAgentTurns(history: ThreadMessage[]): number {
+  return history.filter(m => m.isBot && m.content.includes("<routing>")).length;
+}
+
+/**
+ * Scope constraint: parses initialMessage.content only.
+ * Thread-name scanning deferred (OQ-02).
+ *
+ * @internal — exported for testing only
+ */
+export function parseKeywords(text: string | null | undefined): FeatureConfig {
+  const DEFAULT_CONFIG: FeatureConfig = { discipline: "backend-only", skipFspec: false };
+  if (!text) return { ...DEFAULT_CONFIG };
+
+  const tokenRegex = /\[([^\s\[\]]+)\]/g;
+  let discipline: Discipline = "backend-only";
+  let skipFspec = false;
+
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(text)) !== null) {
+    const token = match[1];
+    switch (token) {
+      case "backend-only":
+        discipline = "backend-only";
+        break;
+      case "frontend-only":
+        discipline = "frontend-only";
+        break;
+      case "fullstack":
+        discipline = "fullstack";
+        break;
+      case "skip-fspec":
+        skipFspec = true;
+        break;
+      // Unknown tokens: ignore (no error, no log)
+    }
+  }
+
+  return { discipline, skipFspec };
+}
+
+export const AGE_GUARD_THRESHOLD = 1;
+
+export type AgeGuardResult = { eligible: true } | { eligible: false; turnCount: number };
+
+/** @internal — exported for testing only */
+export function evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult {
+  try {
+    const count = countPriorAgentTurns(history);
+    return count <= AGE_GUARD_THRESHOLD
+      ? { eligible: true }
+      : { eligible: false, turnCount: count };
+  } catch (err) {
+    logger.warn(
+      `[ptah] evaluateAgeGuard: unexpected error counting agent turns — failing open: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    return { eligible: true };
+  }
 }

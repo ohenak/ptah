@@ -9,7 +9,7 @@
 | **Functional Specification** | [013-FSPEC-pdlc-auto-init](013-FSPEC-pdlc-auto-init.md) (v1.2, Approved) |
 | **Date** | 2026-03-15 |
 | **Version** | 1.2 |
-| **Status** | Approved |
+| **Status** | Implementation In Progress — Phases A–E complete, integration tests (Phase F) pending |
 
 ---
 
