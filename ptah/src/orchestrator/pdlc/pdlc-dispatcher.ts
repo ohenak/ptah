@@ -164,6 +164,14 @@ export class DefaultPdlcDispatcher implements PdlcDispatcher {
 
   async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState> {
     this.ensureLoaded();
+    // Idempotency guard: if a state record already exists, return it without modification (REQ-PI-05)
+    const existing = this.state!.features[slug];
+    if (existing) {
+      this.logger.debug(
+        `[ptah] PDLC auto-init skipped: "${slug}" already initialized (concurrent request)`
+      );
+      return existing;
+    }
     const now = new Date().toISOString();
     const featureState = createFeatureState(slug, config, now);
     this.state!.features[slug] = featureState;

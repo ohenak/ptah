@@ -27,6 +27,13 @@ import {
 } from "../../fixtures/factories.js";
 import type { PtahConfig, ThreadMessage, SkillRequest } from "../../../src/types.js";
 
+// Phase 13: Default thread history with 2 routing messages, ensuring age guard rejects
+// auto-init for pre-existing integration tests (>1 prior agent turns → ineligible).
+const DEFAULT_OLD_HISTORY = [
+  createThreadMessage({ isBot: true, content: '<routing>{"type":"LGTM"}</routing>' }),
+  createThreadMessage({ isBot: true, content: '<routing>{"type":"LGTM"}</routing>' }),
+];
+
 describe("Orchestrator routing loop integration", () => {
   let discord: FakeDiscordClient;
   let logger: FakeLogger;
@@ -118,7 +125,7 @@ describe("Orchestrator routing loop integration", () => {
         parentChannelId: "parent-1",
       });
 
-      discord.threadHistory.set("thread-1", []);
+      discord.threadHistory.set("thread-1", DEFAULT_OLD_HISTORY);
 
       // Skill returns a response with TASK_COMPLETE routing signal
       skillClient.responses = [
@@ -160,7 +167,7 @@ describe("Orchestrator routing loop integration", () => {
         parentChannelId: "parent-1",
       });
 
-      discord.threadHistory.set("thread-2", []);
+      discord.threadHistory.set("thread-2", DEFAULT_OLD_HISTORY);
 
       // Provide 2 commit results (one per agent turn in the routing loop)
       artifactCommitter.results = [
@@ -239,6 +246,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Thread history has 2 bot turns + 1 human message
       discord.threadHistory.set("thread-3", [
+        ...DEFAULT_OLD_HISTORY,
         turn1BotMessage,
         humanFeedback,
         turn2BotMessage,
@@ -311,7 +319,7 @@ describe("Orchestrator routing loop integration", () => {
         content: "What authentication library should we use?",
       });
 
-      discord.threadHistory.set("thread-4", [humanStart, pmQuestion]);
+      discord.threadHistory.set("thread-4", [...DEFAULT_OLD_HISTORY, humanStart, pmQuestion]);
 
       // Dev-agent is being triggered via a ROUTE_TO_AGENT reply from PM
       // The trigger message is from the dev-agent routing (simulated as a human @mention)
@@ -389,7 +397,7 @@ describe("Orchestrator routing loop integration", () => {
         content: "What authentication library should we use?",
       });
 
-      discord.threadHistory.set("thread-5", [humanStart, pmQuestion]);
+      discord.threadHistory.set("thread-5", [...DEFAULT_OLD_HISTORY, humanStart, pmQuestion]);
 
       // Human routes to dev-agent (different from last bot pm-agent) → Pattern A
       const triggerMessage = createThreadMessage({

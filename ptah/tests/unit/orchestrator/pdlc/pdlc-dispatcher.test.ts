@@ -1084,4 +1084,57 @@ describe("DefaultPdlcDispatcher", () => {
       expect(state!.completedAt).not.toBeNull();
     });
   });
+
+  // --- Task D-1: Idempotency guard ---
+
+  describe("initializeFeature — idempotency guard", () => {
+    it("UT-IDP-01: first call for new slug creates state and saves once", async () => {
+      const store = new FakeStateStore();
+      const fs = new FakeFileSystem();
+      const logger = new FakeLogger();
+      const dispatcher = new DefaultPdlcDispatcher(store, fs, logger, "docs");
+      await dispatcher.loadState();
+
+      const state = await dispatcher.initializeFeature("013-test-feature", {
+        discipline: "backend-only",
+        skipFspec: false,
+      });
+
+      expect(state.slug).toBe("013-test-feature");
+      expect(state.phase).toBe(PdlcPhase.REQ_CREATION);
+      expect(state.config.discipline).toBe("backend-only");
+      expect(store.saveCount).toBe(1);
+    });
+
+    it("UT-IDP-02: second call for same slug returns existing record without overwrite, saveCount stays 1", async () => {
+      const store = new FakeStateStore();
+      const fs = new FakeFileSystem();
+      const logger = new FakeLogger();
+      const dispatcher = new DefaultPdlcDispatcher(store, fs, logger, "docs");
+      await dispatcher.loadState();
+
+      const first = await dispatcher.initializeFeature("013-test-feature", {
+        discipline: "backend-only",
+        skipFspec: false,
+      });
+
+      const second = await dispatcher.initializeFeature("013-test-feature", {
+        discipline: "fullstack",
+        skipFspec: true,
+      });
+
+      // Should return existing state, not overwritten
+      expect(second.phase).toBe(PdlcPhase.REQ_CREATION);
+      expect(second.config.discipline).toBe("backend-only");
+      expect(second).toEqual(first);
+      expect(store.saveCount).toBe(1);
+      expect(
+        logger.messages.some(
+          (m) =>
+            m.level === "debug" &&
+            m.message.includes("already initialized (concurrent request)"),
+        ),
+      ).toBe(true);
+    });
+  });
 });

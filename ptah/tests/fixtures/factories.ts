@@ -612,7 +612,7 @@ export class FakeConfigLoader implements ConfigLoader {
 }
 
 export class FakeLogger implements Logger {
-  messages: { level: string; message: string }[] = [];
+  messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
 
   info(message: string): void {
     this.messages.push({ level: "info", message });
@@ -624,6 +624,10 @@ export class FakeLogger implements Logger {
 
   error(message: string): void {
     this.messages.push({ level: "error", message });
+  }
+
+  debug(message: string): void {
+    this.messages.push({ level: "debug", message });
   }
 }
 
@@ -884,6 +888,16 @@ export function createThreadMessage(options: ThreadMessageOptions = {}): ThreadM
     content: options.content ?? "test message",
     timestamp: options.timestamp ?? new Date("2026-03-09T12:00:00Z"),
   };
+}
+
+// --- Phase 13: Auto-init factory helpers ---
+
+export function createBotMessageWithRouting(content = '<routing>{}</routing>'): ThreadMessage {
+  return createThreadMessage({ isBot: true, content });
+}
+
+export function createBotMessageNoRouting(content = "Progress update"): ThreadMessage {
+  return createThreadMessage({ isBot: true, content });
 }
 
 // --- Phase 6: New fakes ---
@@ -1216,6 +1230,8 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
   reviewCompletionResult: DispatchAction = { action: "wait" };
   resumeResult: DispatchAction = { action: "wait" };
   initResult: FeatureState | null = null;
+  initError: Error | null = null;
+  autoRegisterOnInit = false;
 
   processAgentCompletionCalls: Array<{
     featureSlug: string;
@@ -1246,8 +1262,12 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
 
   async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState> {
     this.initializeFeatureCalls.push({ slug, config });
-    if (this.initResult) return this.initResult;
-    throw new Error("FakePdlcDispatcher: no initResult configured");
+    if (this.initError) throw this.initError;
+    if (!this.initResult) throw new Error("FakePdlcDispatcher: no initResult configured");
+    if (this.autoRegisterOnInit) {
+      this.managedSlugs.add(slug);
+    }
+    return this.initResult;
   }
 
   async processAgentCompletion(params: {
