@@ -8,7 +8,7 @@
 | **Requirements** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.2, Approved) |
 | **Specifications** | [013-FSPEC-pdlc-auto-init](013-FSPEC-pdlc-auto-init.md) (v1.2, Approved) · [013-TSPEC-pdlc-auto-init](013-TSPEC-pdlc-auto-init.md) (v1.2, Approved) |
 | **Execution Plan** | [013-PLAN-TSPEC-pdlc-auto-init](013-PLAN-TSPEC-pdlc-auto-init.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | 2026-03-15 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -56,7 +56,7 @@ The implementation touches three source files: `orchestrator.ts` (auto-init deci
 
 | Category | Count | Requirements Covered | Test Level |
 |----------|-------|----------------------|------------|
-| Functional | 15 | REQ-PI-01, REQ-PI-02, REQ-BC-01, REQ-DC-01, REQ-DC-02 | Unit |
+| Functional | 16 | REQ-PI-01, REQ-PI-02, REQ-BC-01, REQ-DC-01, REQ-DC-02 | Unit |
 | Contract | 2 | REQ-NF-03, TSPEC §4.3 | Unit |
 | Error Handling | 6 | REQ-PI-01, REQ-PI-03, REQ-PI-04, REQ-BC-01, REQ-DC-01 | Unit |
 | Data Integrity | 4 | REQ-PI-01, REQ-DC-01, REQ-DC-03, REQ-NF-02 | Unit |
@@ -64,7 +64,7 @@ The implementation touches three source files: `orchestrator.ts` (auto-init deci
 | Performance | 1 | REQ-NF-01 | Integration |
 | Idempotency | 5 | REQ-PI-05, REQ-DC-02 | Unit |
 | Observability | 6 | REQ-PI-03, REQ-PI-04, REQ-BC-02 | Unit |
-| **Total** | **43** | | |
+| **Total** | **44** | | |
 
 ---
 
@@ -97,6 +97,7 @@ Core business logic and behavior — all verifiable at the unit test level with 
 | PROP-DC-03 | `parseKeywords` must set `discipline: "frontend-only"` when the message contains the exact token `[frontend-only]` | [REQ-DC-01], [FSPEC-DC-01] | Unit | P1 |
 | PROP-DC-04 | `parseKeywords` must set `skipFspec: true` when the message contains the exact token `[skip-fspec]` | [REQ-DC-02], [FSPEC-DC-01] | Unit | P1 |
 | PROP-DC-05 | `parseKeywords` must use the last discipline keyword when multiple discipline keywords appear in the same message (left-to-right, last-wins) | [REQ-DC-01], [FSPEC-DC-01 BR-DC-02] | Unit | P1 |
+| PROP-DC-10 | `parseKeywords` must set `discipline: "backend-only"` when the message contains the exact token `[backend-only]` — the keyword must be explicitly recognized (entering the keyword-recognition branch), which is distinct from the default path where no keyword is present; PROP-DC-01 cannot catch a regression where `[backend-only]` is silently treated as an unknown token | [REQ-DC-01], [FSPEC-DC-01] | Unit | P1 |
 
 ---
 
@@ -119,7 +120,7 @@ Failure modes, error propagation, and graceful degradation.
 |----|----------|--------|------------|----------|
 | PROP-PI-06 | `executeRoutingLoop` must log an error with the feature slug and error details and halt the routing loop (neither managed nor legacy path invoked) when `initializeFeature()` throws | [REQ-PI-01], [FSPEC-PI-01 BR-PI-03], [FSPEC-PI-01 error scenarios] | Unit | P0 |
 | PROP-PI-07 | `executeRoutingLoop` must fall through to the legacy path (without attempting auto-initialization or evaluating the age guard) when the feature slug is unresolvable — a falsy result or thrown exception from `featureNameToSlug(extractFeatureName(threadName))` per A-06 | [REQ-PI-01], [A-06] | Unit | P0 |
-| PROP-PI-08 | `executeRoutingLoop` must swallow any error thrown by `logger.info()` during the auto-init success log emission and proceed with routing to the managed PDLC path normally | [REQ-PI-03], [FSPEC-PI-01 AT-PI-05] | Unit | P0 |
+| PROP-PI-08 | `executeRoutingLoop` must swallow any error thrown by `logger.info()` during the auto-init success log emission and proceed with routing to the managed PDLC path normally *(verifiable by (1) asserting no exception propagates from `executeRoutingLoop()`, and (2) asserting the managed PDLC path IS invoked after the swallow — `FakePdlcDispatcher.decideCalls.length === 1`; a test that only asserts no exception would miss the critical recovery behavior)* | [REQ-PI-03], [FSPEC-PI-01 AT-PI-05] | Unit | P0 |
 | PROP-PI-09 | `executeRoutingLoop` must log a warning and continue routing normally when the debug channel notification post fails — the feature remains initialized and the routing signal is processed | [REQ-PI-04], [FSPEC-PI-01 error scenarios] | Unit | P1 |
 | PROP-BC-08 | `evaluateAgeGuard` must return `{ eligible: true }` (fail-open) and emit a warning log when `countPriorAgentTurns` throws — it is better to incorrectly auto-initialize than to block a new feature | [FSPEC-BC-01 error scenarios] | Unit | P1 |
 | PROP-DC-06 | `parseKeywords` must not throw when the input is `null`, `undefined`, or the empty string — it must return the default config `{ discipline: "backend-only", skipFspec: false }` | [FSPEC-DC-01 error scenarios], [TSPEC §4.4.2] | Unit | P0 |
@@ -146,7 +147,7 @@ Cross-module interactions, dependency wiring, and composition — verified with 
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
 | PROP-PI-20 | The full auto-init flow must wire `evaluateAgeGuard` → `parseKeywords` → `initializeFeature()` in order: a new feature thread (0 prior turns) with initial message `"@pm create REQ [fullstack]"` must be registered with `{ discipline: "fullstack", skipFspec: false }` and routed through the managed PDLC path | [REQ-PI-01], [REQ-DC-01], [FSPEC-PI-01] | Integration | P0 |
-| PROP-PI-21 | Two concurrent routing loop invocations for the same new feature slug (different Discord threads resolving to the same slug) must produce exactly one state record — the second `initializeFeature()` call must detect the existing record, emit the concurrent-request debug log, and proceed normally through the managed path | [REQ-PI-05], [FSPEC-PI-01 AT-PI-04] | Integration | P0 |
+| PROP-PI-21 | Two sequential routing loop invocations for the same new feature slug (both invoked before `isManaged()` would return true) must produce exactly one state record — the second `initializeFeature()` call must detect the existing record, emit the concurrent-request debug log, and proceed normally through the managed path *(Node.js is single-threaded: sequential invocations sharing the same precondition are functionally equivalent to true parallel execution for this check-before-write guard; a `Promise.all` harness is not required)* | [REQ-PI-05], [FSPEC-PI-01 AT-PI-04] | Integration | P0 |
 | PROP-BC-10 | An existing unmanaged feature thread with 2 or more prior agent turns must route through `RoutingEngine.decide()` (legacy path) — it must not enter the managed PDLC path after the age guard evaluation | [REQ-BC-01], [FSPEC-BC-01] | Integration | P0 |
 | PROP-PI-22 | An `initializeFeature()` failure must halt routing for the current message without invoking managed or legacy path — the next message to the same thread must be retried from scratch and succeed if the underlying failure is transient | [REQ-PI-01], [FSPEC-PI-01 error scenarios] | Integration | P1 |
 
@@ -158,7 +159,7 @@ Response times and resource limits.
 
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
-| PROP-NF-02 | The auto-init block — from eligibility check entry to the return of `initializeFeature()` — must complete within 100ms at p95 measured as wall-clock time across 100 runs in the CI test environment | [REQ-NF-01] | Integration | P1 |
+| PROP-NF-02 | The auto-init block — from eligibility check entry to the return of `initializeFeature()` — must complete within **5ms** at p95 measured as wall-clock orchestration overhead across 100 runs, using `FakeStateStore` (no real I/O) *(scope: orchestration logic only — helper invocations, guard evaluation, and dispatcher call overhead; StateStore I/O latency is explicitly out of scope for this property and is covered by Feature 011's existing `FileStateStore` benchmarks as noted in REQ-NF-01; the 100ms budget in REQ-NF-01 encompasses both orchestration overhead and the StateStore I/O write; this property covers the orchestration portion; the 5ms threshold leaves ample headroom for the I/O write to consume the bulk of the budget)* | [REQ-NF-01] | Integration | P1 |
 
 ---
 
@@ -221,10 +222,10 @@ Properties that define what the system must NOT do.
 | REQ-PI-05 — Idempotent initialization | P0 | PROP-PI-11, PROP-PI-12, PROP-PI-13, PROP-PI-14, PROP-PI-18, PROP-PI-21, PROP-PI-N05 | Full |
 | REQ-BC-01 — Feature age guard | P0 | PROP-BC-01, PROP-BC-02, PROP-BC-03, PROP-BC-04, PROP-BC-05, PROP-BC-06, PROP-BC-07, PROP-BC-10, PROP-BC-N01, PROP-BC-N02 | Full |
 | REQ-BC-02 — Log skipped initialization | P1 | PROP-BC-09 | Full |
-| REQ-DC-01 — Discipline keyword in thread message | P1 | PROP-DC-01, PROP-DC-02, PROP-DC-03, PROP-DC-05, PROP-DC-07, PROP-DC-N01 | Full |
+| REQ-DC-01 — Discipline keyword in thread message | P1 | PROP-DC-01, PROP-DC-02, PROP-DC-03, PROP-DC-05, PROP-DC-07, PROP-DC-10, PROP-DC-N01 | Full |
 | REQ-DC-02 — Skip-FSPEC keyword | P1 | PROP-DC-04 | Full |
 | REQ-DC-03 — Unknown keyword ignored | P1 | PROP-DC-08 | Full |
-| REQ-NF-01 — Initialization latency ≤ 100ms p95 | P1 | PROP-NF-02 | Full |
+| REQ-NF-01 — Initialization latency ≤ 100ms p95 | P1 | PROP-NF-02 | Partial — PROP-NF-02 covers orchestration overhead only (≤5ms p95 with FakeStateStore); StateStore I/O latency is covered by Feature 011 benchmarks as explicitly noted in the REQ rationale; combined coverage satisfies the 100ms budget |
 | REQ-NF-02 — No state schema change | P0 | PROP-NF-01 | Full |
 | REQ-NF-03 — Test coverage | P0 | All P0 properties have unit tests; all new code paths covered — this properties document, the PLAN's unit test tasks, and the integration suite satisfy this requirement | Full |
 
@@ -234,10 +235,10 @@ Properties that define what the system must NOT do.
 |---------------|------------|----------|
 | FSPEC-PI-01 — Auto-Initialization Decision Flow | PROP-PI-01 through PROP-PI-10, PROP-PI-15 through PROP-PI-22, PROP-PI-N01 through PROP-PI-N05 | Full |
 | FSPEC-BC-01 — Age Guard Evaluation | PROP-BC-01 through PROP-BC-10, PROP-BC-N01, PROP-BC-N02 | Full |
-| FSPEC-DC-01 — Feature Configuration Keyword Parsing | PROP-DC-01 through PROP-DC-09, PROP-DC-N01 | Full |
+| FSPEC-DC-01 — Feature Configuration Keyword Parsing | PROP-DC-01 through PROP-DC-10, PROP-DC-N01 | Full |
 | TSPEC §4.3 — Logger interface (debug method) | PROP-PI-04, PROP-PI-05 | Full |
 | TSPEC §4.4.1 — `countPriorAgentTurns` | PROP-BC-05, PROP-BC-06, PROP-BC-07, PROP-BC-N02 | Full |
-| TSPEC §4.4.2 — `parseKeywords` | PROP-DC-01 through PROP-DC-09, PROP-DC-N01 | Full |
+| TSPEC §4.4.2 — `parseKeywords` | PROP-DC-01 through PROP-DC-10, PROP-DC-N01 | Full |
 | TSPEC §4.4.3 — Auto-init block in `executeRoutingLoop()` | PROP-PI-01 through PROP-PI-03, PROP-PI-06 through PROP-PI-10, PROP-PI-15 through PROP-PI-19, PROP-PI-N01 through PROP-PI-N04 | Full |
 | TSPEC §4.4.5 — Idempotency guard in `initializeFeature()` | PROP-PI-11 through PROP-PI-14, PROP-PI-18, PROP-PI-N05 | Full |
 
@@ -245,9 +246,11 @@ Properties that define what the system must NOT do.
 
 | Priority | Total Requirements | Fully Covered | Partially Covered | No Coverage |
 |----------|--------------------|---------------|-------------------|-------------|
-| P0 | 6 | 6 | 0 | 0 |
-| P1 | 7 | 7 | 0 | 0 |
+| P0 | 7 | 7 | 0 | 0 |
+| P1 | 6 | 5 | 1 | 0 |
 | P2 | 0 | — | — | — |
+
+> **Note on P1 partial coverage:** REQ-NF-01 is marked Partial because PROP-NF-02 covers orchestration overhead only (with `FakeStateStore`). StateStore I/O latency is covered by Feature 011's existing benchmarks, which together with PROP-NF-02 satisfy the full 100ms budget. See §5.1 for details.
 
 ---
 
@@ -258,16 +261,16 @@ Properties that define what the system must NOT do.
        /----------\
       / Integration \      5 properties — cross-module wiring + concurrency + performance
      /----------------\
-    /    Unit Tests     \  38 properties — all helpers, error paths, observability
+    /    Unit Tests     \  39 properties — all helpers, error paths, observability
    /____________________\
 ```
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 38 | 88.4% |
-| Integration | 5 | 11.6% |
+| Unit | 39 | 88.6% |
+| Integration | 5 | 11.4% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **43** | **100%** |
+| **Total** | **44** | **100%** |
 
 **E2E rationale:** No E2E tests are warranted. All critical paths — including the full auto-init flow, concurrency handling, backward compatibility, and error propagation — are fully coverable at the unit and integration levels using the `FakePdlcDispatcher`, `FakeLogger`, and `FakeStateStore` test doubles defined in the PLAN. The integration tests (Phase F of the PLAN) exercise the full orchestrator routing loop with all fakes wired together, which is equivalent in coverage value to an E2E test for this feature.
 
@@ -281,7 +284,7 @@ Properties that define what the system must NOT do.
 | 2 | PROP-PI-16 (info log ordering before debug channel post) is not explicitly asserted in any PLAN task — E-1 tests that logging occurs but not the relative ordering vs. channel post | If the channel post executes first and the logger errors out, the ordering invariant from REQ-PI-03 is violated silently | Low | Add an ordering assertion to UT-ORC-AI-01 or a dedicated test that verifies `FakeLogger.messages` contains the info log entry **before** `FakeDiscordClient.postedMessages` contains the debug notification. |
 | 3 | PROP-BC-08 (age guard fail-open behavior) traces to FSPEC-BC-01 error scenarios but has no matching PLAN task ID — the age guard tests (B-5, UT-AG-01 through UT-AG-06) cover boundary conditions but UT-AG-06 description mentions `countPriorAgentTurns throws → fail-open + warn log` which covers this | Risk is low if UT-AG-06 is implemented as specified | Low | Confirm UT-AG-06 implementation explicitly asserts: (1) return value is `{ eligible: true }`, (2) `logger.warn` was called with the malformed history message. No new task needed — ensure existing task B-5/B-6 covers it. |
 | 4 | PROP-PI-22 (retry semantics after init failure) is covered by the integration test IT-04 but the "retry succeeds on next message" half of the invariant requires the test to invoke the routing loop a second time with a fixed-up fake — the PLAN's IT-04 description only covers the failure path | If retry is not tested, a regression where the orchestrator permanently blocks a feature after one transient failure would go undetected | Low | Extend IT-04 to include a second routing loop invocation after the fake error is cleared. Assert the second invocation initializes successfully and enters the managed path. |
-| 5 | REQ-NF-01 (latency ≤ 100ms p95) has a corresponding property (PROP-NF-02) but no PLAN task — no integration test task benchmarks the auto-init block | If `FileStateStore.save()` degrades in CI (e.g., slow disk), the latency requirement could be silently violated | Low | Add a performance smoke test (optional in CI, always in the definition-of-done checklist) that calls `initializeFeature()` 100 times via the integration harness and asserts p95 < 100ms. Can be a short addition to IT-05. |
+| 5 | REQ-NF-01 (latency ≤ 100ms p95) has a corresponding property (PROP-NF-02) but no PLAN task — no integration test task benchmarks the auto-init block | If orchestration overhead degrades, the latency budget could be silently violated | Low | Add a performance smoke test (optional in standard CI via `PERF_TEST=true` env flag, but always in the definition-of-done checklist) that invokes the auto-init block 100 times via the integration harness and asserts orchestration p95 < 5ms. Can be a short addition to IT-05. Note: PROP-NF-02 is now explicitly scoped to orchestration overhead with a 5ms threshold (see §3.6); StateStore I/O is benchmarked separately by Feature 011. **CI gate:** the DoD must explicitly state whether the performance test runs in every PR build or on a scheduled basis — a property that can be permanently skipped provides only nominal coverage. Recommend a scheduled weekly CI job as a minimum gate. |
 
 ---
 
@@ -298,6 +301,7 @@ Properties that define what the system must NOT do.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2026-03-15 | Test Engineer | Addressed PM and BE cross-review feedback: (1) Fixed §5.3 priority counts — P0=7, P1=6 (PM F-01, blocker); (2) Added PROP-DC-10 for explicit `[backend-only]` keyword recognition — closes REQ-DC-01 gap (PM F-02, BE F-02); (3) Strengthened PROP-PI-08 with explicit observable assertions — no exception + managed path IS invoked (PM F-03, BE F-03); (4) Scoped PROP-NF-02 to orchestration overhead only (≤5ms, FakeStateStore) with cross-reference to Feature 011 StateStore benchmarks; updated §5.1 REQ-NF-01 coverage to Partial with explanation; added §5.3 note (BE F-01, PM Q-01); (5) Clarified PROP-PI-21 "concurrent" → "sequential invocations" with Node.js single-thread rationale (BE Q-01); (6) Added CI gate guidance to §7 Gap 5 (BE Q-02); (7) Updated property and test-level distribution counts throughout (Functional: 15→16, Total: 43→44, Unit: 38→39) |
 | 1.0 | 2026-03-15 | Test Engineer | Initial properties document — 43 positive properties + 8 negative properties across 8 categories; full coverage of 13 requirements and 8 FSPEC/TSPEC sections; 5 gap recommendations |
 
 ---
