@@ -2,111 +2,88 @@
 
 | Field | Detail |
 |-------|--------|
-| **Document reviewed** | [013-PROPERTIES-pdlc-auto-init](013-PROPERTIES-pdlc-auto-init.md) v1.0 |
+| **Document reviewed** | [013-PROPERTIES-pdlc-auto-init](013-PROPERTIES-pdlc-auto-init.md) v1.1 |
 | **Reviewer** | Backend Engineer |
-| **Date** | 2026-03-15 |
-| **Recommendation** | **Approved with minor changes** |
+| **Date** | 2026-03-16 |
+| **Recommendation** | **Approved** |
+
+---
+
+## 0. Prior Review Resolution (v1.0 → v1.1)
+
+All five items raised in the v1.0 cross-review were addressed:
+
+| Prior Item | Resolution | Status |
+|------------|-----------|--------|
+| F-01 — Latency scope (real I/O vs fake) | PROP-NF-02 scoped to orchestration overhead (≤5ms, FakeStateStore); REQ-NF-01 marked Partial with cross-reference to Feature 011 benchmarks; threshold reduced 100ms → 5ms | ✅ Resolved |
+| F-02 — Missing `[backend-only]` property | PROP-DC-10 added; covers the explicit keyword-recognition branch distinct from the default path | ✅ Resolved |
+| F-03 — PROP-PI-08 under-specified | Property now includes parenthetical specifying both required assertions: no exception propagation AND `FakePdlcDispatcher.decideCalls.length === 1` | ✅ Resolved |
+| Q-01 — "concurrent" vs "sequential" | PROP-PI-21 now reads "sequential invocations" with Node.js single-thread rationale in parenthetical | ✅ Resolved |
+| Q-02 — CI gate for PROP-NF-02 | §7 Gap 5 now includes explicit CI gate guidance recommending a scheduled weekly CI job | ✅ Resolved |
 
 ---
 
 ## 1. Findings
 
-### F-01 — Medium: PROP-NF-02 latency benchmark uses fakes, cannot falsify the 100ms I/O budget
+### F-01 — Low: DC domain properties are scattered across sections, creating navigation friction
 
-**Property:** PROP-NF-02 — auto-init block must complete within 100ms p95 across 100 runs.
+**Issue:** The `DC` domain (Discipline Configuration) is introduced in §3.1 Functional, but `DC`-prefixed property IDs appear across four different sections:
 
-**Issue:** PLAN F-2 explicitly specifies the benchmark uses `FakeStateStore`, `FakeLogger`, and `FakePdlcDispatcher` ("no real I/O"). REQ-NF-01 is specifically concerned with the atomic `StateStore.save()` file write — the budget rationale even states: *"The `initializeFeature()` call involves one state file write (atomic), which is already benchmarked in Feature 011 tests."*
+| Section | DC Properties |
+|---------|---------------|
+| §3.1 Functional | PROP-DC-01 through DC-05, DC-10 |
+| §3.3 Error Handling | PROP-DC-06 |
+| §3.4 Data Integrity | PROP-DC-07, DC-08 |
+| §3.7 Idempotency | PROP-DC-09 |
 
-A benchmark that substitutes a fake state store (which does nothing but increment a counter) will always pass p95 < 100ms regardless of actual file system behavior. The latency test is therefore measuring orchestration overhead only, not the I/O operation the requirement is worried about. It can never fail even if the real `FileStateStore.save()` degrades to 500ms on a slow CI disk.
+A test author implementing `parseKeywords` would need to scan the entire document to find all DC properties rather than consulting a single section. This contrasts with the `PI`, `BC`, and `NF` domains where properties are more naturally grouped (domain-to-section alignment isn't perfect but is less fragmented).
 
-**Options:**
-- **Option A (preferred):** Run the benchmark with a real `FileStateStore` pointed at a temp directory. This is the only way to actually validate REQ-NF-01 as written.
-- **Option B:** Update PROP-NF-02 to explicitly scope the measurement as "orchestration overhead only (excluding StateStore I/O)" and document that Feature 011's existing benchmark covers StateStore I/O. Lower the threshold accordingly (orchestration overhead should be well under 5ms, not 100ms).
+**Impact:** Navigation friction during PLAN task E and F implementation. No correctness risk — all properties are well-specified.
 
-The PLAN's F-2 description needs to match whichever option is chosen, and the property must be unambiguous about what is and is not in scope.
-
----
-
-### F-02 — Low: No property for explicit `[backend-only]` keyword recognition
-
-**Missing property:** REQ-DC-01 lists `[backend-only]` as a recognized keyword alongside `[fullstack]` and `[frontend-only]`. PROP-DC-02 covers `[fullstack]` and PROP-DC-03 covers `[frontend-only]`, but there is no corresponding `PROP-DC-X` for `[backend-only]`.
-
-PROP-DC-01 only covers the **no-keyword** default case, not the **explicit keyword** case. The behaviors are outcome-identical (both yield `discipline: "backend-only"`), but they test different code paths:
-- PROP-DC-01: no recognized tokens found → apply default
-- Missing PROP: `[backend-only]` token found → set discipline from keyword (not from default)
-
-If the implementation incorrectly treats `[backend-only]` as an unknown token (like `[some-random-tag]`), PROP-DC-01 cannot catch it because PROP-DC-01 does not exercise the keyword-recognition branch. PLAN B-3 includes `UT-KW-01` for `[backend-only]`, but there is no PROP ID backing it — the coverage matrix for REQ-DC-01 will have a gap.
-
-**Suggested addition:**
-
-```
-| PROP-DC-X | `parseKeywords` must set `discipline: "backend-only"` when the message contains the exact token `[backend-only]` — the keyword must be recognized (not treated as an unknown token), even though the outcome is identical to the default | [REQ-DC-01], [FSPEC-DC-01] | Unit | P1 |
-```
+**Recommendation:** No document restructuring required. Adding a navigational cross-reference to the §3.1 DC section note — e.g., *"See also PROP-DC-06 (§3.3), PROP-DC-07/DC-08 (§3.4), PROP-DC-09 (§3.7) for `parseKeywords` error, data integrity, and idempotency properties"* — would allow test authors to locate all DC properties without a full document scan.
 
 ---
 
-### F-03 — Low: PROP-PI-08 does not specify observable assertions — test authors may under-specify the behavior
+### F-02 — Low: No positive property for the "already-managed → managed PDLC path" routing branch
 
-**Property:** PROP-PI-08 — "must swallow any error thrown by `logger.info()`... and proceed with routing to the managed PDLC path normally."
+**Issue:** PROP-PI-N01 covers the negative: `executeRoutingLoop` must NOT call `initializeFeature()` when `isManaged()` returns true. However, there is no corresponding positive property stating that when `isManaged()` returns true the routing loop MUST proceed to the managed PDLC path.
 
-The property states what must happen (swallow + proceed) but does not enumerate the observable assertions a test author should make. REQ-PI-03 AC says "the error is swallowed; the feature remains initialized and routing continues uninterrupted" — but a minimally conforming test could just assert "no exception thrown from `executeRoutingLoop()`" and miss the follow-on routing assertion.
+This matters because PROP-PI-N01 alone permits a conforming implementation that skips `initializeFeature()` but then falls through to the legacy path (or halts) instead of the managed path — and that regression would not be caught.
 
-The two required observable artifacts are:
-1. No exception propagates from `executeRoutingLoop()` (the swallow)
-2. The managed PDLC path (`pdlcDispatcher.decide()` or equivalent) **is** invoked after the swallow (routing proceeds)
+**Mitigating factors:**
+- Feature 011's properties likely cover the already-managed routing branch since that was its core deliverable. Feature 013 is explicitly scoped to the *new feature / unmanaged* code path.
+- PROP-PI-02 covers managed routing after successful auto-init, which is structurally adjacent.
 
-Without (2) being explicit in the property, a test that catches the error but then silently drops routing would still satisfy the property as written.
-
-**Recommendation:** Add a parenthetical to PROP-PI-08 that specifies both assertions: *(verifiable by (1) asserting no exception propagates from `executeRoutingLoop()`, and (2) asserting the managed PDLC path is invoked — `FakePdlcDispatcher.decideCalls.length === 1`).*
+**Recommendation:** Before closing this review, confirm whether Feature 011's properties include a positive property for "managed feature → managed PDLC dispatch." If yes, explicitly note in §1.1 that the already-managed positive routing assertion is owned by PROPERTIES-011 to prevent test authors from wondering if it was missed. If no such property exists, add a minimal property here or in PROPERTIES-011 as a regression guard.
 
 ---
 
 ## 2. Clarification Questions
 
-### Q-01: PROP-PI-21 — "concurrent" vs "sequential" invocations in integration test
-
-PROP-PI-21 describes "two **concurrent** routing loop invocations for the same new feature slug." PLAN IT-05 implements this as two sequential invocations with `isManaged → false` — not as `Promise.all([...])` parallel execution.
-
-In Node.js's single-threaded async model, sequential invocations are sufficient to exercise the check-before-write idempotency guard (by the time the second call runs, the first has already saved the state record). True parallel execution is not meaningfully different here.
-
-**Question:** Is "concurrent" intended to mean "two invocations before the state machine would set `isManaged → true`" (i.e., sequential with the same precondition), or does it mean true interleaved async execution? If the former, the property and test are correct as implemented but the word "concurrent" is misleading for future test authors. Recommend changing the property's language to "two sequential invocations" and adding a parenthetical that explains Node.js's single-threaded model makes this equivalent to true concurrency for this operation.
-
----
-
-### Q-02: PROP-NF-02 relationship to Feature 011 StateStore benchmarks
-
-PLAN F-2 notes the benchmark "can be skipped in standard CI runs via a `PERF_TEST=true` environment flag." REQ-NF-01 specifies "measured ... in the CI test environment."
-
-If the property can be skipped in CI, it is not continuously enforced. **Question:** Is there a CI gate (e.g., a weekly performance run, a required `PERF_TEST=true` step in the PR check) that enforces PROP-NF-02? If the property is only run manually, the requirement coverage for REQ-NF-01 is nominal. This is a process question, not a document defect — but the PROPERTIES document's Definition of Done should note whether this test runs in every CI build or on a schedule.
+None. All open questions from v1.0 were resolved and no new questions arise from the v1.1 changes.
 
 ---
 
 ## 3. Positive Observations
 
-1. **Gap analysis in §7 is production-quality.** Gaps 1 and 2 (initial message sourcing and log ordering) identify exactly the class of behavioral invariants that fall through TDD iteration cycles. The fact that both are already addressed in the PLAN (E-1 assertions) before the review is a sign of thorough up-front analysis.
+1. **Precise PROP-PI-08 strengthening.** The v1.1 parenthetical — `FakePdlcDispatcher.decideCalls.length === 1` — makes the recovery assertion unambiguous and matches the fake design in the PLAN. This is exactly the right level of specificity for a properties document used directly by test authors.
 
-2. **Idempotency properties are precisely decomposed.** Separating PROP-PI-11 (return value unchanged), PROP-PI-12 (no throw), PROP-PI-13 (saveCount === 1), and PROP-PI-14 (config not overwritten) into four distinct properties is the right granularity for TDD. Each is independently falsifiable and maps to a different implementation failure mode.
+2. **PROP-PI-21 rationale is well-executed.** The addition of the Node.js single-thread explanation eliminates the risk of a test author implementing a `Promise.all` harness when sequential invocations are functionally identical. The parenthetical approach keeps the property readable while preserving the full rationale.
 
-3. **Negative properties in §4 are comprehensive and correctly mirror the positive properties.** PROP-PI-N02 and PROP-PI-N03 (neither managed nor legacy path when `initializeFeature()` throws) are exactly the right guard against "fail-partially" regressions that would be very hard to catch in integration tests.
+3. **Scoped PROP-NF-02 is correctly bounded.** Reducing the threshold to 5ms with `FakeStateStore` makes the property reliably falsifiable at the unit/integration level. The explicit cross-reference to Feature 011's `FileStateStore` benchmarks ensures REQ-NF-01's I/O budget is not orphaned.
 
-4. **Observability properties specify exact log formats.** Exact format strings in PROP-PI-15, PROP-PI-17, PROP-BC-09, and PROP-PI-18 make tests deterministic and unambiguous. This is the correct approach for a logging-heavy feature where subtle format variations could silently break downstream log parsers or debug tooling.
+4. **PROP-DC-10 distinguishes a real code path.** The added property is not just a restatement of PROP-DC-01 — the rationale note ("PROP-DC-01 cannot catch a regression where `[backend-only]` is silently treated as an unknown token") correctly explains why the two properties cover different failure modes. This is the right justification standard for a near-duplicate property.
 
-5. **PROP-BC-07 + PROP-BC-N02 correctly exclude bot messages without `<routing>` tags.** This is the subtle half of the age guard requirement (progress embeds, completion embeds, debug notifications all have `isBot === true`) and the property captures it precisely. Many reviewers would miss this when writing the age guard tests.
+5. **§7 CI gate guidance is actionable.** "Scheduled weekly CI job as a minimum gate" is a concrete recommendation that can be directly translated into a GitHub Actions cron schedule — it avoids the vagueness of "run periodically."
 
-6. **Coverage matrix (§5) is complete and cross-referenced.** All 13 requirements map to one or more properties with "Full" coverage, and the reverse mapping (spec section → properties) in §5.2 is a useful navigation aid for the PLAN author.
+6. **Coverage matrix consistency.** Counts in §2 (16 Functional, 44 Total), §5.3 (P0=7, P1=6), and §6 (Unit=39, Integration=5) are all mutually consistent after the v1.1 updates. The §5.3 note explaining the P1 partial coverage for REQ-NF-01 is the right way to handle the split measurement.
 
 ---
 
 ## 4. Summary
 
-The PROPERTIES document is thorough, precise, and well-structured. All 13 requirements have full property coverage; all 8 FSPEC/TSPEC sections are mapped; all critical failure modes have negative properties.
+v1.1 fully resolves all blocking and recommended changes from the v1.0 review. The two new findings (F-01, F-02) are Low severity — one is a navigation improvement, and one is a clarification request that may require no change if Feature 011 already covers the positive routing assertion.
 
-**Required before approval:**
-- **F-01** — Resolve the latency measurement scope (Option A: real I/O, or Option B: explicitly scope to orchestration overhead). The current state allows PROP-NF-02 to be permanently green even if real I/O violates the 100ms budget.
+The document is thorough, all 13 requirements have full or explicitly-noted partial coverage, all critical failure modes have both positive and negative properties, and the test level distribution (88.6% unit, 11.4% integration, 0% E2E) is well-justified.
 
-**Recommended improvements:**
-- **F-02** — Add `PROP-DC-X` for explicit `[backend-only]` keyword recognition to complete the REQ-DC-01 coverage.
-- **F-03** — Strengthen PROP-PI-08 with explicit observable assertions (no exception + managed path IS invoked).
-- **Q-01** — Clarify "concurrent" vs "sequential" in PROP-PI-21 to prevent test authors from over-engineering a Promise.all harness.
-
-**Recommendation: Approved with minor changes** (F-01 is the only blocker; F-02, F-03, and Q-01 are low-risk improvements that can be addressed with a quick edit pass).
+**Recommendation: Approved.** F-01 and F-02 are optional improvements that do not block implementation start. The PLAN team may proceed with Phase A.
