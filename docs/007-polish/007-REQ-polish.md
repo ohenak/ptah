@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-PTAH-P7 |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) (Master Requirements) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 16, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -97,7 +97,7 @@ Full user story details are in the [master requirements document](../requirement
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source User Stories |
 |----|-------|-------------|---------------------|----------|-------|---------------------|
 | REQ-NF-08 | Agent Extensibility | Adding a new agent requires only: a new Skill definition file, a new `agent-logs/*.md` file, and a config entry — no Orchestrator code changes | WHO: As a developer<br>GIVEN: Ptah is running with 3 existing agents configured in `ptah.config.json`<br>WHEN: I add a new Skill definition file, create an empty log file, and add a config entry — without modifying any Orchestrator source code<br>THEN: The new agent is registered at next startup (or on config hot-reload)<br>AND routing signals targeting the new agent's ID resolve correctly<br>AND @mentions matching the configured `mention_id` are routed to the new agent | P1 | Phase 7 | [US-08] |
-| REQ-NF-09 | Structured Log Output | All Orchestrator log lines shall use a consistent `[ptah:{component}]` prefix and an explicit log level (DEBUG, INFO, WARN, ERROR) | WHO: As a developer monitoring Ptah's console output<br>GIVEN: Ptah is running and processing events<br>WHEN: I observe the console log stream<br>THEN: Every log line begins with `[ptah:{component}]` and includes a level indicator<br>AND there are no unformatted `console.log` or bare `print` statements in Orchestrator-owned code paths | P1 | Phase 7 | [US-05] |
+| REQ-NF-09 | Structured Log Output | All Orchestrator log lines shall use a consistent `[ptah:{component}]` prefix and an explicit log level (DEBUG, INFO, WARN, ERROR) | WHO: As a developer monitoring Ptah's console output<br>GIVEN: Ptah is running and processing events<br>WHEN: I observe the console log stream<br>THEN: Every log line begins with `[ptah:{component}]` and includes a level indicator | P1 | Phase 7 | [US-05] |
 | REQ-NF-10 | Operator Observability | The console log stream shall provide enough information for an operator to reconstruct the full routing lifecycle for any thread — which agent was invoked, what signal was returned, what actions followed — without consulting Discord or Git history | WHO: As a developer diagnosing a routing issue<br>GIVEN: An incident has occurred in a production Ptah session<br>WHEN: I review the console log file for that session<br>THEN: I can identify: the triggering message, the invoked agent, the routing signal type, post-signal actions (commit, archive, escalate), and any errors — without opening Discord or inspecting the Git log | P1 | Phase 7 | [US-05], [US-07] |
 
 ---
@@ -154,6 +154,7 @@ Full user story details are in the [master requirements document](../requirement
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 10, 2026 | Product Manager | Split from master requirements document (001-REQ-PTAH.md v1.4) |
+| 1.2 | March 16, 2026 | Product Manager | Applied cross-review F-01: removed implementation constraint (`console.log` clause) from REQ-NF-09 acceptance criteria — observable log format criterion is sufficient; code-hygiene constraint deferred to TSPEC/engineering guidelines. |
 | 1.1 | March 16, 2026 | Product Manager | Expanded Phase 7 scope per overview.md: added REQ-DI-10 (embed formatting), REQ-RP-06 (error message UX), REQ-NF-09 (structured logging), REQ-NF-10 (observability). Added REQ-SI-04 as dependency on REQ-DI-06. Expanded REQ-NF-08 acceptance criteria to WHO/GIVEN/WHEN/THEN format. Added Specification links to REQ-DI-06 and REQ-NF-08. Updated specification status in §7. Added signal contract risk to §5. Added explicit scope boundaries. |
 
 ---
