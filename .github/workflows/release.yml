@@ -1,0 +1,65 @@
+name: Release Ptah
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 0.2.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ptah
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ptah/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm test
+
+      - name: Bump version in package.json
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Bump version in ptah.config.json
+        run: |
+          jq --arg v "${{ inputs.version }}" '.project.version = $v' ptah.config.json > tmp.json
+          mv tmp.json ptah.config.json
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json ptah.config.json
+          git commit -m "release: ptah v${{ inputs.version }}"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ptah-v${{ inputs.version }}" \
+            --title "Ptah v${{ inputs.version }}" \
+            --generate-notes \
+            ${{ inputs.prerelease && '--prerelease' || '' }}
