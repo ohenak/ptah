@@ -373,6 +373,7 @@ export class DefaultOrchestrator implements Orchestrator {
         return;
       }
 
+      let worktreeCleaned = false;
       try {
         // Read thread history
         const threadHistory = await this.discord.readThreadHistory(
@@ -447,6 +448,7 @@ export class DefaultOrchestrator implements Orchestrator {
         // Cleanup worktree on no-changes path
         if (commitResult.mergeStatus === "no-changes") {
           await this.cleanupWorktree(worktreePath, branch);
+          worktreeCleaned = true;
         }
 
         // Write agent log (always)
@@ -593,9 +595,11 @@ export class DefaultOrchestrator implements Orchestrator {
         routingMessage = result.textResponse;
         // Continue the while loop
       } catch (error) {
-        // Unexpected error — cleanup worktree
+        // Unexpected error — cleanup worktree (skip if already cleaned up)
         this.worktreeRegistry.deregister(worktreePath);
-        await this.cleanupWorktree(worktreePath, branch);
+        if (!worktreeCleaned) {
+          await this.cleanupWorktree(worktreePath, branch);
+        }
 
         // Write error log entry
         await this.writeLogEntry(currentAgentId, triggerMessage, "error", null);
