@@ -8,7 +8,7 @@
 | **Requirements** | [013-REQ-pdlc-auto-init](013-REQ-pdlc-auto-init.md) (v1.2, Approved) |
 | **Functional Specification** | [013-FSPEC-pdlc-auto-init](013-FSPEC-pdlc-auto-init.md) (v1.2, Approved) |
 | **Date** | 2026-03-15 |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Status** | Draft |
 
 ---
@@ -19,10 +19,11 @@ This TSPEC defines the implementation of PDLC auto-initialization — wiring `in
 
 Feature 011 implemented the full PDLC state machine infrastructure and the managed/unmanaged routing branch in `executeRoutingLoop()`. It also implemented `initializeFeature()` on `PdlcDispatcher`. However, `initializeFeature()` is never called in production code: the routing loop checks `isManaged(featureSlug)` and, when no state record exists, falls through to the legacy path. This feature closes that gap.
 
-The implementation touches exactly two files:
+The implementation touches exactly two source files (per C-01) plus the `Logger` interface and its concrete implementations:
 
 1. **`ptah/src/orchestrator/orchestrator.ts`** — adds the auto-init eligibility check (age guard + keyword parsing + `initializeFeature()` call) in `executeRoutingLoop()`, immediately after the `isManaged()` check returns false.
 2. **`ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts`** — adds a check-before-write idempotency guard to `initializeFeature()` so a second concurrent call for the same slug returns the existing record without overwriting it.
+3. **`ptah/src/services/logger.ts`** — adds the `debug` method to the `Logger` interface and all concrete implementations (`ConsoleLogger`, `FakeLogger`, any test stubs).
 
 No other Feature 011 modules (`state-machine.ts`, `state-store.ts`, `review-tracker.ts`, `phases.ts`, `context-matrix.ts`, `cross-review-parser.ts`, `migrations.ts`) are modified.
 
@@ -47,24 +48,26 @@ Files marked `[NEW]` are created by this feature. Files marked `[UPDATED]` are m
 ```
 ptah/
 ├── src/
+│   ├── services/
+│   │   └── logger.ts                              [UPDATED] Add debug() method to Logger interface + ConsoleLogger
 │   └── orchestrator/
-│       ├── orchestrator.ts                    [UPDATED] Add auto-init flow in executeRoutingLoop()
+│       ├── orchestrator.ts                        [UPDATED] Add auto-init flow in executeRoutingLoop()
 │       └── pdlc/
-│           └── pdlc-dispatcher.ts             [UPDATED] Add idempotency guard to initializeFeature()
+│           └── pdlc-dispatcher.ts                 [UPDATED] Add idempotency guard to initializeFeature()
 ├── tests/
 │   ├── unit/
 │   │   └── orchestrator/
-│   │       ├── orchestrator.test.ts           [UPDATED] Add auto-init, age guard, keyword tests
+│   │       ├── orchestrator.test.ts               [UPDATED] Add auto-init, age guard, keyword tests
 │   │       └── pdlc/
-│   │           └── auto-init.test.ts          [NEW] Unit tests for parseKeywords() and countPriorAgentTurns()
+│   │           └── auto-init.test.ts              [NEW] Unit tests for parseKeywords() and countPriorAgentTurns()
 │   ├── integration/
 │   │   └── orchestrator/
-│   │       └── pdlc-auto-init.test.ts         [NEW] End-to-end auto-init routing loop tests
+│   │       └── pdlc-auto-init.test.ts             [NEW] End-to-end auto-init routing loop tests
 │   └── fixtures/
-│       └── factories.ts                       [UPDATED] Extend FakePdlcDispatcher + FakeLogger for spy assertions
+│       └── factories.ts                           [UPDATED] Extend FakePdlcDispatcher + FakeLogger (debug method)
 └── docs/
     └── 013-pdlc-auto-init/
-        └── 013-TSPEC-pdlc-auto-init.md        [NEW] This document
+        └── 013-TSPEC-pdlc-auto-init.md            [NEW] This document
 ```
 
 ---
@@ -81,7 +84,7 @@ orchestrator.ts  (executeRoutingLoop — modified)
   ├── pdlcDispatcher: PdlcDispatcher          [EXISTING — isManaged() + initializeFeature()]
   ├── routingEngine: RoutingEngine             [EXISTING — unmanaged legacy path unchanged]
   ├── discord: DiscordClient                   [EXISTING — postChannelMessage() for debug notify]
-  └── logger: Logger                           [EXISTING — info/warn/debug for auto-init events]
+  └── logger: Logger                           [EXISTING — info/warn/error + debug (added this feature)]
 
 pdlc-dispatcher.ts  (initializeFeature — modified)
   │
@@ -89,7 +92,7 @@ pdlc-dispatcher.ts  (initializeFeature — modified)
 
 New pure helper functions (no external deps, defined in orchestrator.ts):
   ├── countPriorAgentTurns(history: ThreadMessage[]): number
-  └── parseKeywords(text: string): FeatureConfig
+  └── parseKeywords(text: string | null | undefined): FeatureConfig
 ```
 
 ### 4.2 Types and Data Models
@@ -144,19 +147,33 @@ type AgeGuardResult =
 
 ### 4.3 Protocols (Interfaces)
 
-No new protocols are introduced. Feature 013 calls existing protocol methods already declared in Feature 011.
+#### Logger interface — `debug` method added in this feature
 
-The two protocol methods used are:
+Feature 013 adds a `debug` method to the `Logger` interface in `ptah/src/services/logger.ts`. This resolves OQ-01 and satisfies REQ-BC-02's requirement that the skip-init log be at `debug` level and assertable via a test logger spy.
+
+```typescript
+// ptah/src/services/logger.ts — updated interface
+export interface Logger {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  debug(message: string): void;   // [NEW in Feature 013]
+}
+```
+
+All concrete implementations receive the new method:
+
+- **`ConsoleLogger`**: `debug(message: string): void { console.debug(message); }`
+- **`FakeLogger`** (in `factories.ts`): captures `{ level: "debug", message }` into `this.messages` using the same pattern as existing levels.
+- Any test stubs that implement `Logger` must also add the stub method (e.g., `debug(_message: string): void {}`).
+
+The two protocol methods used from `PdlcDispatcher` are unchanged:
 
 ```typescript
 // Already declared in PdlcDispatcher (pdlc-dispatcher.ts):
 isManaged(featureSlug: string): Promise<boolean>;
 initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState>;
 ```
-
-The `Logger` interface already supports `info`, `warn`, and `error`. No `debug` method exists in the current `Logger` interface. Per [REQ-BC-02], the "skipped auto-init" log uses `debug` level. Since the `Logger` interface only declares `info`, `warn`, and `error`, the implementation uses `logger.info()` for both the [REQ-PI-03] info-level log and the [REQ-BC-02] skipped-init log, but passes a log entry that the test spy can distinguish by message prefix. See Section 4.4.3 for the `debug`-level log resolution.
-
-> **Resolution for REQ-BC-02 log level:** The existing `Logger` interface (`ptah/src/services/logger.ts`) exposes only `info`, `warn`, and `error`. Adding a `debug` method to the interface is the architecturally correct fix; however, it is out of scope for this feature per [C-01]. The skipped-init log is emitted at `info` level with the exact prefix `[ptah] Skipping PDLC auto-init` so test assertions can filter by message content. This is called out as an open question (OQ-01) at the end of this document.
 
 ### 4.4 Concrete Implementations
 
@@ -182,7 +199,7 @@ function countPriorAgentTurns(history: ThreadMessage[]): number
 - Array contains only user messages → returns `0`.
 - Array contains `isBot === true` messages with no `<routing>` tag → returns `0`.
 
-#### 4.4.2 `parseKeywords(text: string): FeatureConfig`
+#### 4.4.2 `parseKeywords(text: string | null | undefined): FeatureConfig`
 
 **Location:** `ptah/src/orchestrator/orchestrator.ts` (module-level private helper)
 
@@ -190,6 +207,8 @@ function countPriorAgentTurns(history: ThreadMessage[]): number
 ```typescript
 function parseKeywords(text: string | null | undefined): FeatureConfig
 ```
+
+**Scope constraint:** This function parses the content of the first user message (`initialMessage?.content`) only. Keyword parsing from the thread name is explicitly out of scope for this feature (deferred in OQ-02). Implementors must not add thread-name scanning to this function — add a code comment to this effect at the function definition.
 
 **Algorithm:**
 1. If `text` is `null`, `undefined`, or the empty string, return `{ discipline: "backend-only", skipFspec: false }`.
@@ -207,12 +226,15 @@ function parseKeywords(text: string | null | undefined): FeatureConfig
 
 **Business rule — last discipline wins (BR-DC-02):** Because tokens are processed left to right and each discipline keyword overwrites the previous `discipline` variable, the last discipline keyword in the message wins automatically. No special handling is needed.
 
+**Business rule — duplicate `[skip-fspec]` (BR-DC-06):** If `[skip-fspec]` appears multiple times, `skipFspec` is set to `true` on the first occurrence and remains `true` on subsequent occurrences. The result is identical to a single occurrence (idempotent).
+
 **Edge cases:**
 - `null` or `undefined` input → return default config (no throw).
 - `"[FULLSTACK]"` → token `"FULLSTACK"` does not match `"fullstack"` (case-sensitive) → ignored → default `"backend-only"`.
 - `"[ fullstack ]"` → regex requires no interior spaces → not captured → ignored → default.
 - `"[skip-fspec]"` only → `{ discipline: "backend-only", skipFspec: true }`.
 - `"[backend-only] [fullstack]"` → last wins → `{ discipline: "fullstack", skipFspec: false }`.
+- `"[skip-fspec] [skip-fspec]"` → `{ discipline: "backend-only", skipFspec: true }` (idempotent).
 
 #### 4.4.3 Auto-init block in `executeRoutingLoop()`
 
@@ -233,11 +255,10 @@ if (isManaged) {
 const decision = this.routingEngine.decide(signal, this.config);
 ```
 
-is replaced by:
+is replaced by the following production implementation using the `effectivelyManaged` flag:
 
 ```typescript
-// Phase 11: Check if this is a PDLC-managed feature
-// Phase 13: Auto-initialize new features
+// Phase 11 + 13: Resolve slug, check PDLC state, auto-initialize if eligible
 let featureSlug: string;
 try {
   featureSlug = featureNameToSlug(extractFeatureName(triggerMessage.threadName));
@@ -247,75 +268,12 @@ try {
 }
 
 if (!featureSlug) {
-  // Unresolvable slug — use legacy path (REQ-PI-01, A-06)
+  // Unresolvable slug — use legacy path without auto-init or age guard (REQ-PI-01, A-06)
   const decision = this.routingEngine.decide(signal, this.config);
   // ... handle decision ...
-  continue; // or return
+  continue; // or return, depending on loop structure
 }
 
-const isManaged = await this.pdlcDispatcher.isManaged(featureSlug);
-
-if (!isManaged) {
-  // Auto-init eligibility check (FSPEC-BC-01)
-  const guardResult = evaluateAgeGuard(threadHistory);
-  if (!guardResult.eligible) {
-    this.logger.info(
-      `[ptah] Skipping PDLC auto-init for "${featureSlug}" — thread has ${guardResult.turnCount} prior turns (threshold: 1)`
-    );
-    // Fall through to unmanaged legacy path below
-  } else {
-    // Eligible — parse config keywords and initialize
-    const initialMessage = threadHistory.find(m => !m.isBot) ?? null;
-    const config = parseKeywords(initialMessage?.content ?? null);
-
-    try {
-      await this.pdlcDispatcher.initializeFeature(featureSlug, config);
-    } catch (initError) {
-      this.logger.error(
-        `[ptah] Failed to auto-initialize PDLC state for "${featureSlug}": ${
-          initError instanceof Error ? initError.message : String(initError)
-        }`
-      );
-      // Do NOT proceed to managed or legacy path (BR-PI-03)
-      return;
-    }
-
-    // Emit info log (REQ-PI-03) — swallow logger errors
-    try {
-      this.logger.info(
-        `[ptah] Auto-initialized PDLC state for feature "${featureSlug}" with discipline "${config.discipline}"`
-      );
-    } catch {
-      // logger threw — swallow and continue (REQ-PI-03)
-    }
-
-    // Post debug channel notification (REQ-PI-04) — non-fatal
-    await this.postToDebugChannel(
-      `[ptah] PDLC auto-init: feature "${featureSlug}" registered with discipline "${config.discipline}", starting at REQ_CREATION`
-    );
-
-    // Fall through to managed PDLC path — isManaged is now true
-    // (re-enter managed branch below via goto-style label is not idiomatic;
-    //  use a boolean flag instead)
-  }
-}
-
-// Re-check managed status (accounts for just-initialized feature)
-const isManagedNow = isManaged || (featureSlug && await this.pdlcDispatcher.isManaged(featureSlug));
-
-if (isManagedNow) {
-  // PDLC-managed feature path (unchanged from Feature 011)
-  // ...
-}
-
-// Unmanaged feature: use existing RoutingEngine.decide() path
-const decision = this.routingEngine.decide(signal, this.config);
-// ...
-```
-
-**Implementation note — avoiding double `isManaged()` call:** The double `isManaged()` re-check above is illustrative. The cleaner production implementation uses a `let effectivelyManaged = isManaged` flag set to `true` after a successful `initializeFeature()` call, then a single `if (effectivelyManaged)` branch:
-
-```typescript
 const isManaged = await this.pdlcDispatcher.isManaged(featureSlug);
 let effectivelyManaged = isManaged;
 
@@ -328,22 +286,35 @@ if (!isManaged) {
       await this.pdlcDispatcher.initializeFeature(featureSlug, config);
       effectivelyManaged = true;
     } catch (initError) {
-      this.logger.error(`[ptah] Failed to auto-initialize ...`);
-      return;
+      this.logger.error(
+        `[ptah] Failed to auto-initialize PDLC state for "${featureSlug}": ${
+          initError instanceof Error ? initError.message : String(initError)
+        }`
+      );
+      return; // BR-PI-03: do NOT proceed to managed or legacy path
     }
+    // Log init success (REQ-PI-03) — swallow logger errors
     try {
-      this.logger.info(`[ptah] Auto-initialized PDLC state for feature "${featureSlug}" ...`);
-    } catch { /* swallow */ }
-    await this.postToDebugChannel(`[ptah] PDLC auto-init: ...`);
+      this.logger.info(
+        `[ptah] Auto-initialized PDLC state for feature "${featureSlug}" with discipline "${config.discipline}"`
+      );
+    } catch {
+      // logger threw — swallow and continue (REQ-PI-03)
+    }
+    // Post debug channel notification (REQ-PI-04) — non-fatal
+    await this.postToDebugChannel(
+      `[ptah] PDLC auto-init: feature "${featureSlug}" registered with discipline "${config.discipline}", starting at REQ_CREATION`
+    );
   } else {
-    this.logger.info(
+    // Age guard: thread is too old for auto-init — log at debug and fall through to legacy path
+    this.logger.debug(
       `[ptah] Skipping PDLC auto-init for "${featureSlug}" — thread has ${guardResult.turnCount} prior turns (threshold: 1)`
     );
   }
 }
 
 if (effectivelyManaged) {
-  // PDLC-managed path (unchanged)
+  // PDLC-managed path (unchanged from Feature 011)
   // ...
   return;
 }
@@ -370,7 +341,27 @@ function evaluateAgeGuard(history: ThreadMessage[]): AgeGuardResult
 
 **Threshold constant:** `const AGE_GUARD_THRESHOLD = 1;` defined as a module-level constant. Changing the threshold requires a code change (BR-BC-02).
 
-**Error handling:** If `history` is malformed or an exception is thrown during counting, the guard returns `{ eligible: true }` (fail-open, per FSPEC-BC-01 error scenario). A warning is logged.
+**Error handling:** If `countPriorAgentTurns` throws (e.g., `history` is malformed), the guard catches the exception, emits a `warn`-level log (`"[ptah] evaluateAgeGuard: unexpected error counting agent turns — failing open"`), and returns `{ eligible: true }` (fail-open, per FSPEC-BC-01 error scenario).
+
+```typescript
+function evaluateAgeGuard(history: ThreadMessage[], logger: Logger): AgeGuardResult {
+  try {
+    const count = countPriorAgentTurns(history);
+    return count <= AGE_GUARD_THRESHOLD
+      ? { eligible: true }
+      : { eligible: false, turnCount: count };
+  } catch (err) {
+    logger.warn(
+      `[ptah] evaluateAgeGuard: unexpected error counting agent turns — failing open: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    return { eligible: true };
+  }
+}
+```
+
+Note: `evaluateAgeGuard` receives `logger` as a parameter (passed from the orchestrator method context) so the warn can be emitted without the function needing access to `this`.
 
 #### 4.4.5 Idempotency guard in `DefaultPdlcDispatcher.initializeFeature()`
 
@@ -395,9 +386,9 @@ async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureSta
   // Idempotency guard: if a state record already exists, return it without modification (REQ-PI-05)
   const existing = this.state!.features[slug];
   if (existing) {
-    this.logger.debug
-      ? this.logger.debug(`[ptah] PDLC auto-init skipped: "${slug}" already initialized (concurrent request)`)
-      : this.logger.info(`[ptah] PDLC auto-init skipped: "${slug}" already initialized (concurrent request)`);
+    this.logger.debug(
+      `[ptah] PDLC auto-init skipped: "${slug}" already initialized (concurrent request)`
+    );
     return existing;
   }
   const now = new Date().toISOString();
@@ -408,7 +399,7 @@ async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureSta
 }
 ```
 
-**Implementation note:** Since `Logger` has no `debug` method, the idempotency log is emitted via `logger.info()`. The message prefix `[ptah] PDLC auto-init skipped:` is the observable artifact test assertions can match (per AT-PI-04 in the FSPEC). This is the same resolution as Section 4.3.
+**Implementation note:** The `debug` method is now present on the `Logger` interface (§4.3), so `this.logger.debug(...)` is called directly with no runtime duck-type check.
 
 ### 4.5 Composition Root
 
@@ -429,18 +420,20 @@ executeRoutingLoop()
 │   ├─ featureNameToSlug(extractFeatureName(threadName))
 │   ├─ If resolution throws OR result is falsy → slug = ""
 │   └─ If slug is "" → skip age guard, fall through to legacy path
+│       └─ routingEngine.decide() IS invoked (message is not silently dropped)
 │
 ├─ [existing] isManaged = await pdlcDispatcher.isManaged(featureSlug)
 │
 ├─ If NOT isManaged:
 │   │
-│   ├─ [PHASE 13] evaluateAgeGuard(threadHistory)
+│   ├─ [PHASE 13] evaluateAgeGuard(threadHistory, logger)
 │   │   ├─ Count messages where isBot === true AND content includes "<routing>"
 │   │   ├─ count ≤ 1 → eligible: true
-│   │   └─ count > 1 → eligible: false, turnCount: count
+│   │   ├─ count > 1 → eligible: false, turnCount: count
+│   │   └─ countPriorAgentTurns throws → warn logged, return { eligible: true } (fail-open)
 │   │
 │   ├─ If NOT eligible:
-│   │   ├─ logger.info("[ptah] Skipping PDLC auto-init ...")
+│   │   ├─ logger.debug("[ptah] Skipping PDLC auto-init ...")
 │   │   └─ effectivelyManaged = false  →  fall through to legacy path
 │   │
 │   └─ If eligible:
@@ -448,9 +441,10 @@ executeRoutingLoop()
 │       ├─ config = parseKeywords(initialMessage?.content ?? null)
 │       │   └─ Extract [backend-only|frontend-only|fullstack|skip-fspec] tokens (case-sensitive)
 │       │   └─ Last discipline keyword wins; default "backend-only"; skipFspec defaults false
+│       │   └─ Thread-name keyword parsing is out of scope (deferred, OQ-02)
 │       │
 │       ├─ await pdlcDispatcher.initializeFeature(featureSlug, config)
-│       │   ├─ [idempotency guard] If state already exists → return existing, log info
+│       │   ├─ [idempotency guard] If state already exists → return existing, log debug
 │       │   └─ Else: createFeatureState() → save to stateStore → return new state
 │       │
 │       ├─ If initializeFeature() throws:
@@ -485,19 +479,22 @@ This is safe because:
 - The in-memory map mutation is synchronous.
 - `stateStore.save()` may be called twice, but both saves contain the same state (since Call B detected the existing record and returned early without mutating `this.state`). The second save is a no-op from a correctness standpoint.
 
+**Testing AT-PI-04 (concurrent idempotency):** This scenario is tested at the `DefaultPdlcDispatcher.initializeFeature()` unit level (UT-IDP-01/02) where two direct calls are made in sequence. The integration test (IT-05) verifies the orchestrator-level observable: a single state record exists after two concurrent routing loop iterations for the same slug, with the config from the first call preserved (no overwrite). See §7.3 for the AT-PI-04 coverage mapping.
+
 ---
 
 ## 6. Error Handling
 
 | Scenario | Behavior | Log Level | Req |
 |----------|----------|-----------|-----|
-| `featureNameToSlug` or `extractFeatureName` throws | `featureSlug = ""`; falls through to unmanaged legacy path | none (silent) | REQ-PI-01, A-06 |
-| `featureSlug` resolves to falsy/empty string | Falls through to unmanaged legacy path without calling age guard | none (silent) | REQ-PI-01, A-06 |
-| `threadHistory` is malformed during age guard evaluation | Age guard treats count as 0 → eligible (fail-open) | `warn` | FSPEC-BC-01 |
+| `featureNameToSlug` or `extractFeatureName` throws | `featureSlug = ""`; `routingEngine.decide()` IS invoked (legacy path) | none (silent) | REQ-PI-01, A-06 |
+| `featureSlug` resolves to falsy/empty string | `routingEngine.decide()` IS invoked (legacy path); age guard not called | none (silent) | REQ-PI-01, A-06 |
+| `threadHistory` is malformed during age guard evaluation | Age guard treats count as 0 → eligible (fail-open); routing proceeds | `warn` | FSPEC-BC-01 |
+| Age guard ineligible (> 1 prior turn) | Skip auto-init; log skip message; `routingEngine.decide()` IS invoked (legacy path) | `debug` | REQ-BC-02 |
 | `initializeFeature()` throws (filesystem write fails) | `logger.error(...)`, `return` — neither managed nor legacy path invoked | `error` | BR-PI-03, AT-PI-03 |
 | Logger throws when emitting info log after init | Error swallowed; feature remains initialized; routing proceeds | — (swallowed) | REQ-PI-03 |
 | `postToDebugChannel()` fails | `logger.warn("Failed to post to #agent-debug")` (existing `postToDebugChannel` implementation) | `warn` | REQ-PI-04 |
-| `initializeFeature()` called for already-existing slug (race) | Returns existing `FeatureState` without overwrite; logs info-level idempotency message | `info` | REQ-PI-05, AT-PI-04 |
+| `initializeFeature()` called for already-existing slug (race) | Returns existing `FeatureState` without overwrite; logs debug-level idempotency message | `debug` | REQ-PI-05, AT-PI-04 |
 
 ---
 
@@ -515,7 +512,40 @@ Test-first order:
 
 ### 7.2 Test Doubles
 
-All test doubles already exist in `ptah/tests/fixtures/factories.ts`. The following minimal additions are required:
+All test doubles already exist in `ptah/tests/fixtures/factories.ts`. The following additions are required:
+
+#### `FakeLogger` additions
+
+The `FakeLogger` must be updated to implement the new `debug` method on the `Logger` interface:
+
+```typescript
+// Updated FakeLogger in factories.ts:
+export class FakeLogger implements Logger {
+  messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
+
+  info(message: string): void { this.messages.push({ level: "info", message }); }
+  warn(message: string): void { this.messages.push({ level: "warn", message }); }
+  error(message: string): void { this.messages.push({ level: "error", message }); }
+  debug(message: string): void { this.messages.push({ level: "debug", message }); }
+}
+```
+
+Test assertions for debug-level logs use the same pattern as other levels:
+
+```typescript
+// For the age-guard skip log (REQ-BC-02):
+expect(logger.messages.some(m =>
+  m.level === "debug" &&
+  m.message.includes("[ptah] Skipping PDLC auto-init") &&
+  m.message.includes("prior turns")
+)).toBe(true);
+
+// For the idempotency guard log (REQ-PI-05):
+expect(logger.messages.some(m =>
+  m.level === "debug" &&
+  m.message.includes("already initialized (concurrent request)")
+)).toBe(true);
+```
 
 #### `FakePdlcDispatcher` additions
 
@@ -542,27 +572,36 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
 }
 ```
 
-#### `FakeLogger` additions
+**AT-PI-04 concurrent idempotency and `FakePdlcDispatcher`:** The race scenario in AT-PI-04 (both routing loop instances see `isManaged === false` before either completes init) cannot be faithfully simulated through the orchestrator integration tests using `FakePdlcDispatcher`, because `autoRegisterOnInit = true` causes the first call to update `managedSlugs` synchronously, preventing the second orchestrator call from reaching `initializeFeature()`. Instead:
 
-The existing `FakeLogger` already captures all messages with `{ level, message }`. No changes needed. Test assertions filter by `level` and `message` content:
+- **AT-PI-04 is fully exercised at the unit level** via `UT-IDP-01` and `UT-IDP-02` against `DefaultPdlcDispatcher.initializeFeature()` directly — two sequential calls for the same slug are made, verifying the second returns the existing record and `stateStore.save()` is called only once.
+- **The integration test IT-05** verifies the orchestrator-observable only: after two routing loop invocations for the same slug both with `isManaged() → false`, the `initializeFeature` call count equals 2 (both entered the eligible path from the orchestrator's perspective), but the state record is not overwritten (the second call returns the same config as the first).
+
+#### `FakeStateStore` — `saveCount` tracking
+
+`FakeStateStore` (from Feature 011 test suite) tracks save calls. UT-IDP-01 asserts `store.saveCount === 1`. If `FakeStateStore` does not already expose `saveCount`, it must be added:
 
 ```typescript
-// Existing FakeLogger supports this assertion pattern already:
-const infoLogs = logger.messages.filter(m => m.level === "info");
-expect(infoLogs.some(m => m.message.includes("Auto-initialized PDLC state"))).toBe(true);
+// Confirm or add to FakeStateStore in factories.ts:
+export class FakeStateStore implements StateStore {
+  saveCount = 0;
+  // ... existing fields ...
 
-// For the skip log:
-expect(logger.messages.some(m =>
-  m.level === "info" &&
-  m.message.includes("[ptah] Skipping PDLC auto-init") &&
-  m.message.includes("prior turns")
-)).toBe(true);
+  async save(state: PdlcStateFile): Promise<void> {
+    this.savedState = state;
+    this.saveCount++;
+  }
+}
 ```
 
-#### Thread message factory helper
+If `FakeStateStore.saveCount` already exists in the Feature 011 test suite, no change is needed — the TSPEC references it as-is.
+
+#### Thread message factory helpers
+
+`createThreadMessage` is an existing factory in `factories.ts` that accepts a partial `ThreadMessage` and fills in defaults. The two new helpers for age guard tests are wrappers around it:
 
 ```typescript
-// Helper to create a thread message with isBot and content (used in age guard tests):
+// New helpers added to factories.ts (wrappers around existing createThreadMessage):
 export function createBotMessageWithRouting(content = "<routing>{}</routing>"): ThreadMessage {
   return createThreadMessage({ isBot: true, content });
 }
@@ -571,19 +610,23 @@ export function createBotMessageNoRouting(content = "Progress update"): ThreadMe
 }
 ```
 
+Any test case that uses `createThreadMessage({ isBot: false, content: ... })` directly (e.g., UT-ORC-AI-01) is calling the existing factory — no new factory is needed for user messages.
+
 ### 7.3 Test Categories
 
 | Category | File | Test IDs | Covers |
 |----------|------|----------|--------|
 | Pure helper — `countPriorAgentTurns` | `tests/unit/orchestrator/pdlc/auto-init.test.ts` | UT-CAT-01 to UT-CAT-06 | Zero history, user-only history, bot-with-routing, bot-without-routing, mixed |
-| Pure helper — `parseKeywords` | `tests/unit/orchestrator/pdlc/auto-init.test.ts` | UT-KW-01 to UT-KW-09 | No keywords, each valid keyword, case variants, conflict (last wins), unknown token |
-| Pure helper — `evaluateAgeGuard` | `tests/unit/orchestrator/pdlc/auto-init.test.ts` | UT-AG-01 to UT-AG-05 | 0 turns, 1 turn (boundary), 2 turns (boundary), 5 turns, empty history |
-| `initializeFeature()` idempotency | `tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | UT-IDP-01, UT-IDP-02 | First call creates; second call returns existing without overwrite |
+| Pure helper — `parseKeywords` | `tests/unit/orchestrator/pdlc/auto-init.test.ts` | UT-KW-01 to UT-KW-10 | No keywords, each valid keyword, case variants, conflict (last wins), unknown token, duplicate `[skip-fspec]` |
+| Pure helper — `evaluateAgeGuard` | `tests/unit/orchestrator/pdlc/auto-init.test.ts` | UT-AG-01 to UT-AG-06 | 0 turns, 1 turn (boundary), 2 turns (boundary), 5 turns, empty history, malformed/throwing history (fail-open) |
+| `initializeFeature()` idempotency | `tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | UT-IDP-01, UT-IDP-02 | First call creates; second call (same slug, different config) returns existing without overwrite; saveCount=1 |
 | Orchestrator auto-init — new feature | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-AI-01 to UT-ORC-AI-06 | AT-PI-01 through AT-PI-06 from FSPEC |
-| Orchestrator age guard — skip | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-BC-01 to UT-ORC-BC-05 | AT-BC-01 through AT-BC-05 from FSPEC |
+| Orchestrator age guard — skip | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-BC-01 to UT-ORC-BC-05 | AT-BC-01 through AT-BC-05 from FSPEC; includes positive assert that `routingEngine.decide()` IS called when ineligible |
 | Orchestrator keyword parsing — integration | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-DC-01 to UT-ORC-DC-09 | AT-DC-01 through AT-DC-09 from FSPEC |
-| Orchestrator unresolvable slug | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-SLUG-01 | Falsy slug → no auto-init, no age guard |
-| Integration — full routing loop | `tests/integration/orchestrator/pdlc-auto-init.test.ts` | IT-01 to IT-05 | New feature auto-init → managed path; old feature → legacy; concurrent same-slug |
+| Orchestrator unresolvable slug | `tests/unit/orchestrator/orchestrator.test.ts` | UT-ORC-SLUG-01 | Falsy slug → no auto-init, no age guard, but `routingEngine.decide()` IS invoked |
+| Integration — full routing loop | `tests/integration/orchestrator/pdlc-auto-init.test.ts` | IT-01 to IT-05 | New feature auto-init → managed path; old feature → legacy; concurrent same-slug (AT-PI-04 observable) |
+
+**AT-PI-04 coverage clarification:** AT-PI-04 (concurrent init idempotency) is fully covered at the unit level by UT-IDP-01 and UT-IDP-02 against `DefaultPdlcDispatcher.initializeFeature()` directly. IT-05 covers the orchestrator-observable only (two routing calls → two `initializeFeature` calls → single record, no overwrite). See §5.2 for rationale.
 
 ### 7.4 Key Test Cases
 
@@ -616,6 +659,15 @@ it("uses last discipline keyword when multiple present", () => {
 });
 ```
 
+#### UT-KW-10: `parseKeywords` — duplicate `[skip-fspec]` is idempotent
+
+```typescript
+it("sets skipFspec true when [skip-fspec] appears twice", () => {
+  expect(parseKeywords("[backend-only] [skip-fspec] [skip-fspec]"))
+    .toEqual({ discipline: "backend-only", skipFspec: true });
+});
+```
+
 #### UT-AG-03: `evaluateAgeGuard` — boundary at 2
 
 ```typescript
@@ -624,9 +676,24 @@ it("returns not eligible for exactly 2 prior agent turns", () => {
     createBotMessageWithRouting(),
     createBotMessageWithRouting(),
   ];
-  const result = evaluateAgeGuard(history);
+  const result = evaluateAgeGuard(history, new FakeLogger());
   expect(result.eligible).toBe(false);
   expect((result as { eligible: false; turnCount: number }).turnCount).toBe(2);
+});
+```
+
+#### UT-AG-06: `evaluateAgeGuard` — malformed history (countPriorAgentTurns throws) → fail-open
+
+```typescript
+it("returns eligible when countPriorAgentTurns throws (fail-open)", () => {
+  // Simulate a malformed history that causes countPriorAgentTurns to throw.
+  // We pass a history containing a non-ThreadMessage object cast to force the error path.
+  // In practice, inject a spy/override; here we test evaluateAgeGuard's catch block directly.
+  const logger = new FakeLogger();
+  // Pass null to trigger an internal throw from countPriorAgentTurns
+  const result = evaluateAgeGuard(null as unknown as ThreadMessage[], logger);
+  expect(result.eligible).toBe(true);
+  expect(logger.messages.some(m => m.level === "warn" && m.message.includes("failing open"))).toBe(true);
 });
 ```
 
@@ -673,7 +740,60 @@ it("halts routing when initializeFeature() throws", async () => {
 });
 ```
 
-#### UT-IDP-01: `initializeFeature()` idempotency — second call returns existing
+#### UT-ORC-BC-01: Age guard ineligible → skip log at debug, legacy path invoked
+
+```typescript
+it("logs debug skip and routes legacy when thread has > 1 prior agent turns", async () => {
+  pdlcDispatcher.managedSlugs.clear();
+  discord.threadHistory = [
+    createBotMessageWithRouting("<routing>{}</routing>"),
+    createBotMessageWithRouting("<routing>{}</routing>"),
+    createThreadMessage({ isBot: false, content: "@pm create REQ" }),
+  ];
+  routingEngine.decideResult = { type: "terminal" };
+  invocationGuard.results = [{ status: "success", invocationResult: lgtmResult(), commitResult: defaultCommitResult() }];
+
+  const msg = createThreadMessage({ threadName: "013-pdlc-auto-init — create REQ" });
+  await orchestrator.handleMessage(msg);
+  await threadQueue.drain();
+
+  // Auto-init was NOT attempted
+  expect(pdlcDispatcher.initializeFeatureCalls).toHaveLength(0);
+  // Skip log emitted at debug level (REQ-BC-02)
+  expect(logger.messages.some(m =>
+    m.level === "debug" &&
+    m.message.includes("[ptah] Skipping PDLC auto-init") &&
+    m.message.includes("prior turns")
+  )).toBe(true);
+  // Legacy path WAS invoked (message not silently dropped)
+  expect(routingEngine.decideCalls).toHaveLength(1);
+});
+```
+
+#### UT-ORC-SLUG-01: Unresolvable slug → no auto-init, legacy path IS invoked
+
+```typescript
+it("falls through to legacy path when slug is unresolvable, does not attempt auto-init", async () => {
+  // Use a thread name that produces an empty/falsy slug after featureNameToSlug()
+  discord.threadHistory = [createThreadMessage({ isBot: false, content: "hello" })];
+  routingEngine.decideResult = { type: "terminal" };
+  invocationGuard.results = [{ status: "success", invocationResult: lgtmResult(), commitResult: defaultCommitResult() }];
+
+  // Thread name designed to produce unresolvable slug (e.g., no recognizable feature name)
+  const msg = createThreadMessage({ threadName: "general-discussion" });
+  await orchestrator.handleMessage(msg);
+  await threadQueue.drain();
+
+  // Auto-init was NOT attempted
+  expect(pdlcDispatcher.initializeFeatureCalls).toHaveLength(0);
+  // Age guard was NOT evaluated
+  // (indirectly confirmed: initializeFeature not called, managed path not reached)
+  // Legacy path WAS invoked (message not silently dropped)
+  expect(routingEngine.decideCalls).toHaveLength(1);
+});
+```
+
+#### UT-IDP-01: `initializeFeature()` idempotency — second call returns existing without overwrite
 
 ```typescript
 it("returns existing state without overwrite on second call for same slug", async () => {
@@ -684,12 +804,15 @@ it("returns existing state without overwrite on second call for same slug", asyn
   const config: FeatureConfig = { discipline: "backend-only", skipFspec: false };
   const first = await dispatcher.initializeFeature("013-pdlc-auto-init", config);
 
+  // Second call with a different config — must NOT overwrite the first
   const config2: FeatureConfig = { discipline: "fullstack", skipFspec: true };
   const second = await dispatcher.initializeFeature("013-pdlc-auto-init", config2);
 
-  expect(second).toBe(first);  // same object reference
-  expect(second.config.discipline).toBe("backend-only");  // not overwritten by second call
-  expect(store.saveCount).toBe(1);  // only saved once
+  // The original config is preserved — second call did not overwrite
+  expect(second.config.discipline).toBe("backend-only");
+  expect(second.config.skipFspec).toBe(false);
+  // State was only saved once (second call returned early from guard)
+  expect(store.saveCount).toBe(1);
 });
 ```
 
@@ -703,9 +826,9 @@ it("returns existing state without overwrite on second call for same slug", asyn
 | REQ-PI-02 | Default feature configuration `{ discipline: "backend-only", skipFspec: false }` | `parseKeywords()` default return | `orchestrator.ts` module-level helper |
 | REQ-PI-03 | Log `[ptah] Auto-initialized PDLC state for feature ...` at info level | `logger.info(...)` call in auto-init block; swallowed on logger throw | `orchestrator.ts` |
 | REQ-PI-04 | Post debug channel notification; non-fatal | `postToDebugChannel(...)` call after info log | `orchestrator.ts` (reuses existing `postToDebugChannel` method) |
-| REQ-PI-05 | Idempotent initialization — check-before-write | Early return if `this.state!.features[slug]` exists | `pdlc-dispatcher.ts` `initializeFeature()` |
+| REQ-PI-05 | Idempotent initialization — check-before-write | Early return if `this.state!.features[slug]` exists; `logger.debug(...)` idempotency message | `pdlc-dispatcher.ts` `initializeFeature()` |
 | REQ-BC-01 | Age guard: ≤ 1 prior agent turn to be eligible | `evaluateAgeGuard()` + `countPriorAgentTurns()` | `orchestrator.ts` module-level helpers |
-| REQ-BC-02 | Debug log when age guard fails: exact message format | `logger.info("[ptah] Skipping PDLC auto-init ...")` | `orchestrator.ts` auto-init block, ineligible branch |
+| REQ-BC-02 | Debug log when age guard fails: exact message format | `logger.debug("[ptah] Skipping PDLC auto-init ...")` | `orchestrator.ts` auto-init block, ineligible branch |
 | REQ-DC-01 | Discipline keyword parsing (`[backend-only]`, `[frontend-only]`, `[fullstack]`) | `parseKeywords()` regex token extraction | `orchestrator.ts` module-level helper |
 | REQ-DC-02 | `[skip-fspec]` keyword sets `skipFspec: true` | `parseKeywords()` | `orchestrator.ts` module-level helper |
 | REQ-DC-03 | Unknown keywords ignored silently | `parseKeywords()` default case | `orchestrator.ts` module-level helper |
@@ -725,11 +848,15 @@ The auto-init block is inserted immediately after the existing `isManaged` call 
 
 ### 9.2 `PdlcDispatcher.initializeFeature()` — idempotency guard
 
-The guard is a pure in-memory read (`this.state!.features[slug]`) before the write. It does not call `stateStore.load()` again and does not issue any disk I/O for the check. The observable side effect for tests is the `logger.info(...)` message with the `"already initialized (concurrent request)"` suffix.
+The guard is a pure in-memory read (`this.state!.features[slug]`) before the write. It does not call `stateStore.load()` again and does not issue any disk I/O for the check. The observable side effect for tests is:
+- **`logger.debug(...)`** with the `"already initialized (concurrent request)"` suffix — assertable via `FakeLogger.messages` filtered by `level === "debug"`.
+- **`store.saveCount === 1`** — confirms the state was persisted exactly once across two `initializeFeature()` calls for the same slug.
 
-### 9.3 `FakePdlcDispatcher` — test double update
+### 9.3 `FakePdlcDispatcher` — test double design and AT-PI-04
 
 The `initResult` must be configured to a valid `FeatureState` for any test that exercises the auto-init path. Tests that expect `initializeFeature()` to throw set `initError` instead. The `autoRegisterOnInit = true` flag causes the fake to add the slug to `managedSlugs` on a successful init call, simulating the real dispatcher's behavior where `isManaged()` returns `true` after init.
+
+**AT-PI-04 concurrent scenario:** The `FakePdlcDispatcher` with `autoRegisterOnInit = true` cannot simulate the true race (both calls seeing `isManaged === false` before either completes). This is by design — the race-condition safety guarantee is a property of `DefaultPdlcDispatcher`'s internal synchronous guard, not of the orchestrator's routing logic. It is tested at the unit level via UT-IDP-01/02 where two direct calls to `initializeFeature()` are issued in sequence against `DefaultPdlcDispatcher` with a `FakeStateStore`. The integration test IT-05 exercises the orchestrator-level observable only.
 
 ---
 
@@ -737,8 +864,8 @@ The `initResult` must be configured to a valid `FeatureState` for any test that 
 
 | # | Question | Status |
 |---|----------|--------|
-| OQ-01 | `Logger` interface lacks a `debug` method. [REQ-BC-02] requires a "debug-level" log assertable via a test spy. The current resolution is to use `logger.info()` with a distinguishing message prefix. Should a `debug` method be added to the `Logger` interface in a follow-on feature? | Deferred — current implementation uses `info` level with prefix `[ptah] Skipping PDLC auto-init`; test assertions match on message content |
-| OQ-02 | Should keyword parsing be extended to the thread name (not just the initial message body)? Some developers may put discipline hints in the thread name. Not required by current requirements. | Deferred |
+| OQ-01 | `Logger` interface lacked a `debug` method. [REQ-BC-02] requires a "debug-level" log assertable via a test spy. | **Resolved** — `debug` method added to `Logger` interface in Feature 013 (§4.3). All affected sections updated. |
+| OQ-02 | Should keyword parsing be extended to the thread name (not just the initial message body)? Some developers may put discipline hints in the thread name. Not required by current requirements. | Deferred — `parseKeywords()` explicitly scoped to `initialMessage?.content` only. A code comment at the function definition will mark thread-name parsing as out of scope. |
 | OQ-03 | The age guard threshold of 1 is hardcoded. Should it be a `ptah.config.json` setting? [BR-BC-02] says changing it requires a code change. If operational experience shows the threshold needs tuning, this could become a config value. | Deferred |
 
 ---
@@ -748,6 +875,7 @@ The `initResult` must be configured to a valid `FeatureState` for any test that 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-15 | Backend Engineer | Initial TSPEC — module architecture, concrete implementations for `countPriorAgentTurns`, `parseKeywords`, `evaluateAgeGuard`, auto-init block in `executeRoutingLoop()`, idempotency guard in `initializeFeature()`, test strategy |
+| 1.1 | 2026-03-15 | Backend Engineer | Address PM and Test Engineer cross-review findings: add `debug` to Logger interface (resolves OQ-01, PM-F-01, QA-F-01); remove dual code block in §4.4.3 (PM-F-02); remove duck-type debug? check in §4.4.5 (PM-F-03); add UT-AG-06 fail-open test (QA-F-02); clarify AT-PI-04 unit-vs-integration coverage (QA-F-03); add UT-ORC-SLUG-01 test body with positive legacy-path assert (QA-F-04); document createThreadMessage as existing factory (QA-F-05); replace toBe(first) with field-level assertions in UT-IDP-01 (QA-F-06); add UT-KW-10 duplicate skip-fspec; add FakeStateStore.saveCount note (QA-Q-03); add out-of-scope note for thread-name parsing (QA-Q-01); update §6 log levels for REQ-BC-02 and idempotency row; update §8 REQ-BC-02 row; update §9.2 observable side effects |
 
 ---
 
