@@ -125,7 +125,7 @@ describe("cross-review-parser", () => {
       expect(parseRecommendation(content)).toEqual({ status: "approved" });
     });
 
-    it("returns parse_error for multiple Recommendation headings", () => {
+    it("uses last Recommendation heading when multiple are present", () => {
       const content = [
         "## Recommendation",
         "",
@@ -136,8 +136,7 @@ describe("cross-review-parser", () => {
         "Needs revision",
       ].join("\n");
       expect(parseRecommendation(content)).toEqual({
-        status: "parse_error",
-        reason: "Multiple Recommendation headings found",
+        status: "revision_requested",
       });
     });
 

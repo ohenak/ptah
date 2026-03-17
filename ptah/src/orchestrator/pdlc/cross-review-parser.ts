@@ -88,9 +88,9 @@ export function parseRecommendation(fileContent: string): ParsedRecommendation {
     }
 
     if (matchesRecommendationHeading(line)) {
-      if (matchLineIndex !== null) {
-        return parseError("Multiple Recommendation headings found");
-      }
+      // Use last match — cross-review files may contain inline
+      // "Recommendation for FSPEC update" lines and table header rows
+      // before the actual verdict heading.
       matchLineIndex = i;
     }
   }
