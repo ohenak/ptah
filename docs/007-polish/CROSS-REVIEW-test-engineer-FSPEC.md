@@ -4,9 +4,41 @@
 |-------|--------|
 | **Reviewer** | Test Engineer (`qa`) |
 | **REQ Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.5 |
-| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.0 |
+| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.1 |
 | **Date** | March 16, 2026 |
 | **Recommendation** | **Approved** |
+
+---
+
+## Review Pass: March 16, 2026 (v2.1 — Sixth Pass)
+
+This is a sixth review pass over the FSPEC following the v2.1 revision. **All three blocking protocol scope notes (BE-F-02, BE-F-03, BE-F-04) are now present in the document. TSPEC authoring is unblocked.**
+
+### Verification of Previously-Blocking Items
+
+| Item | Required Addition | Section | Status |
+|------|-------------------|---------|--------|
+| BE-F-02 | `DiscordClient.archiveThread(threadId: string): Promise<void>` is a Phase 7 protocol deliverable | FSPEC-DI-02 §3.5 | ✅ Present — includes discord.js `ThreadChannel.setArchived(true)` reference, `FakeDiscordClient` requirements (call recording, error injection), and explicit "not optional" language |
+| BE-F-03 | `[ptah:{component}]` is a Logger-level concern; Logger protocol must support component-scoped factory instances | FSPEC-LG-01 §7.5 BR-LG-01-05 | ✅ Present — specifies `forComponent()` factory method, structured `{ component, level, message }` capture for `FakeLogger`, and deterministic test assertion pattern |
+| BE-F-04 | `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` is a Phase 7 protocol deliverable | FSPEC-DI-03 §5.4 | ✅ Present — includes `channel.send({ content })` implementation note, `FakeDiscordClient` requirements (call recording, failure injection), and `postAgentResponse()` migration directive |
+
+### Additional v2.1 Improvements (beyond the three blockers)
+
+| Addition | Section | Testing Impact |
+|----------|---------|---------------|
+| `createCoordinationThread()` disposition | FSPEC-DI-03 §5.4 | New testable behavior: coordination thread initial message uses Routing Notification embed (color `0x5865F2`) instead of per-agent colour. `resolveColour()` eliminated. |
+| Embed fallback plain-text formats | FSPEC-DI-03 §5.6 | Resolves F-08 (Low): each embed type now has a defined fallback string. Tests can assert exact fallback content per type, not just "a message was posted". |
+| Component fallback rule for unlisted modules | FSPEC-LG-01 §7.3 | New edge case: modules not in the 8-value component list use `orchestrator` as fallback. Testable as a negative property. |
+
+### New Findings
+
+No new findings. The v2.1 additions are precise, testable, and well-scoped.
+
+### Status: ✅ TSPEC Authoring Unblocked
+
+All blocking items are resolved. All previously-identified Low-severity findings (F-06, F-08, F-09) are either resolved (F-08) or correctly deferred to TSPEC scope (F-06, F-09). The FSPEC v2.1 is ready for TSPEC authoring.
+
+**Recommendation: Approved.**
 
 ---
 
