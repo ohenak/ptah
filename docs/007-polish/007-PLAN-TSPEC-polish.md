@@ -6,7 +6,7 @@
 | **Requirements** | [007-REQ-polish](007-REQ-polish.md) |
 | **Functional Specification** | [007-FSPEC-polish](007-FSPEC-polish.md) |
 | **Date** | 2026-03-17 |
-| **Status** | Draft |
+| **Status** | Approved — Ready for Implementation |
 
 ---
 

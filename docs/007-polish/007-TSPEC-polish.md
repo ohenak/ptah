@@ -7,7 +7,7 @@
 | **Functional Specifications** | [007-FSPEC-polish](./007-FSPEC-polish.md) |
 | **Date** | March 16, 2026 |
 | **Author** | Backend Engineer |
-| **Status** | Under Review (v1.5) |
+| **Status** | Approved (v1.5) |
 
 ---
 
