@@ -38,7 +38,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-02], [US-04] | [REQ-DI-03] | Pending Spec | P0 | 2 | Pending Spec |
 | [US-02], [US-05] | [REQ-DI-04] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
 | [US-02] | [REQ-DI-05] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-02] | [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-ptah-polish.md) | P1 | 7 | FSPEC Complete |
+| [US-02] | [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-polish.md) | P1 | 7 | FSPEC Complete |
 | [US-02], [US-07] | [REQ-DI-10] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-03], [US-07] | [REQ-RP-06] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-03] | [REQ-DI-07] | [005-TSPEC-ptah-user-questions](../specifications/005-TSPEC-ptah-user-questions.md) | P0 | 5 | Specified |
@@ -80,7 +80,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-06] | [REQ-NF-05] | [FSPEC-AC-01](../specifications/004-FSPEC-ptah-artifact-commits.md), [FSPEC-AC-02](../specifications/004-FSPEC-ptah-artifact-commits.md) | P0 | 4 | FSPEC Complete |
 | [US-01], [US-05] | [REQ-NF-06] | [TSPEC-ptah-init](../specifications/TSPEC-ptah-init.md) | P0 | 1 | Specified |
 | [US-04], [US-06] | [REQ-NF-07] | [FSPEC-DI-01](../specifications/FSPEC-ptah-skill-routing.md) | P0 | 3 | FSPEC Complete |
-| [US-08] | [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-ptah-polish.md) | P1 | 7 | FSPEC Complete |
+| [US-08] | [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-polish.md) | P1 | 7 | FSPEC Complete |
 | [US-05] | [REQ-NF-09] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-05], [US-07] | [REQ-NF-10] | Pending FSPEC | P1 | 7 | Pending FSPEC |
 | [US-09] | [REQ-AF-01] | [FSPEC-AF-01](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md) | P0 | 9 | FSPEC Complete |
@@ -424,8 +424,8 @@ This matrix provides full traceability from user scenarios through requirements 
 
 | Requirement | FSPEC | Specification | Priority | User Scenarios |
 |-------------|-------|---------------|----------|----------------|
-| [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-ptah-polish.md) | Pending TSPEC | P1 | [US-02] |
-| [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-ptah-polish.md) | Pending TSPEC | P1 | [US-08] |
+| [REQ-DI-06] | [FSPEC-DI-02](../007-polish/007-FSPEC-polish.md) | Pending TSPEC | P1 | [US-02] |
+| [REQ-NF-08] | [FSPEC-EX-01](../007-polish/007-FSPEC-polish.md) | Pending TSPEC | P1 | [US-08] |
 
 ### Phase 9 — Auto Feature Bootstrap
 
@@ -523,7 +523,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | Requirements — Phase 4 | [004-REQ-PTAH-artifact-commits](../requirements/004-REQ-PTAH-artifact-commits.md) | Phase 4 (Artifact Commits) requirements — 6 requirements |
 | Requirements — Phase 5 | [005-REQ-PTAH-user-questions](../requirements/005-REQ-PTAH-user-questions.md) | Phase 5 (User Questions) requirements — 7 requirements |
 | Requirements — Phase 6 | [006-REQ-PTAH-guardrails](../requirements/006-REQ-PTAH-guardrails.md) | Phase 6 (Guardrails) requirements — 6 requirements |
-| Requirements — Phase 7 | [007-REQ-PTAH-polish](../requirements/007-REQ-PTAH-polish.md) | Phase 7 (Polish) requirements — 2 requirements |
+| Requirements — Phase 7 | [007-REQ-polish](../007-polish/007-REQ-polish.md) | Phase 7 (Polish) requirements — 2 requirements |
 | TSPEC — ptah init | [001-TSPEC-ptah-init](../specifications/001-TSPEC-ptah-init.md) | Technical specification for Phase 1 (`ptah init`) |
 | TSPEC — ptah discord bot | [002-TSPEC-ptah-discord-bot](../specifications/002-TSPEC-ptah-discord-bot.md) | Technical specification for Phase 2 (`ptah start` — Discord Bot) |
 | FSPEC — ptah skill routing | [FSPEC-ptah-skill-routing](../specifications/003-FSPEC-ptah-skill-routing.md) | Functional specification for Phase 3 (Skill Routing) — 6 FSPECs |

@@ -3,8 +3,8 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Backend Engineer |
-| **Document Reviewed** | [007-REQ-PTAH-polish.md](./007-REQ-PTAH-polish.md) v1.2 |
-| **FSPEC Reviewed** | [007-FSPEC-ptah-polish.md](./007-FSPEC-ptah-polish.md) v1.0 |
+| **Document Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.2 |
+| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v1.0 |
 | **Date** | March 16, 2026 |
 | **Recommendation** | **Needs revision** |
 
