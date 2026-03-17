@@ -982,6 +982,66 @@ export class DefaultOrchestrator implements Orchestrator {
 
       // Parse routing signal and continue
       const signal = this.routingEngine.parseSignal(result.routingSignalRaw);
+
+      // Check if this feature is PDLC-managed
+      let featureSlug: string;
+      try {
+        featureSlug = featureNameToSlug(extractFeatureName(question.threadName));
+      } catch {
+        featureSlug = "";
+      }
+      const isManaged = featureSlug ? await this.pdlcDispatcher.isManaged(featureSlug) : false;
+
+      if (isManaged) {
+        // PDLC-managed path — mirror executeRoutingLoop logic
+        if (signal.type === "LGTM" || signal.type === "TASK_COMPLETE") {
+          const featureState = await this.pdlcDispatcher.getFeatureState(featureSlug);
+          const isReviewPhase = featureState != null && REVIEW_PHASES.has(featureState.phase);
+
+          let dispatchAction: DispatchAction;
+          if (isReviewPhase) {
+            dispatchAction = await this.pdlcDispatcher.processReviewCompletion({
+              featureSlug,
+              reviewerAgentId: question.agentId,
+              worktreePath,
+            });
+          } else {
+            dispatchAction = await this.pdlcDispatcher.processAgentCompletion({
+              featureSlug,
+              agentId: question.agentId,
+              signal: signal.type as "LGTM" | "TASK_COMPLETE",
+              worktreePath,
+            });
+          }
+          await this.handleDispatchAction(
+            dispatchAction,
+            syntheticTrigger,
+            question.agentId,
+            result.textResponse,
+            worktreePath,
+          );
+          return;
+        }
+
+        if (signal.type === "ROUTE_TO_USER") {
+          const questionText = (signal as { question?: string }).question ?? "Awaiting user input.";
+          await this.handleRouteToUser(questionText, syntheticTrigger, question.agentId);
+          return;
+        }
+
+        if (signal.type === "ROUTE_TO_AGENT") {
+          const targetAgentId = (signal as { agentId?: string }).agentId;
+          if (targetAgentId) {
+            await this.executeRoutingLoop(targetAgentId, syntheticTrigger);
+          }
+          return;
+        }
+
+        // Unknown signal in managed feature — treat as terminal
+        return;
+      }
+
+      // Unmanaged feature: use legacy RoutingEngine.decide() path
       const decision = this.routingEngine.decide(signal, this.config);
 
       if (decision.isTerminal) {
