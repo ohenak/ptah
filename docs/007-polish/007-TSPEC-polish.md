@@ -7,7 +7,7 @@
 | **Functional Specifications** | [007-FSPEC-polish](./007-FSPEC-polish.md) |
 | **Date** | March 16, 2026 |
 | **Author** | Backend Engineer |
-| **Status** | Approved |
+| **Status** | Under Review (v1.4) |
 
 ---
 
@@ -99,16 +99,7 @@ bin/ptah.ts (composition root)
 #### 4.2.1 Logger Protocol — `src/services/logger.ts`
 
 ```typescript
-// Valid component values — exhaustive union
-export type Component =
-  | 'orchestrator'
-  | 'router'
-  | 'dispatcher'
-  | 'skill-invoker'
-  | 'artifact-committer'
-  | 'response-poster'
-  | 'config'
-  | 'discord';
+import type { Component } from '../types.js'; // canonical source — do not redefine here
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
@@ -150,6 +141,8 @@ class ComponentLogger implements Logger {
 ```
 
 **Design rationale:** `forComponent()` returns a `ComponentLogger` that formats every call. The root `ConsoleLogger` (used at composition root before any component is known) delegates un-prefixed until a component scope is established. Each module calls `this.log = deps.logger.forComponent('skill-invoker')` in its constructor — the component prefix is never repeated at the call site.
+
+**`Component` type canonical location:** `Component` is defined once in `src/types.ts` (see §4.2.3). `src/services/logger.ts` imports it from there. This is consistent with `LogLevel`, `LogEntry`, `UserFacingErrorType`, and other shared types already living in `types.ts`. Never redefine `Component` in `logger.ts`.
 
 #### 4.2.2 DiscordClient Protocol — `src/services/discord.ts`
 
@@ -194,6 +187,8 @@ async postPlainMessage(threadId: string, content: string): Promise<void> {
 }
 ```
 
+**`postSystemMessage()` disposition:** The existing `postSystemMessage(threadId: string, content: string): Promise<void>` method is **removed** from the `DiscordClient` interface and `DiscordJsClient` implementation. After Phase 7, no call sites remain: agent response text uses `postPlainMessage()`, and all Orchestrator metadata uses the four typed embed methods. Engineers should confirm no stale `postSystemMessage()` references remain via a grep of the codebase before removing the implementation.
+
 **Discord.js capability confirmation:** `ThreadChannel.setArchived(true)` is a stable method in discord.js 14.x. The `send({ content })` path is already used by other Discord.js integrations and is distinct from `send({ embeds: [...] })`.
 
 #### 4.2.3 AgentEntry and AgentRegistry — `src/types.ts` + `src/orchestrator/agent-registry.ts`
@@ -220,13 +215,15 @@ export interface RegisteredAgent {
 }
 
 export type Component =
-  | 'orchestrator' | 'router' | 'dispatcher' | 'skill-invoker'
+  | 'orchestrator' | 'router' | 'invocation-guard' | 'skill-invoker'
   | 'artifact-committer' | 'response-poster' | 'config' | 'discord';
+// Note: 'invocation-guard' corresponds to invocation-guard.ts.
+// There is no dispatcher.ts file; 'dispatcher' has been removed from the union.
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export interface LogEntry {
-  component: string;
+  component: Component; // typed as Component (not string) for compile-time verification
   level: LogLevel;
   message: string;
 }
@@ -292,12 +289,13 @@ export class DefaultAgentRegistry implements AgentRegistry {
  * Validates AgentEntry[] from config and builds a DefaultAgentRegistry.
  * Invalid or duplicate entries are skipped and logged; startup is not aborted.
  * Returns the registry and the list of validation errors for testing.
+ * Async because validation performs fs.exists() I/O for skill_path and log_file.
  */
-export function buildAgentRegistry(
+export async function buildAgentRegistry(
   entries: AgentEntry[],
   fs: FileSystem,
   logger: Logger,
-): { registry: AgentRegistry; errors: AgentValidationError[] }
+): Promise<{ registry: AgentRegistry; errors: AgentValidationError[] }>
 ```
 
 #### 4.2.4 ResponsePoster Protocol — `src/orchestrator/response-poster.ts`
@@ -401,6 +399,42 @@ export function buildErrorMessage(
 | ERR-RP-05 | `⚠ Error — Skill File Missing` | `The Skill definition for {agentDisplayName} could not be found.` | `Verify the skill file exists at the configured path and that Ptah has read access. Check the console log for the expected path.` |
 
 **Design rule:** `buildErrorMessage()` is a pure function. It never receives `Error` objects, stack traces, or raw exception messages. The caller extracts safe context values (agent name, retry count, etc.) and passes them. All `Error` objects are written to the structured log by the caller before invoking this function.
+
+#### 4.2.6 RoutingEngine Protocol — Updated Interface
+
+The `RoutingEngine` interface method signatures are **unchanged**; the `config: PtahConfig` parameter is retained on both `resolveHumanMessage()` and `decide()` because the orchestrator config (e.g., `config.orchestrator`, `config.llm`) is still needed at routing time. The behavioral change is **internal to the implementation**: `config.agents.role_mentions` look-ups are replaced by `agentRegistry.getAgentByMentionId()`, and `config.agents.active` validation is replaced by `agentRegistry.getAgentById()`.
+
+```typescript
+export interface RoutingEngine {
+  // UNCHANGED signatures — config retained for non-agent config access
+  resolveHumanMessage(message: ThreadMessage, config: PtahConfig): string | null;
+  decide(signal: RoutingSignal, config: PtahConfig): RoutingDecision;
+}
+```
+
+**Constructor change (implementation only):**
+
+```typescript
+// DefaultRoutingEngine gains agentRegistry as a constructor dependency
+class DefaultRoutingEngine implements RoutingEngine {
+  constructor(
+    private readonly agentRegistry: AgentRegistry,
+    private readonly log: Logger,
+  ) {}
+
+  resolveHumanMessage(message: ThreadMessage, config: PtahConfig): string | null {
+    // was: config.agents.role_mentions[mentionId]
+    // now: this.agentRegistry.getAgentByMentionId(mentionId)?.id ?? null
+  }
+
+  decide(signal: RoutingSignal, config: PtahConfig): RoutingDecision {
+    // was: config.agents.active.includes(targetAgentId)
+    // now: this.agentRegistry.getAgentById(targetAgentId) !== null
+  }
+}
+```
+
+The `RoutingEngine` *interface* does not expose `agentRegistry`. Only the concrete `DefaultRoutingEngine` constructor accepts it. `FakeRoutingEngine` in tests continues to implement the interface without any registry dependency.
 
 ---
 
@@ -508,7 +542,7 @@ export interface PtahConfig {
 
 ```
 Input: entries: AgentEntry[], fs: FileSystem, logger: Logger (component: 'config')
-Output: { registry: DefaultAgentRegistry, errors: AgentValidationError[] }
+Output: Promise<{ registry: DefaultAgentRegistry, errors: AgentValidationError[] }>
 
 1. Initialize: registered: RegisteredAgent[] = [], errors: AgentValidationError[] = []
    seenIds: Set<string> = new Set()
@@ -782,7 +816,7 @@ postUserEscalationError: Error | null = null;
 |----------|-----------|----------------|
 | AgentRegistry unit | `tests/unit/agent-registry.test.ts` | `buildAgentRegistry()` validation rules, duplicate detection, startup log messages, FakeFs integration; `AgentValidationError` shape for each failure kind |
 | ErrorMessages unit | `tests/unit/error-messages.test.ts` | `buildErrorMessage()` returns correct title/whatHappened/whatToDo for each of 5 error types; no stack traces in output |
-| ResponsePoster unit | `tests/unit/response-poster.test.ts` | 4 embed type schemas (color, title, footer), plain-text agent response, embed fallback to plain, truncation, `fromAgentDisplayName: 'Ptah'` fallback renders correctly in Routing Notification embed |
+| ResponsePoster unit | `tests/unit/response-poster.test.ts` | 4 embed type schemas (color, title, footer), plain-text agent response (chunked via `postPlainMessage()`), embed fallback to plain, truncation, `fromAgentDisplayName: 'Ptah'` fallback renders correctly in Routing Notification embed; 2000-char chunk boundary cases: (a) text of exactly 2000 chars → 1 `postPlainMessage()` call; (b) text of 2001 chars → 2 `postPlainMessage()` calls (split at 2000-char boundary) |
 | Logger unit | `tests/unit/logger.test.ts` | `forComponent()` returns scoped logger; FakeLogger shared-store behavior; `ComponentLogger` format string `[ptah:{component}] {LEVEL}: {message}` |
 | Thread archiving unit | `tests/unit/orchestrator.test.ts` | AT-DI-02-01 through AT-DI-02-09; `postResolutionNotificationEmbed()` called before `archiveThread()`; archiving is last (ordering); non-fatal on failure; idempotency |
 | Observability unit | `tests/unit/orchestrator.test.ts` | EVT-OB-01..10 emitted with correct component, level, and required fields. EVT-OB-01 and EVT-OB-08 include boundary cases: (a) content > 100 chars → truncated with `…`; (b) content ≤ 100 chars → no truncation |
@@ -839,6 +873,7 @@ postUserEscalationError: Error | null = null;
 | 1.1 | March 17, 2026 | Backend Engineer | Address PM and Test Engineer cross-review feedback: (1) Added `postResolutionNotificationEmbed()` call site to §6 archiving algorithm before `archiveThread()` [PM F-01]; (2) Added `logger.test.ts`, `config-loader.test.ts`, `tests/integration/routing-loop.test.ts` to §3 project structure [QA F-01]; (3) Defined `AgentValidationError` interface in §4.2.3 [QA F-02]; (4) Resolved OQ-TSPEC-04 with call-site audit — 4 of 6 sites use `fromAgentDisplayName: 'Ptah'` fallback, PM-approved [QA F-03]; (5) Fixed `FakeLogger.forComponent()` to use `Component` type; added usage example [QA F-04, Q-01]; (6) Removed `EmbedType` from §3 types list (no protocol references it) [QA F-05]; (7) Added truncation boundary test cases to §9.3 EVT-OB-01/OB-08 [QA F-06]; (8) Added integration test scope note in §9.3 [Q-02]. Status set to Approved. |
 | 1.2 | March 17, 2026 | Backend Engineer | Address remaining PM and TE cross-review items: (1) Added `fromAgentDisplayName: 'Ptah'` fallback test case to §9.3 ResponsePoster description [QA F-07]; (2) Updated OQ-TSPEC-01 resolution — PM confirmed hot-reload semantics: in-flight invocations complete with snapshot, de-registration out of Phase 7 scope; (3) Updated OQ-TSPEC-03 resolution — PM acknowledged and accepted chunk size reduction. |
 | 1.3 | March 17, 2026 | Backend Engineer | Self-certified fix per PM authorization: updated §4.2.4 `postAgentResponse()` behavior change to specify 2000-char chunk size (was 4096), aligning normative spec text with OQ-TSPEC-03 resolution [PM F-08]. |
+| 1.4 | March 17, 2026 | Backend Engineer | Address all BE and TE cross-review findings from v1.3: (1) Removed duplicate `Component` type from §4.2.1 `logger.ts` code block; `logger.ts` now imports from `types.ts` with explicit rationale note [BE F-01]; (2) `buildAgentRegistry()` marked `async`, return type changed to `Promise<{...}>` in §4.2.3 and §5.4 algorithm Output line [BE F-02 / TE F-08]; (3) Added `postSystemMessage()` removal disposition to §4.2.2 with grep guidance [BE F-03]; (4) Added §4.2.6 with updated `RoutingEngine` interface — signatures unchanged, constructor gains `agentRegistry` dep, implementation changes documented [BE F-04]; (5) Replaced `'dispatcher'` with `'invocation-guard'` in `Component` union in `src/types.ts` block; added explanatory comment [TE F-09]; (6) Changed `LogEntry.component: string` to `LogEntry.component: Component` [TE F-10]; (7) Added 2000-char chunk boundary test cases to §9.3 ResponsePoster row [TE F-11]. |
 
 ---
 
