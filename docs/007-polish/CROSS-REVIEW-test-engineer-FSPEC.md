@@ -10,6 +10,24 @@
 
 ---
 
+## Review Pass: March 16, 2026 (v2.0 — Fourth Pass)
+
+This is a fourth review pass over the FSPEC. The document remains at v2.0 — no changes have been made since the previous pass. No new functional findings have emerged from this pass.
+
+**The three blocking protocol scope notes (BE-F-02, BE-F-03, BE-F-04) are still absent from the document. TSPEC authoring remains blocked.**
+
+| Item | Required Addition | Section | Status |
+|------|-------------------|---------|--------|
+| BE-F-02 | Note that `DiscordClient.archiveThread(threadId: string): Promise<void>` is a Phase 7 protocol deliverable (method does not exist in live protocol) | FSPEC-DI-02 §3.5 | ❌ Absent |
+| BE-F-03 | Note that `[ptah:{component}]` is a Logger-level concern (not per-call-site string concatenation) and that the Logger protocol must support component-scoped factory instances | FSPEC-LG-01 §7.5 | ❌ Absent |
+| BE-F-04 | Note that `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` is a Phase 7 protocol deliverable (method does not exist in live protocol) | FSPEC-DI-03 §5.4 | ❌ Absent |
+
+**Status: ⛔ TSPEC Not Yet Unblocked — PM action required to add three protocol scope notes before TSPEC authoring begins.**
+
+No re-review is needed after the additions are made. A v2.1 bump is sufficient.
+
+---
+
 ## Review Pass: March 16, 2026 (v2.0 Re-Review)
 
 This is a third review pass over the FSPEC following the v2.0 revision. The FSPEC content is unchanged from the previous pass. No new functional findings have emerged. The three blocking protocol scope notes (BE-F-02, BE-F-03, BE-F-04) are still absent from the document. TSPEC authoring remains blocked.
