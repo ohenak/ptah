@@ -12,6 +12,6 @@
 Feature '007-polish' has exceeded the maximum of 3 revision cycles in phase TSPEC_REVIEW.
 
 **Answer:**
-(blank until answered)
+It is approved, move on to properties creation
 
 ---
