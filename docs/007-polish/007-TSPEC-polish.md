@@ -369,7 +369,7 @@ const EMBED_FOOTER                   = 'Ptah Orchestrator';
 - `postProgressEmbed()` — replaced by `postRoutingNotificationEmbed()`
 - `resolveColour()` — eliminated entirely (colors are now fixed per embed type)
 
-**`postAgentResponse()` behavior change:** Currently chunks text into multiple embed messages. After Phase 7: chunks text and posts each chunk via `discordClient.postPlainMessage()`. Embed wrapping is removed. Content chunking logic (4096-char split) is preserved but uses plain messages.
+**`postAgentResponse()` behavior change:** Currently chunks text into multiple embed messages. After Phase 7: chunks text and posts each chunk via `discordClient.postPlainMessage()`. Embed wrapping is removed. Content chunking logic is preserved but the chunk size is reduced from 4096 to 2000 chars for plain-message compatibility, and each chunk is posted via `discordClient.postPlainMessage()`.
 
 **`createCoordinationThread()` behavior change:** Currently posts initial message using per-agent color embed. After Phase 7: posts a Routing Notification embed (color `0x5865F2`, title `↗ Routing to {display_name}`). The `resolveColour()` call is removed.
 
@@ -838,6 +838,7 @@ postUserEscalationError: Error | null = null;
 | 1.0 | March 16, 2026 | Backend Engineer | Initial draft |
 | 1.1 | March 17, 2026 | Backend Engineer | Address PM and Test Engineer cross-review feedback: (1) Added `postResolutionNotificationEmbed()` call site to §6 archiving algorithm before `archiveThread()` [PM F-01]; (2) Added `logger.test.ts`, `config-loader.test.ts`, `tests/integration/routing-loop.test.ts` to §3 project structure [QA F-01]; (3) Defined `AgentValidationError` interface in §4.2.3 [QA F-02]; (4) Resolved OQ-TSPEC-04 with call-site audit — 4 of 6 sites use `fromAgentDisplayName: 'Ptah'` fallback, PM-approved [QA F-03]; (5) Fixed `FakeLogger.forComponent()` to use `Component` type; added usage example [QA F-04, Q-01]; (6) Removed `EmbedType` from §3 types list (no protocol references it) [QA F-05]; (7) Added truncation boundary test cases to §9.3 EVT-OB-01/OB-08 [QA F-06]; (8) Added integration test scope note in §9.3 [Q-02]. Status set to Approved. |
 | 1.2 | March 17, 2026 | Backend Engineer | Address remaining PM and TE cross-review items: (1) Added `fromAgentDisplayName: 'Ptah'` fallback test case to §9.3 ResponsePoster description [QA F-07]; (2) Updated OQ-TSPEC-01 resolution — PM confirmed hot-reload semantics: in-flight invocations complete with snapshot, de-registration out of Phase 7 scope; (3) Updated OQ-TSPEC-03 resolution — PM acknowledged and accepted chunk size reduction. |
+| 1.3 | March 17, 2026 | Backend Engineer | Self-certified fix per PM authorization: updated §4.2.4 `postAgentResponse()` behavior change to specify 2000-char chunk size (was 4096), aligning normative spec text with OQ-TSPEC-03 resolution [PM F-08]. |
 
 ---
 
