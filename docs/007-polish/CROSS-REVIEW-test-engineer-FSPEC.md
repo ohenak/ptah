@@ -10,6 +10,16 @@
 
 ---
 
+## Review Pass: March 16, 2026 (v2.0 Re-Review)
+
+This is a third review pass over the FSPEC following the v2.0 revision. The FSPEC content is unchanged from the previous pass. No new functional findings have emerged. The three blocking protocol scope notes (BE-F-02, BE-F-03, BE-F-04) are still absent from the document. TSPEC authoring remains blocked.
+
+**Status: ⛔ TSPEC Not Yet Unblocked — three protocol scope notes still missing (see §TSPEC Readiness Verification below).**
+
+All previous findings from the v1.5 REQ and v2.0 FSPEC review remain unchanged. See full analysis below.
+
+---
+
 ## Summary
 
 This is the re-review following the v1.5 REQ and v2.0 FSPEC revisions. Both blocking findings from the previous review are fully resolved. All three medium findings are addressed. Both clarification questions are answered. Two new low-severity observations are noted for TSPEC authors — neither blocks TSPEC authoring.
