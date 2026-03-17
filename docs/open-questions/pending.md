@@ -6,7 +6,7 @@
 **Thread:** 007-polish
 **Thread ID:** 1483355633959833703
 **Asked:** 2026-03-17T09:39:24.736Z
-**Discord Message ID:** 
+**Discord Message ID:** 1483399349353316393
 
 **Question:**
 Feature '007-polish' has exceeded the maximum of 3 revision cycles in phase TSPEC_REVIEW.
