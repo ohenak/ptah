@@ -2699,6 +2699,8 @@ describe("DefaultOrchestrator", () => {
   // ("unnamed" for empty input), so we cannot produce a falsy slug from normal input.
   // The try/catch in the implementation handles thrown exceptions.
   // This behavior is implicitly covered by the backward-compat tests (BC-01).
+
+  // Issue #30 tests moved to orchestrator-dispatch.test.ts to avoid OOM
 });
 
 async function waitForQueue(queue: InMemoryThreadQueue, threadId: string, maxWait = 5000): Promise<void> {

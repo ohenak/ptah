@@ -49,7 +49,7 @@ import type { ThreadStateManager } from "../../src/orchestrator/thread-state-man
 import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
 import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
 import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
-import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction } from "../../src/orchestrator/pdlc/phases.js";
+import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction, ContextDocumentSet, TaskType } from "../../src/orchestrator/pdlc/phases.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -824,6 +824,8 @@ export class FakeContextAssembler implements ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;
+    contextDocuments?: ContextDocumentSet;
+    taskType?: TaskType;
   }> = [];
 
   async assemble(params: {
@@ -834,6 +836,8 @@ export class FakeContextAssembler implements ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;
+    contextDocuments?: ContextDocumentSet;
+    taskType?: TaskType;
   }): Promise<ContextBundle> {
     this.assembleCalls.push(params);
     if (this.assembleError) throw this.assembleError;
