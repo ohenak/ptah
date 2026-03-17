@@ -5,7 +5,29 @@
 | **Reviewer** | Backend Engineer (`eng`) |
 | **Document Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.0 |
 | **Date** | March 16, 2026 |
-| **Recommendation** | **Approved with minor changes** |
+| **Recommendation** | ~~Approved with minor changes~~ → **Needs revision** (escalated — see §Review Pass 2) |
+
+---
+
+## Review Pass 2: March 16, 2026 (v2.0 — Sixth Pass, BE Re-Review)
+
+FSPEC remains at v2.0. Content is unchanged since the initial BE review. The TE cross-review has been updated five times, each pass confirming the same three protocol scope notes are still absent.
+
+**Recommendation escalated from "Approved with minor changes" → "Needs revision."**
+
+The original recommendation assumed the PM would add the three notes before TSPEC began. After five TE re-review passes with no PM action, TSPEC cannot proceed. These are not optional refinements — they define the scope boundary for two protocol interfaces (`DiscordClient`, `Logger`) that must be designed in the TSPEC before any implementation begins.
+
+### Outstanding Items Blocking TSPEC
+
+| Item | Required Addition | Target Section | Status |
+|------|-------------------|----------------|--------|
+| **BE-F-02** | Add note: `DiscordClient.archiveThread(threadId: string): Promise<void>` is a new Phase 7 protocol method — does not exist in the live interface and must be added as a Phase 7 deliverable | FSPEC-DI-02 §3.5 Inputs and Outputs | ❌ Absent |
+| **BE-F-03** | Add note: The `[ptah:{component}]` prefix is a Logger-level concern (not per-call-site string concatenation). The Logger protocol must support component scoping (e.g., `logger.forComponent('router')`) so the TSPEC designs the right interface | FSPEC-LG-01 §7.5 Business Rules | ❌ Absent |
+| **BE-F-04** | Add note: `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` is a new Phase 7 protocol method — no plain-message posting method exists in the live `DiscordClient` interface | FSPEC-DI-03 §5.4 Agent Response Text | ❌ Absent |
+
+### Action Required
+
+PM to add the three protocol scope notes above (each is one or two sentences) and bump the FSPEC to v2.1. No further BE or TE review needed after additions — a version bump is sufficient to unblock TSPEC authoring.
 
 ---
 
