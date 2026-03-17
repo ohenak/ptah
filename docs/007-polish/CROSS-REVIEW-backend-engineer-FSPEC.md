@@ -3,137 +3,111 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Backend Engineer (`eng`) |
-| **Document Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.0 |
+| **Document Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.1 |
 | **Date** | March 16, 2026 |
-| **Recommendation** | ~~Approved with minor changes~~ → **Needs revision** (escalated — see §Review Pass 2) |
+| **Recommendation** | **Approved** |
 
 ---
 
-## Review Pass 2: March 16, 2026 (v2.0 — Sixth Pass, BE Re-Review)
+## Review Pass 3: March 16, 2026 (v2.1 — Final BE Review)
 
-FSPEC remains at v2.0. Content is unchanged since the initial BE review. The TE cross-review has been updated five times, each pass confirming the same three protocol scope notes are still absent.
+FSPEC v2.1 addresses all three blocking protocol scope notes (BE-F-02, BE-F-03, BE-F-04) and both additive findings from the REQ review (createCoordinationThread disposition, logger component fallback rule). **Recommendation upgraded from "Needs revision" → "Approved."**
 
-**Recommendation escalated from "Approved with minor changes" → "Needs revision."**
+### Prior Items — All Resolved
 
-The original recommendation assumed the PM would add the three notes before TSPEC began. After five TE re-review passes with no PM action, TSPEC cannot proceed. These are not optional refinements — they define the scope boundary for two protocol interfaces (`DiscordClient`, `Logger`) that must be designed in the TSPEC before any implementation begins.
-
-### Outstanding Items Blocking TSPEC
-
-| Item | Required Addition | Target Section | Status |
-|------|-------------------|----------------|--------|
-| **BE-F-02** | Add note: `DiscordClient.archiveThread(threadId: string): Promise<void>` is a new Phase 7 protocol method — does not exist in the live interface and must be added as a Phase 7 deliverable | FSPEC-DI-02 §3.5 Inputs and Outputs | ❌ Absent |
-| **BE-F-03** | Add note: The `[ptah:{component}]` prefix is a Logger-level concern (not per-call-site string concatenation). The Logger protocol must support component scoping (e.g., `logger.forComponent('router')`) so the TSPEC designs the right interface | FSPEC-LG-01 §7.5 Business Rules | ❌ Absent |
-| **BE-F-04** | Add note: `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` is a new Phase 7 protocol method — no plain-message posting method exists in the live `DiscordClient` interface | FSPEC-DI-03 §5.4 Agent Response Text | ❌ Absent |
-
-### Action Required
-
-PM to add the three protocol scope notes above (each is one or two sentences) and bump the FSPEC to v2.1. No further BE or TE review needed after additions — a version bump is sufficient to unblock TSPEC authoring.
+| Item | Status | Evidence |
+|------|--------|----------|
+| **BE-F-02** (HIGH): `archiveThread` missing from DiscordClient | ✅ Resolved | §3.5 protocol scope note added. Names the exact signature (`archiveThread(threadId: string): Promise<void>`), confirms discord.js capability (`ThreadChannel.setArchived(true)`), and specifies FakeDiscordClient requirements. |
+| **BE-F-03** (HIGH): Logger component prefix must be Logger-level concern | ✅ Resolved | §7.5 BR-LG-01-05 added. Specifies `forComponent()` factory pattern, structured capture for FakeLogger, and explicitly forbids per-call-site string concatenation. |
+| **BE-F-04** (MEDIUM): `postPlainMessage` missing from DiscordClient | ✅ Resolved | §5.4 protocol scope note added. Names the exact signature (`postPlainMessage(threadId: string, content: string): Promise<void>`), explains the discord.js distinction (`channel.send({ content })` vs `channel.send({ embeds })`), and specifies FakeDiscordClient requirements. |
+| **BE-REQ-F-01** (MEDIUM): `createCoordinationThread()` disposition | ✅ Resolved | §5.4 disposition paragraph added. Uses Routing Notification embed (0x5865F2). `resolveColour()` eliminated entirely. |
+| **BE-REQ-F-02** (LOW): Logger component enumeration incomplete | ✅ Resolved | §7.3 fallback rule added. Lists all six unlisted modules by name; assigns `orchestrator` component. Future additions require FSPEC amendment. |
+| **Q-01**: Discord MCP vs. discord.js | ✅ Addressed | Protocol scope notes in §3.5 and §5.4 explicitly reference `DiscordJsClient` as the implementation target. TSPEC resolves concrete wiring. |
+| **Q-02**: `archive_on_resolution` key nesting | ✅ Addressed | §2.3 Configuration Keys table confirms `orchestrator.archive_on_resolution` path. §3.6 error scenarios use this path consistently. |
 
 ---
 
-## Findings
+## New Findings
 
-### F-01 — HIGH: Config schema migration touches more live modules than the migration note implies
+### F-01 (Low) — `postSystemMessage()` disposition not specified after Phase 7
 
-**Location:** FSPEC-EX-01 §4.1 migration note; REQ §5 Risks
+**Location:** FSPEC-DI-03 §5.4, §5.5
 
-The migration note correctly flags that `AgentConfig` → `agents[]` is a breaking change, but the downstream call-site impact is broader than the note conveys. Three live modules read the old schema directly:
+The live `DiscordClient` interface has `postSystemMessage(threadId: string, content: string): Promise<void>`, which internally wraps content in an embed (confirmed in `DiscordJsClient`). After Phase 7:
 
-1. **`router.ts` `decide()`** (line 147): validates routing targets against `config.agents.active`. Must be replaced with registry lookup.
-2. **`router.ts` `resolveHumanMessage()`** (lines 105, 115): reads `config.agents.role_mentions[roleId]` to resolve @mentions. Must be replaced with `agents[].mention_id` lookup.
-3. **`response-poster.ts` `resolveColour()`** (line 77): reads `config.agents.colours[agentId]`. This method is eliminated entirely by FSPEC-DI-03 (agent responses → plain text, embed colors are now fixed per type). Also affects `createCoordinationThread()` (line 177) which also calls `resolveColour()`.
+- Agent responses use the new `postPlainMessage()` method
+- Orchestrator metadata uses the four defined embed types
+- `postSystemMessage()` has no clear role — it is neither a plain message nor one of the four typed embeds
 
-The FSPEC is self-consistent — FSPEC-DI-03 removes per-agent colors and FSPEC-EX-01 removes the old config structure. But the TSPEC needs to scope all three modules explicitly. No FSPEC change required; flagging for TSPEC attention.
+The FSPEC correctly specifies what the Phase 7 behavior should be (§5.4, §5.5 BR-DI-03-01), so there is no behavioral ambiguity. The question of whether `postSystemMessage()` is deprecated, removed, or repurposed is an engineering decision that falls to TSPEC.
 
----
-
-### F-02 — HIGH: `DiscordClient` protocol has no `archiveThread` method — confirmed scope gap
-
-**Location:** FSPEC-DI-02 §3.3 Step 5; services/discord.ts
-
-The live `DiscordClient` interface has no thread-archive operation. The REQ risk entry says "Engineering verifies during TSPEC research." From codebase inspection, this is a **confirmed gap** — `archiveThread(threadId: string): Promise<void>` must be added to the `DiscordClient` protocol and implemented in `DiscordJsClient`. The discord.js `ThreadChannel` type does expose `.setArchived(true)`, so the capability is available in the underlying library.
-
-**Request:** Recommend adding a sentence to FSPEC-DI-02 §3.5 Inputs and Outputs noting that Discord MCP thread-archive support must be added to the `DiscordClient` protocol as a Phase 7 deliverable. This prevents the TSPEC from treating it as an open question rather than a known scope item.
+**No FSPEC change needed.** Flagging for TSPEC awareness: the TSPEC should explicitly state the disposition of `postSystemMessage()` (deprecate/remove/repurpose) when designing the Phase 7 DiscordClient protocol changes.
 
 ---
 
-### F-03 — HIGH: Logger interface requires protocol change to support component-scoped log lines
+### F-02 (Low) — Embed color values diverge from current constants (intentional, but TSPEC should note migration)
 
-**Location:** FSPEC-LG-01 §7.2, §7.3; services/logger.ts
+**Location:** FSPEC-DI-03 §5.2
 
-The live `Logger` interface is:
-```ts
-info(message: string): void
-warn(message: string): void
-error(message: string): void
-debug(message: string): void
-```
+The FSPEC defines new color integers for Phase 7 embed types:
+- Routing Notification: `0x5865F2` (blurple)
+- Resolution Notification: `0x57F287` (green)
+- Error Report: `0xED4245` (red)
+- User Escalation: `0xFEE75C` (yellow)
 
-FSPEC-LG-01 requires every log line to carry a specific `{component}` value per call site (e.g., `[ptah:router]`, `[ptah:skill-invoker]`). The current `ConsoleLogger` uses a single fixed `[ptah]` prefix. There are two implementation paths:
+The live codebase (`response-poster.ts`) uses different constants:
+- `COMPLETION_COLOUR = 0x1B5E20` (dark green)
+- `ERROR_COLOUR = 0x9E9E9E` (gray)
+- `PROGRESS_COLOUR = 0x424242` (dark gray)
+- `DEFAULT_COLOUR = 0x757575`
 
-- **Option A:** Add a `component` parameter to all Logger methods — breaks every call site
-- **Option B:** Add a `forComponent(component: string): Logger` factory — call sites get a scoped logger instance at construction time, minimal downstream breakage
-
-The FSPEC does not need to prescribe which option. But it should acknowledge that the `Logger` interface itself is a migration target — not just a string-prefix change. As written, FSPEC-LG-01 could be misread as "just prepend the string in the call site," which would add unstructured strings rather than a testable contract.
-
-**Request:** Add a note to FSPEC-LG-01 §7.5 Business Rules (or §7.1) clarifying that the component prefix is a Logger-level concern, not a per-call-site string concatenation, so that the TSPEC designs the Logger protocol accordingly.
-
----
-
-### F-04 — MEDIUM: `DiscordClient` has no `postPlainMessage` method — required for agent response text after FSPEC-DI-03
-
-**Location:** FSPEC-DI-03 §5.4; services/discord.ts
-
-After Phase 7, `postAgentResponse()` must post plain text (not embeds). The live `DiscordClient` interface has:
-- `postEmbed()` — embeds only
-- `postSystemMessage()` — actually calls `postEmbed()` internally (discord.ts line 210), so it's also embed-based
-- No `postPlainMessage(threadId, content)` or equivalent
-
-Plain message posting to a thread requires a separate Discord API call (`channel.send({ content })` rather than `channel.send({ embeds: [...] })`). A new method must be added to the `DiscordClient` protocol.
-
-**Request:** Add a note to FSPEC-DI-03 §5.4 flagging that `DiscordClient` requires a new `postPlainMessage` method to implement the agent-response plain-text change. This keeps TSPEC scope explicit.
-
----
-
-### F-05 — LOW: `postCompletionEmbed` signature does not match Resolution Notification schema
-
-**Location:** FSPEC-DI-03 §5.3.2, BR-DI-03-03; response-poster.ts line 14
-
-The live `postCompletionEmbed(threadId, agentId, config)` generates: title `"Task Complete"`, description `"{agentName} has completed the task."`. The FSPEC-DI-03 Resolution Notification schema requires: title `"✅ Thread Resolved"`, color `0x57F287`, body fields `Signal` and `Resolved by`, footer `"Ptah Orchestrator"`. The existing method is at best a starting-point stub. BR-DI-03-03 says "Engineering determines whether to refactor or replace" — that covers it. No FSPEC change needed, just flagging for TSPEC awareness.
-
----
-
-## Clarification Questions
-
-### Q-01: Discord MCP vs. discord.js — which client handles archiving?
-
-The FSPEC uses "Discord MCP" throughout but the current `DiscordJsClient` is a direct discord.js wrapper (no MCP layer in the source). Is "Discord MCP" used as a generic term for "the Discord client layer," or is there a planned MCP-based client that replaces `DiscordJsClient`? The answer affects where `archiveThread` is implemented (new method in `DiscordJsClient` vs. a new MCP-based client).
-
-### Q-02: `archive_on_resolution` key placement — nested under `orchestrator` or top-level?
-
-FSPEC §2.3 Configuration Keys table lists it as `orchestrator.archive_on_resolution`. The live `PtahConfig.orchestrator` block in `types.ts` (line 55–65) uses camelCase keys for all existing orchestrator config. The FSPEC uses snake_case consistent with `ptah.config.json`. Confirming the nesting path is `ptah.config.json → orchestrator → archive_on_resolution` (not `orchestrator.archiveOnResolution`) would prevent a TSPEC ambiguity.
+This is clearly intentional — Phase 7 standardizes colors. **No FSPEC change needed.** Flagging for TSPEC awareness: all four existing color constants are replaced. The TSPEC should enumerate the old → new mapping explicitly so no stale constants survive.
 
 ---
 
 ## Positive Observations
 
-- **Signal naming is clean.** v2.0 correctly uses live signal types (`LGTM`, `TASK_COMPLETE`, `ROUTE_TO_USER`, `ROUTE_TO_AGENT`) throughout. These match `RoutingSignalType` in `types.ts` exactly.
-- **Registry-before-MCP ordering in FSPEC-DI-02 §3.3** is correct. Checking the in-memory registry before making the MCP call for idempotency (BR-DI-02-04) is the right design and maps directly to a testable invariant.
-- **Embed color integers are exact.** Specifying `0x5865F2`, `0x57F287`, `0xED4245`, `0xFEE75C` as exact integers (not named colors) is testable and eliminates ambiguity.
-- **FSPEC-EX-01 validation rules are complete and implementable.** Required field checks, `id` format validation (lowercase alphanumeric + hyphens), duplicate `id` and `mention_id` detection, and skip-not-fatal behavior are all well-specified. They map directly to unit tests.
-- **Error scenario enumeration in FSPEC-RP-01** (ERR-RP-01 through ERR-RP-05) with exact field templates is excellent — this enables testing error message content without ambiguity.
-- **FSPEC-OB-01 lifecycle completeness table (§8.3)** is valuable — it explicitly maps observable states to log event IDs, making acceptance test authoring straightforward.
-- **OQ-07-01 and OQ-07-02 are resolved with clear assumptions.** No ambiguity left for engineering.
+- **Protocol scope notes are precise and actionable.** Each note names the exact TypeScript signature, references the underlying library capability (discord.js `ThreadChannel.setArchived(true)`, `channel.send({ content })`), and specifies FakeDiscordClient/FakeLogger requirements for testing. This is the ideal level of detail for unblocking TSPEC — zero ambiguity, zero engineering discretion needed on protocol shape.
+
+- **BR-LG-01-05 (Logger scoping) is thorough.** It specifies the contract (Logger-level, not per-call-site), recommends the factory pattern (`forComponent()`), explains the testing benefit (structured `{ component, level, message }` capture vs. fragile regex), and explicitly states the TSPEC must enforce this contract. This single business rule eliminates what would have been the most contentious TSPEC design decision.
+
+- **`createCoordinationThread()` disposition (§5.4) is well-reasoned.** The semantic argument — creating a coordination thread is an Orchestrator-initiated routing event — correctly maps to the Routing Notification embed type. The decision to eliminate `resolveColour()` entirely is clean: no optional color field in the new agent schema, no fallback-to-gray behavior, no per-agent color logic anywhere.
+
+- **Fallback rule for logger components (§7.3) is pragmatic.** Listing all six unlisted modules by name ensures no ambiguity during implementation. Requiring a FSPEC amendment for future additions prevents scope creep without over-constraining.
+
+- **FSPEC-DI-03 §5.6 embed fallback plain-text formats** provide exact testable strings for each embed type. This eliminates the TE-F-08 concern and gives engineering a concrete fallback contract.
+
+- **FSPEC-RP-01 error message templates (§6.2)** remain the strongest section in the document. ERR-RP-01 through ERR-RP-05 each define exact field values with named placeholders — directly implementable as template literals in code.
+
+- **Change log (§11) is comprehensive.** Each v2.1 change traces to the specific cross-review finding it addresses (BE-F-02, TE-F-08, etc.). This makes future audits straightforward.
+
+---
+
+## Codebase Impact Assessment for TSPEC
+
+Based on codebase inspection, the following modules require modification for Phase 7. This is not a finding — it is a reference list for the TSPEC author.
+
+| Module | Changes Required | FSPEC Source |
+|--------|-----------------|--------------|
+| `services/discord.ts` | Add `archiveThread()` and `postPlainMessage()` to DiscordClient protocol; implement in DiscordJsClient | §3.5, §5.4 |
+| `services/logger.ts` | Redesign Logger protocol with `forComponent()` factory; update ConsoleLogger | §7.5 BR-LG-01-05 |
+| `orchestrator/response-poster.ts` | Replace embed constants with four typed embeds; update `postAgentResponse()` to use `postPlainMessage()`; update `createCoordinationThread()` to use Routing Notification; eliminate `resolveColour()` | §5.2, §5.4 |
+| `orchestrator/router.ts` | Update `resolveHumanMessage()` to iterate `agents[]` entries instead of `config.agents.role_mentions`; update `decide()` to use registry lookup instead of `config.agents.active` | §4.4 |
+| `orchestrator/orchestrator.ts` | Add post-resolution archive step after terminal signal handling; integrate with thread registry for idempotency check | §3.3 |
+| `config/loader.ts` | Migrate from flat `AgentConfig` to `agents[]` array schema; update validation logic | §4.3 |
+| `types.ts` | Replace `AgentConfig` interface with new `AgentEntry[]` schema; add `archive_on_resolution` to orchestrator config | §4.2, §2.3 |
+| All modules with logger calls | Replace `logger.info/warn/error/debug` with scoped logger instances via `forComponent()` | §7.3, §7.5 |
+| `tests/fixtures/factories.ts` | Add `FakeDiscordClient.archiveThread()`, `FakeDiscordClient.postPlainMessage()`; redesign FakeLogger with structured capture | §3.5, §5.4, §7.5 |
 
 ---
 
 ## Recommendation
 
-**Approved with minor changes.**
+**Approved.**
 
-Four items warrant small additions to the FSPEC before TSPEC begins (F-02, F-03, F-04) to prevent scope ambiguity in engineering. F-01 and F-05 are TSPEC-level concerns, no FSPEC edit needed. Q-01 and Q-02 are low-risk clarifications that can be resolved in TSPEC if PM confirmation is not needed.
+All prior blocking findings (BE-F-02, BE-F-03, BE-F-04) and additive findings (createCoordinationThread disposition, logger fallback rule) are fully resolved in v2.1. The two new observations (F-01, F-02) are both Low severity and require no FSPEC changes — they are TSPEC awareness items only.
 
-The FSPEC is behaviorally complete and technically sound. The acceptance tests are specific and directly implementable as unit/integration tests. Ready to proceed to TSPEC once the three requested additions are made.
+The FSPEC v2.1 is behaviorally complete, technically sound, and ready for TSPEC authoring. All acceptance tests are implementable against the existing test infrastructure with the specified protocol additions.
 
 ---
 
