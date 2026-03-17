@@ -33,6 +33,13 @@ import type {
   PendingQuestion,
   RegisteredQuestion,
   ChannelMessage,
+  AgentEntry,
+  RegisteredAgent,
+  Component,
+  LogLevel,
+  ObsLogEntry,
+  UserFacingErrorType,
+  UserFacingErrorContext,
 } from "../../src/types.js";
 import type { QuestionStore } from "../../src/orchestrator/question-store.js";
 import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
@@ -54,6 +61,11 @@ export class FakeFileSystem implements FileSystem {
   appendFileError: Error | null = null;
   appendFileCalls: Array<{ path: string; content: string }> = [];
   renameError: Error | null = null;
+  /**
+   * Per-path exists() override. Paths not present default to the normal
+   * files/dirs check. Used by buildAgentRegistry() tests.
+   */
+  existsResults: Map<string, boolean> = new Map();
 
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
@@ -76,6 +88,7 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (this.existsResults.has(path)) return this.existsResults.get(path)!;
     return this.files.has(path) || this.dirs.has(path);
   }
 
@@ -513,6 +526,12 @@ export class FakeDiscordClient implements DiscordClient {
   // --- Phase 6 additions ---
   debugChannelMessages: string[] = [];
 
+  // --- Phase 7 additions ---
+  archiveThreadCalls: string[] = [];
+  archiveThreadError: Error | null = null;
+  postPlainMessageCalls: Array<{ threadId: string; content: string }> = [];
+  postPlainMessageError: Error | null = null;
+
   async postChannelMessage(channelId: string, content: string): Promise<string> {
     this.postChannelMessageCalls.push({ channelId, content });
     this.debugChannelMessages.push(content);
@@ -537,6 +556,16 @@ export class FakeDiscordClient implements DiscordClient {
   async simulateChannelMessage(channelId: string, msg: ChannelMessage): Promise<void> {
     const handler = this.channelMessageHandlers.get(channelId);
     if (handler) await handler(msg);
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    if (this.archiveThreadError) throw this.archiveThreadError;
+    this.archiveThreadCalls.push(threadId);
+  }
+
+  async postPlainMessage(threadId: string, content: string): Promise<void> {
+    if (this.postPlainMessageError) throw this.postPlainMessageError;
+    this.postPlainMessageCalls.push({ threadId, content });
   }
 }
 
@@ -611,23 +640,69 @@ export class FakeConfigLoader implements ConfigLoader {
   }
 }
 
-export class FakeLogger implements Logger {
-  messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
+class FakeLogStore {
+  entries: ObsLogEntry[] = [];
+}
+
+class FakeComponentLogger implements Logger {
+  constructor(
+    private readonly component: Component,
+    private readonly store: FakeLogStore,
+  ) {}
 
   info(message: string): void {
-    this.messages.push({ level: "info", message });
+    this.store.entries.push({ component: this.component, level: 'INFO', message });
   }
-
   warn(message: string): void {
-    this.messages.push({ level: "warn", message });
+    this.store.entries.push({ component: this.component, level: 'WARN', message });
   }
-
   error(message: string): void {
-    this.messages.push({ level: "error", message });
+    this.store.entries.push({ component: this.component, level: 'ERROR', message });
+  }
+  debug(message: string): void {
+    this.store.entries.push({ component: this.component, level: 'DEBUG', message });
+  }
+  forComponent(component: Component): Logger {
+    return new FakeComponentLogger(component, this.store);
+  }
+}
+
+export class FakeLogger implements Logger {
+  private _store: FakeLogStore;
+  private _component: Component;
+
+  constructor(component: Component = 'orchestrator', store?: FakeLogStore) {
+    this._component = component;
+    this._store = store ?? new FakeLogStore();
   }
 
+  get entries(): ObsLogEntry[] { return this._store.entries; }
+  get messages(): Array<{ level: string; message: string }> {
+    return this._store.entries.map(e => ({
+      level: e.level.toLowerCase(),
+      message: e.message,
+    }));
+  }
+
+  info(message: string): void {
+    this._store.entries.push({ component: this._component, level: 'INFO', message });
+  }
+  warn(message: string): void {
+    this._store.entries.push({ component: this._component, level: 'WARN', message });
+  }
+  error(message: string): void {
+    this._store.entries.push({ component: this._component, level: 'ERROR', message });
+  }
   debug(message: string): void {
-    this.messages.push({ level: "debug", message });
+    this._store.entries.push({ component: this._component, level: 'DEBUG', message });
+  }
+
+  forComponent(component: Component): FakeLogger {
+    return new FakeLogger(component, this._store);
+  }
+
+  entriesAt(level: LogLevel): ObsLogEntry[] {
+    return this._store.entries.filter(e => e.level === level);
   }
 }
 
