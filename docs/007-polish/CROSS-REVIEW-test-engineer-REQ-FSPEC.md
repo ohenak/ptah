@@ -3,195 +3,88 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Test Engineer (`qa`) |
-| **REQ Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.2 |
-| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v1.0 |
+| **REQ Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.5 |
+| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.0 |
 | **Date** | March 16, 2026 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
 ## Summary
 
-Two prior reviews (Product Manager, Backend Engineer) have already surfaced the high-severity issues in these documents. This review focuses exclusively on **testability** — whether the requirements and spec provide enough precision for an engineer to write tests without further clarification. Two blocking issues from a testing perspective overlap with BE findings (signal naming, pending FSPECs); three new medium findings identify gaps in the FSPEC's own acceptance test coverage.
+This is the re-review following the v1.5 REQ and v2.0 FSPEC revisions. Both blocking findings from the previous review are fully resolved. All three medium findings are addressed. Both clarification questions are answered. Two new low-severity observations are noted for TSPEC authors — neither blocks TSPEC authoring.
 
 ---
 
-## Findings
+## Previous Findings — Resolution Status
 
-### F-01 (High) — FSPEC-DI-02 acceptance tests are written against a non-existent signal contract
+| Finding | Severity | Status | Resolution |
+|---------|----------|--------|------------|
+| F-01: Signal naming in FSPEC-DI-02 acceptance tests | High | ✅ Resolved | FSPEC v2.0 §11 confirms all signal names corrected: `lgtm` → `LGTM`, `task_done`+status → `TASK_COMPLETE`/`ROUTE_TO_USER`. §3.2 table, §3.3 flow, and AT-DI-02-01 through AT-DI-02-03 all use live signal names. |
+| F-02: Four requirements missing FSPECs | High | ✅ Resolved | FSPEC-DI-03 (§5), FSPEC-RP-01 (§6), FSPEC-LG-01 (§7), and FSPEC-OB-01 (§8) are all present in v2.0 with the explicit schemas required for test derivation. |
+| F-03: Missing ATs in FSPEC-DI-02 (idempotency, config absent, non-boolean config) | Medium | ✅ Resolved | AT-DI-02-07 (idempotency), AT-DI-02-08 (config absent), AT-DI-02-09 (non-boolean config) all added. |
+| F-04: AT-DI-02-05 missing registry state assertion | Medium | ✅ Resolved | AT-DI-02-05 now explicitly asserts "the thread is NOT marked archived in the registry (thread remains in 'open' state)". |
+| F-05: FSPEC-EX-01 missing ATs (duplicate mention_id, display_name default, hot-reload removal) | Medium | ✅ Resolved | AT-EX-01-06 (duplicate mention_id), AT-EX-01-07 (display_name defaults to id), AT-EX-01-08 (hot-reload de-registration) all added. |
+| F-06: No test doubles defined for Discord MCP or filesystem | Low | 🔵 Deferred to TSPEC | TSPEC scope item. Not a FSPEC blocker. |
+| F-07: REQ-NF-10 observability criterion is human-review only | Low | ✅ Resolved | FSPEC-OB-01 defines 10 required log events with explicit field schemas, enabling automated testing. |
 
-**Affected:** FSPEC-DI-02 §3.2, §3.3, §3.8 (AT-DI-02-01 through AT-DI-02-06)
-
-Every acceptance test in FSPEC-DI-02 uses signal type names (`lgtm`, `task_done`, `status: DONE`, `status: BLOCKED`) that do not exist in the live `RoutingSignal` contract (confirmed by BE review F-02: live contract uses `LGTM`, `TASK_COMPLETE`, `ROUTE_TO_USER` — no sub-status field). This is not merely a naming cosmetic — the sub-status pattern (`task_done` with `status: BLOCKED`) maps to a different top-level signal type in production (`ROUTE_TO_USER`), so the test logic itself differs, not just the string literals.
-
-Tests written against this FSPEC will require complete rewriting once the contract is reconciled. Any test that currently gates on `signal.type === 'task_done' && signal.status === 'BLOCKED'` will pass for the wrong reason against a mock and silently fail against production.
-
-**Blocking:** Test cases cannot be correctly defined until signal type names and structure are resolved. This must be fixed in the FSPEC before TSPEC/test authoring begins.
-
-**Action required:** Update FSPEC-DI-02 §3.2 signal table and §3.3 behavioral flow to use live signal names. Remove the `status` sub-field pattern; the BLOCKED case becomes `signal.type === 'ROUTE_TO_USER'` (or whichever live type maps to that intent).
-
----
-
-### F-02 (High) — Four requirements have no FSPEC: acceptance criteria too vague for test derivation
-
-**Affected:** REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10
-
-The REQ correctly marks these four as "Pending FSPEC" (§7). From a testing perspective, the REQ acceptance criteria for these are insufficient to write any concrete test — even a placeholder:
-
-| Requirement | Testability Blocker |
-|-------------|---------------------|
-| **REQ-DI-10** | AC says "title, color, and body fields appropriate to the message type" — but doesn't enumerate message types, colors, or field names. No test can verify "appropriate" without an explicit schema. |
-| **REQ-RP-06** | AC says "at least one actionable suggestion" and "plain language" — but enumerates no error scenarios, no message templates, and no definition of what constitutes a non-recoverable error. Tests need exact input conditions and expected output copy. |
-| **REQ-NF-09** | AC says every log line begins with `[ptah:{component}]` — but doesn't define valid component values. A test asserting `[ptah:orchestrator]` exists is easy; asserting that ALL components use the correct prefix requires knowing what components exist. |
-| **REQ-NF-10** | "I can identify: triggering message, invoked agent, routing signal type, post-signal actions, and errors" — this is a human-review criterion, not an automated test. The log events and their formats are undefined. Automated testing requires a specific log schema. |
-
-**Blocking for their respective TSPECs.** This is expected at this stage; documenting here so FSPEC authors are aware that the test engineer will need explicit schemas in the FSPECs before TSPEC acceptance tests can be drafted.
-
-**Action required:** When FSPECs for these four requirements are authored, each must include:
-- REQ-DI-10 FSPEC: embed type enumeration, per-type field schema (title string, color hex/int, body field names), and which Orchestrator events trigger each type
-- REQ-RP-06 FSPEC: error scenario enumeration, exact message templates (or template patterns), and the definition of "actionable suggestion" per error type
-- REQ-NF-09 FSPEC: full enumeration of valid `{component}` values and a complete compliant log line example
-- REQ-NF-10 FSPEC: minimum required log event set with field definitions per event type
+**Previous clarification questions:**
+- **Q-01** (archive failure retry): Answered by BR-DI-02-07 — archive failures are retryable; registry is not updated on failure; retry is user-initiated by re-triggering the workflow. ✅
+- **Q-02** (exact color integers): Answered by FSPEC-DI-03 §5.2 — exact hex integers defined per type: routing=`0x5865F2`, resolution=`0x57F287`, error=`0xED4245`, escalation=`0xFEE75C`. ✅
 
 ---
 
-### F-03 (Medium) — FSPEC-DI-02 acceptance tests are missing three property-critical scenarios
+## New Findings
 
-**Affected:** FSPEC-DI-02 §3.8
+### F-08 (Low) — FSPEC-DI-03 §5.6: Embed creation fallback format is undefined
 
-The six acceptance tests (AT-DI-02-01 through AT-DI-02-06) cover the main happy path and the most obvious failure modes, but three properties with direct test implications are not covered:
+**Affected:** FSPEC-DI-03 §5.6
 
-**Missing AT: Idempotency — second resolution signal for an already-archived thread**
+Error scenario: "Discord MCP embed creation fails → Fall back to posting a plain text equivalent of the metadata message (do not silently skip)."
 
-Business rule BR-DI-02-04 states: "Once a thread is marked archived in the registry, any subsequent resolution signal targeting the same thread ID is a no-op." This is a correctness invariant — a second call to the Discord MCP archive endpoint for the same thread must NOT occur. There is no acceptance test verifying:
-- The registry is checked before the MCP call
-- Zero MCP calls are made on the second signal
-- No error is logged for the duplicate signal
+The fallback behavior is correctly specified (post something; do not silently skip), but the "plain text equivalent" format is not defined. For a test verifying this fallback:
+- We can assert that a message was posted to the thread (not silently dropped) ✅
+- We cannot assert the exact content of the fallback message, as it is unspecified
 
-**Missing AT: Config-absent defaults to true**
+In practice, the most important assertion — that the message is not silently dropped — is testable. The exact fallback format is an engineering implementation detail. This is Low and does not block TSPEC authoring.
 
-§3.6 error scenarios specify: "Config key `archive_on_resolution` is absent → Default to `true`. Proceed with archiving." This is a behavioral invariant with a specific outcome (archive happens) but there is no acceptance test verifying the default behavior. The test should confirm archiving occurs when the key is entirely absent from config (not just when it is `true`).
-
-**Missing AT: Non-boolean config value defaults to true with warning**
-
-§3.6 specifies: "Config key `archive_on_resolution` is present but not a boolean → log warning and default to true." No acceptance test for this scenario. The warning log message format is also specified, making this precisely testable.
-
-**Action required:** Add three acceptance tests to FSPEC-DI-02 §3.8:
-- AT-DI-02-07: Idempotency — second DONE signal for archived thread produces zero MCP calls and no error
-- AT-DI-02-08: Config key absent → archiving proceeds (same outcome as `true`)
-- AT-DI-02-09: Config key is non-boolean string → warning logged, archiving proceeds
+**Action required (optional):** If precise fallback content is important for operator experience, add a note to FSPEC-DI-03 §5.6 specifying the plain-text fallback format per embed type (e.g., "Routing to {display_name}" for routing notification fallback). If exact content is not critical, a unit test asserting "at least one message was posted" is sufficient.
 
 ---
 
-### F-04 (Medium) — AT-DI-02-05 (archiving failure) is missing the registry state assertion
+### F-09 (Low) — FSPEC-OB-01 has no log event for PDLC dispatcher actions
 
-**Affected:** FSPEC-DI-02 §3.8 AT-DI-02-05
+**Affected:** FSPEC-OB-01 §8.2
 
-AT-DI-02-05 currently verifies:
-1. A warning is logged
-2. The Orchestrator continues processing other threads
+FSPEC-LG-01 §7.3 enumerates `dispatcher` as a valid component (scope: "PDLC phase dispatch and state machine"). However, FSPEC-OB-01 defines no required log event (EVT-OB-XX) for PDLC phase transitions.
 
-It does NOT verify that the **thread is NOT marked as archived in the registry** after MCP failure. This omission is significant because the registry state determines future behavior: if the thread is incorrectly marked archived after a failed archive call, then any subsequent resolution signal for that thread (e.g., a retry from the user) would be silently dropped by the no-re-archiving check (BR-DI-02-04), with no user feedback and no second archive attempt.
+The 10 defined events cover the routing lifecycle fully (trigger → match → invoke → respond → post → commit → archive/escalate/route). A PDLC phase transition (e.g., moving from Phase 5 to Phase 7 for a given thread) is not observable from the log events defined in §8.2.
 
-The correct post-failure state is that the registry remains unchanged (thread is "open"), so the archiving can be retried if the user retriggers the flow. This must be an explicit test assertion.
+For an operator debugging a PDLC state machine issue — where the wrong skill was invoked for a given PDLC phase — the log trail would show which agent was invoked (EVT-OB-03) but not why that phase/agent was selected. This is a coverage gap for the `dispatcher` component.
 
-**Action required:** Add a third THEN clause to AT-DI-02-05:
-```
-AND the thread registry is NOT updated (thread remains in "open" state)
-```
+This is Low because: (1) PDLC dispatch failures would still surface as routing errors (EVT-OB-10), and (2) most observable symptoms are covered. But an engineer authoring TSPEC for the dispatcher component should be aware there is no required observability event for phase transitions.
 
----
-
-### F-05 (Medium) — FSPEC-EX-01 acceptance tests missing coverage for three specified behaviors
-
-**Affected:** FSPEC-EX-01 §4.10
-
-The five acceptance tests (AT-EX-01-01 through AT-EX-01-05) cover the primary registration and validation paths. Three specified behaviors in the FSPEC have no acceptance test:
-
-**Missing AT: Duplicate `mention_id` (BR-EX-01-04)**
-
-BR-EX-01-04 specifies that duplicate `mention_id` entries cause the second entry to be skipped with a warning. The FSPEC includes the exact log message format for this case (§4.8). There is an AT for duplicate `id` (AT-EX-01-05) but no equivalent for duplicate `mention_id`. Ambiguous @mention routing is a correctness-critical failure mode — it must have an acceptance test.
-
-**Missing AT: `display_name` defaults to `id`**
-
-BR-EX-01-01 is implicit about this and §4.2 specifies "Defaults to `id` if absent." No acceptance test verifies that an agent registered without `display_name` uses the `id` value in log output and Discord embeds. This is a simple unit test but without an AT it could be silently dropped from implementation.
-
-**Missing AT: Hot-reload de-registration (§4.9 edge case)**
-
-§4.9 specifies: "Config is hot-reloaded and an existing agent entry is removed → Agent is de-registered from the live registry. Future routing signals targeting that agent ID are treated as unknown-agent errors." This is a runtime behavioral change (previously valid routing target becomes invalid mid-session) with user-visible consequences (error posted to thread). It needs an acceptance test.
-
-**Action required:** Add to FSPEC-EX-01 §4.10:
-- AT-EX-01-06: Duplicate `mention_id` — second entry skipped with warning; first entry remains registered and responds to @mentions
-- AT-EX-01-07: `display_name` absent — agent logs and embeds use `id` as display name
-- AT-EX-01-08: Hot-reload removes agent — subsequent `route_to: {removed-id}` signals produce an unknown-agent error (logged + thread error message)
-
----
-
-### F-06 (Low) — Neither FSPEC defines test doubles for Discord MCP or filesystem dependencies
-
-**Affected:** FSPEC-DI-02 (Discord MCP archive call), FSPEC-EX-01 (filesystem access for skill/log files)
-
-FSPEC-DI-02 requires calling the Discord MCP archive operation and FSPEC-EX-01 requires reading files from the filesystem — both are external I/O boundaries. Neither FSPEC identifies the test double (fake/stub) needed to test error paths in isolation.
-
-Without a defined fake Discord MCP interface, error scenario tests (AT-DI-02-05: MCP failure; §3.6 error table) must be E2E tests that actually invoke Discord. This pushes coverage that should be at the unit/integration level up to E2E, making these tests slow, brittle, and dependent on Discord API availability.
-
-Similarly for FSPEC-EX-01: verifying that a missing skill file causes the agent to be skipped (AT-EX-01-03) needs a fake filesystem or temp directory, otherwise the test modifies real files on disk.
-
-This is not blocking FSPEC approval, but the TSPEC must define protocol-based fakes for both boundaries before test scripts can be written.
-
-**Action required (for TSPEC):** TSPEC for FSPEC-DI-02 must define a `DiscordMcpClient` protocol/interface with at least an `archiveThread(threadId: string)` method and a corresponding `FakeDiscordMcpClient` that supports success, "already archived", "not found", "missing permissions", and error responses. TSPEC for FSPEC-EX-01 must define a `FileSystem` protocol with `exists(path)` and `readFile(path)` methods and a fake for injecting missing/unreadable file scenarios.
-
----
-
-### F-07 (Low) — REQ-NF-10: observability criterion is a human-review test, not an automated one
-
-**Affected:** REQ-NF-10 acceptance criteria
-
-The THEN clause — "I can identify: the triggering message, the invoked agent, the routing signal type, post-signal actions, and errors" — describes a human reading a log file. This is a valid acceptance criterion for a product requirement (log readability is real UX), but it does not map to an automated test. Automated tests for REQ-NF-10 would require:
-
-1. A defined set of log events with exact message patterns
-2. A test fixture that runs a routing cycle and captures log output
-3. Assertions that each required event appears with the required fields
-
-Without a structured log event schema in the FSPEC (blocked by F-02), this requirement can only be manually validated. This is acceptable for a P1 requirement but should be explicitly acknowledged in the FSPEC so engineering doesn't attempt to write automated tests against an under-defined spec.
-
-**Action required:** No REQ change needed. When the FSPEC for REQ-NF-10 is authored, include a minimum required log event table (event name, component, required fields, example log line) to enable automated testing.
-
----
-
-## Clarification Questions
-
-### Q-01 — FSPEC-DI-02: After MCP failure, can the user retry archiving?
-
-AT-DI-02-05 specifies the thread is left open after archive failure. Is there a user-facing mechanism to retry archiving (e.g., posting a new resolution-signal-bearing message to the thread), or is the thread permanently left open after a failure? The test for this scenario depends on whether the failure state is recoverable. If retryable, the registry must NOT be updated on failure (already captured in F-04) and a subsequent resolution signal must trigger a new archive attempt — which needs its own test.
-
-### Q-02 — REQ-DI-10 / FSPEC pending: Will embed specs include exact color values?
-
-Discord embed colors are integers (hex). Tests asserting embed content need deterministic expected values. When the FSPEC for REQ-DI-10 is authored, will it specify exact color integers per embed type (e.g., routing = 0x5865F2, error = 0xED4245), or leave color to engineering discretion? If the latter, there is no testable color assertion — only field presence tests. Clarifying this shapes whether color is a testable property or an implementation detail.
+**Action required (for TSPEC):** TSPEC for the `dispatcher` component should define at minimum one `[ptah:dispatcher] INFO` log event for phase transitions (e.g., "Thread {thread_id} — dispatching to PDLC phase {phase_name}. Agent: {agent_id}."). If the product manager agrees this is worth adding, a minor FSPEC-OB-01 amendment can be submitted; otherwise document the gap in the TSPEC.
 
 ---
 
 ## Positive Observations
 
-- **FSPEC-DI-02 §3.6 (Error Scenarios)** is the strongest section in both documents from a testability standpoint. Each scenario maps 1:1 to a unit test: input condition (error type), expected log message (with format specified), expected system behavior (no crash, thread left open). This level of precision is exactly what test authoring needs.
-- **BR-DI-02-03 (non-blocking) and BR-DI-02-04 (no re-archiving)** are stated as explicit named rules with clear semantics — each becomes a testable property (`archiving failure must not affect routing cycle completion` and `second resolution signal for same thread must produce zero MCP calls`).
-- **AT-DI-02-06 (ordering guarantee)** is an excellent acceptance test to include — it captures a temporal ordering invariant (`content posted BEFORE archive call`, `commits complete BEFORE archive call`) that is easy to violate in async implementations and hard to discover in code review.
-- **REQ-RP-06's negative criterion** — "does not expose raw exception messages, stack traces, or internal IDs" — is a well-formed negative property that maps cleanly to a unit test: inject an error with a stack trace, assert the posted Discord message does NOT contain the stack trace string.
-- **FSPEC-EX-01 §4.3 (Orchestrator Startup Behavior)** validation steps are enumerated independently (missing field, invalid id format, missing skill file, missing log file, invalid mention_id) — each step is a discrete unit test with a clear input and expected skip-with-log output. This is exactly the right level of specificity for test authoring.
-- **REQ-NF-08 acceptance criteria (v1.2)** use the full WHO/GIVEN/WHEN/THEN format with specific verifiable outcomes ("routing signals with route_to targeting the new agent ID resolve correctly") — these are testable without further clarification.
+The v2.0 FSPEC is substantially stronger than v1.0 from a testability standpoint:
+
+- **FSPEC-DI-03 §5.2 color integers** are exact (`0x5865F2`, `0x57F287`, etc.) — every embed color is a deterministic, testable value with no engineering discretion. This directly enables property-based assertions.
+- **FSPEC-LG-01 §7.3 component enumeration** (8 values, exhaustive) turns what was an untestable "every log line has a component" criterion into a concrete closed-set assertion: the test fixture can regex-match the component token against the enumerated list.
+- **FSPEC-RP-01 §6.2 error scenario enumeration** (ERR-RP-01 through ERR-RP-05) gives each error type a stable ID. AT-OB-01-02 correctly references `ERR-RP-01` in the expected log entry — this is the right pattern: error type IDs travel from FSPEC to log format to test assertion.
+- **FSPEC-OB-01 §8.3 lifecycle completeness table** is an excellent self-audit: it maps each "what an operator needs to know" requirement to specific log event IDs. This table doubles as a test coverage matrix.
+- **AT-EX-01-08 (hot-reload de-registration)** is precisely worded — it specifies both the setup state and the triggering action, making it unambiguous to implement as an integration test.
+- **AT-DI-02-06 (ordering guarantee)** and the new **AT-DI-02-07 (idempotency)** are the two hardest correctness properties to discover in code review. Their inclusion in the FSPEC guarantees they get tested.
 
 ---
 
 ## Recommendation
 
-**Needs revision.**
+**Approved.**
 
-Two blocking findings must be resolved before TSPEC/test authoring can begin:
+All blocking findings from the previous "Needs revision" recommendation are resolved. The REQ v1.5 and FSPEC v2.0 are ready for TSPEC authoring. Two new low-severity observations (F-08, F-09) are noted for the TSPEC author's awareness — neither requires a FSPEC revision before TSPEC work begins.
 
-1. **F-01** — FSPEC-DI-02 acceptance tests and behavioral flow must be rewritten to use the live signal names (`LGTM`, `TASK_COMPLETE`) and remove the `status` sub-field pattern. Tests written against the current FSPEC are incorrect by construction.
-
-2. **F-02** — FSPECs for REQ-DI-10, REQ-RP-06, REQ-NF-09, and REQ-NF-10 must be authored with explicit schemas (embed types, error templates, component enumeration, log event set) before any test cases can be derived for those requirements.
-
-Medium findings F-03, F-04, and F-05 are straightforward FSPEC additions (missing acceptance tests) that should be incorporated when the FSPEC is revised for F-01. F-06 is a TSPEC-level concern; the TSPEC author should define protocol-based fakes for Discord MCP and filesystem before writing test scripts. F-07 is informational — no document change needed, but the pending FSPEC should address it proactively.
-
-Once F-01 and F-02 are resolved, route the updated FSPEC back to `qa` for re-review before TSPEC authoring begins.
+F-06 (test doubles for Discord MCP and filesystem) remains a TSPEC-level action item: the TSPEC must define protocol-based fakes for both boundaries before test scripts can be written.
