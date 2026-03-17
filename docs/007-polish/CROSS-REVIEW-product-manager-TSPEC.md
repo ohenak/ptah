@@ -3,9 +3,9 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Product Manager |
-| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.2 |
+| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.3 |
 | **Date** | March 17, 2026 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
@@ -43,7 +43,7 @@ Plain message compatibility justifies the chunk size reduction from 4096 to 2000
 
 ## New Finding (v1.2 re-review)
 
-### F-08 — [MEDIUM] §4.2.4 contradicts OQ-TSPEC-03: chunk size is simultaneously 4096 and 2000
+### F-08 — [MEDIUM] §4.2.4 contradicts OQ-TSPEC-03: chunk size is simultaneously 4096 and 2000 — **Resolved in TSPEC v1.3**
 
 **Affected:** §4.2.4 `postAgentResponse()` behavior change; §12 OQ-TSPEC-03 resolution
 
@@ -91,11 +91,9 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 
 ## Recommendation
 
-**Needs revision.**
+**Approved.**
 
-F-08 is a Medium finding: §4.2.4 contains normative text that directly contradicts the OQ-TSPEC-03 resolution and will mislead the implementing engineer toward a chunk size (4096) that exceeds Discord's plain-message limit (2000) and will cause runtime failures.
-
-**Required action:** Update the single sentence in §4.2.4 (line ~372) to specify 2000-char chunks instead of 4096. No re-review is required — this is a one-line correction to align §4.2.4 with the already-correct OQ-TSPEC-03 resolution in §12. Backend Engineer may self-certify this correction, increment the TSPEC version to v1.3, and proceed to PLAN authoring.
+All findings resolved. F-08 (the sole remaining Medium finding) was self-certified by Backend Engineer in TSPEC v1.3: §4.2.4 now reads "chunk size is reduced from 4096 to 2000 chars for plain-message compatibility", aligning with OQ-TSPEC-03. No re-review required per PM authorization in v1.2 recommendation. TSPEC is cleared for PLAN authoring.
 
 ---
 
@@ -106,6 +104,7 @@ F-08 is a Medium finding: §4.2.4 contains normative text that directly contradi
 | 1.0 | March 17, 2026 | Product Manager | Initial review — Needs revision (F-01 Medium) |
 | 1.1 | March 17, 2026 | Backend Engineer | Updated to reflect F-01 resolution in TSPEC v1.1, OQ confirmations in TSPEC v1.2. Recommendation upgraded to Approved. |
 | 1.2 | March 17, 2026 | Product Manager | Re-review of TSPEC v1.2 — New F-08 Medium finding: §4.2.4 contradicts OQ-TSPEC-03 on chunk size (4096 vs 2000). Recommendation downgraded to Needs revision. One-line fix required; self-certification permitted. |
+| 1.3 | March 17, 2026 | Backend Engineer | Self-certified F-08 resolution: §4.2.4 updated in TSPEC v1.3 to specify 2000-char chunk size. Recommendation updated to Approved. |
 
 ---
 
