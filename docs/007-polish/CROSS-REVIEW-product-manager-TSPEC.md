@@ -5,13 +5,15 @@
 | **Reviewer** | Product Manager |
 | **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.2 |
 | **Date** | March 17, 2026 |
-| **Recommendation** | **Approved** |
+| **Recommendation** | **Needs revision** |
 
 ---
 
 ## Summary
 
-1 finding, 2 open questions answered. The TSPEC is solid overall — full REQ traceability, correct migration rationale, `buildErrorMessage()` purity rule is exactly right. One Medium finding was raised; it was already addressed in TSPEC v1.1. OQ resolutions incorporated into TSPEC v1.2.
+Re-review of TSPEC v1.2 (continuing review pass). One new Medium finding identified: §4.2.4 specifies "Content chunking logic (4096-char split) is preserved" while §12 OQ-TSPEC-03 resolves the chunk size to **2000 chars**. These two sections directly contradict each other. A 4096-char plain message exceeds Discord's 2000-char limit and will throw at runtime — this is not just a documentation inconsistency but a functional defect in the spec.
+
+All previously resolved findings (F-01 through F-07) remain resolved.
 
 ---
 
@@ -21,8 +23,6 @@
 
 **Affected:** Archiving algorithm (TSPEC §6)
 
-The resolution notification embed required by REQ-DI-10 would never be posted to the thread. The archiving algorithm must show where `postResolutionNotificationEmbed()` is invoked before the thread is archived.
-
 **Status: Resolved in TSPEC v1.1.** The archiving algorithm in §6 now includes `postResolutionNotificationEmbed()` at step 3b, before `archiveThread()`, with a WARN fallback path to `postPlainMessage()`.
 
 ---
@@ -31,11 +31,42 @@ The resolution notification embed required by REQ-DI-10 would never be posted to
 
 Plain message compatibility justifies the chunk size reduction from 4096 to 2000. OQ-TSPEC-03 closed.
 
-**No action required.**
+**Status: Partially resolved.** OQ-TSPEC-03 in §12 correctly records the decision to reduce chunk size to 2000. However, the normative specification text in §4.2.4 was not updated — see F-08 below.
 
 ---
 
-## Open Questions Resolved
+### F-03 — [LOW] `fromAgentDisplayName: 'Ptah'` fallback test case confirmed in §9.3
+
+**Status: Resolved in TSPEC v1.2.** ResponsePoster unit test description in §9.3 now includes "`fromAgentDisplayName: 'Ptah'` fallback renders correctly in Routing Notification embed."
+
+---
+
+## New Finding (v1.2 re-review)
+
+### F-08 — [MEDIUM] §4.2.4 contradicts OQ-TSPEC-03: chunk size is simultaneously 4096 and 2000
+
+**Affected:** §4.2.4 `postAgentResponse()` behavior change; §12 OQ-TSPEC-03 resolution
+
+**§4.2.4 states (line 372):**
+> "Content chunking logic (4096-char split) is preserved but uses plain messages."
+
+**§12 OQ-TSPEC-03 resolution states:**
+> "Decision: reduce chunk size to 2000 chars for plain message compatibility."
+
+These two statements directly contradict each other. An engineer implementing `postAgentResponse()` following §4.2.4 (the normative specification section) would use 4096-char chunks — which will fail at runtime because Discord's plain message character limit is 2000. The correct value is 2000 (per OQ-TSPEC-03), and §4.2.4 must be updated to reflect this.
+
+**Impact:** If the engineer follows §4.2.4 and uses 4096-char chunks, Discord will reject any message chunk between 2001–4096 characters with a 400 error, breaking agent response posting for longer responses.
+
+**Required action:** Update the §4.2.4 `postAgentResponse()` behavior change text to read:
+> "Content chunking logic is preserved but the chunk size is reduced from 4096 to 2000 chars for plain-message compatibility, and each chunk is posted via `discordClient.postPlainMessage()`."
+
+This is a single-line correction in §4.2.4. The OQ-TSPEC-03 resolution in §12 is correct and does not need to change.
+
+**Severity rationale:** Medium — the normative specification text actively misleads the engineer toward a value that will throw a Discord API error at runtime. The fix is trivial (one line) but the risk of missing it during implementation is real.
+
+---
+
+## Open Questions Resolved (v1.0 / v1.1)
 
 ### OQ-TSPEC-01 — Hot-reload semantics (Closed)
 
@@ -49,17 +80,22 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 
 ## Positive Observations
 
-- Full REQ traceability throughout the document.
-- Correct migration rationale for the AgentConfig schema change.
+- Full REQ traceability throughout the document — every requirement in REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10 is addressed.
+- Correct migration rationale for the AgentConfig schema change. Hard cut-over is the right call for a dev-tool with a single deployment.
 - `buildErrorMessage()` purity rule is exactly right — keeps error message construction testable and side-effect-free.
+- §6 archiving algorithm places `postResolutionNotificationEmbed()` before `archiveThread()` — ensures the user sees the resolution notification before the thread disappears from active threads.
+- WARN fallback in the archiving algorithm (step 3b fallback to `postPlainMessage()`) is the correct defensive pattern.
+- §9.2 `FakeLogger` shared-store design enables end-to-end log assertions across component boundaries. Usage example (Option B) is clear and the Option A anti-pattern warning prevents a common test authoring mistake.
 
 ---
 
 ## Recommendation
 
-**Approved.**
+**Needs revision.**
 
-All findings resolved. F-01 was addressed in TSPEC v1.1. OQ confirmations incorporated into TSPEC v1.2. The TSPEC is cleared for PROPERTIES derivation and PLAN authoring.
+F-08 is a Medium finding: §4.2.4 contains normative text that directly contradicts the OQ-TSPEC-03 resolution and will mislead the implementing engineer toward a chunk size (4096) that exceeds Discord's plain-message limit (2000) and will cause runtime failures.
+
+**Required action:** Update the single sentence in §4.2.4 (line ~372) to specify 2000-char chunks instead of 4096. No re-review is required — this is a one-line correction to align §4.2.4 with the already-correct OQ-TSPEC-03 resolution in §12. Backend Engineer may self-certify this correction, increment the TSPEC version to v1.3, and proceed to PLAN authoring.
 
 ---
 
@@ -69,6 +105,7 @@ All findings resolved. F-01 was addressed in TSPEC v1.1. OQ confirmations incorp
 |---------|------|--------|---------|
 | 1.0 | March 17, 2026 | Product Manager | Initial review — Needs revision (F-01 Medium) |
 | 1.1 | March 17, 2026 | Backend Engineer | Updated to reflect F-01 resolution in TSPEC v1.1, OQ confirmations in TSPEC v1.2. Recommendation upgraded to Approved. |
+| 1.2 | March 17, 2026 | Product Manager | Re-review of TSPEC v1.2 — New F-08 Medium finding: §4.2.4 contradicts OQ-TSPEC-03 on chunk size (4096 vs 2000). Recommendation downgraded to Needs revision. One-line fix required; self-certification permitted. |
 
 ---
 
