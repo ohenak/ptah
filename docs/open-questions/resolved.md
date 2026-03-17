@@ -52,3 +52,20 @@ Cross-review file not found: docs/007-polish/CROSS-REVIEW-backend-engineer-TSPEC
 backend engineer should not review its own document.
 
 ---
+
+<!-- Q-0004 -->
+**ID:** Q-0004
+**Agent:** eng
+**Thread:** 007-polish
+**Thread ID:** 1483355633959833703
+**Asked:** 2026-03-17T07:20:25.660Z
+**Answered:** 2026-03-17T07:24:02.544Z
+**Discord Message ID:** 1483364372196888577
+
+**Question:**
+The backend engineer cannot review their own TSPEC. Which agent should perform the cross-review of the Polish TSPEC (007-TSPEC-polish)? Options: (1) test-engineer — to validate testability and coverage strategy, or (2) product-manager — to validate alignment with requirements.
+
+**Answer:**
+
+
+---
