@@ -11,9 +11,9 @@
 
 ## Summary
 
-Re-review of TSPEC v1.2 (continuing review pass). One new Medium finding identified: §4.2.4 specifies "Content chunking logic (4096-char split) is preserved" while §12 OQ-TSPEC-03 resolves the chunk size to **2000 chars**. These two sections directly contradict each other. A 4096-char plain message exceeds Discord's 2000-char limit and will throw at runtime — this is not just a documentation inconsistency but a functional defect in the spec.
+Full re-review pass against the approved REQ (v1.5) and FSPEC (v2.1). All six requirements (REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10) are addressed with appropriate technical components. All previously resolved findings (F-01 through F-08) remain resolved.
 
-All previously resolved findings (F-01 through F-07) remain resolved.
+One new documentation note is recorded (F-09 — Low): FSPEC §5.4 contains stale language ("Content chunking behavior is unchanged") that contradicts the PM-accepted chunk size reduction in OQ-TSPEC-03. The TSPEC is correct; the defect is in FSPEC text, not the TSPEC. This is PM-owned documentation debt and does not block PLAN authoring.
 
 ---
 
@@ -64,6 +64,36 @@ This is a single-line correction in §4.2.4. The OQ-TSPEC-03 resolution in §12 
 
 **Severity rationale:** Medium — the normative specification text actively misleads the engineer toward a value that will throw a Discord API error at runtime. The fix is trivial (one line) but the risk of missing it during implementation is real.
 
+**Status: Resolved in TSPEC v1.3.** §4.2.4 now reads "chunk size is reduced from 4096 to 2000 chars for plain-message compatibility", aligning with OQ-TSPEC-03. Self-certified by Backend Engineer per PM authorization.
+
+---
+
+## New Finding (v1.4 re-review)
+
+### F-09 — [LOW] FSPEC §5.4 contains stale "unchanged" language that contradicts the PM-accepted chunk size change
+
+**Affected:** FSPEC-DI-03 §5.4 (Agent Response Text — Plain Messages); PM-owned document
+
+**FSPEC §5.4 states:**
+> "Content chunking behavior (splitting long responses across multiple messages) is unchanged — only the formatting wrapper changes."
+
+**TSPEC §4.2.4 (v1.3, normative) states:**
+> "Content chunking logic is preserved but the chunk size is reduced from 4096 to 2000 chars for plain-message compatibility."
+
+**OQ-TSPEC-03 (resolved):**
+> "Decision: reduce chunk size to 2000 chars for plain message compatibility. PM acknowledged and accepted."
+
+The FSPEC statement "Content chunking behavior...is unchanged" is stale. The PM explicitly accepted the chunk size reduction (4096 → 2000) through the OQ-TSPEC-03 process, but FSPEC §5.4 was never updated to reflect this accepted change. The TSPEC v1.3 is correct.
+
+**Impact:** The FSPEC and TSPEC are inconsistent on observable chunking behavior. An engineer cross-checking FSPEC against TSPEC would see a contradiction. A test engineer writing acceptance tests from the FSPEC alone would write tests against the wrong chunk boundary (4096 instead of 2000).
+
+**Severity rationale:** Low — the TSPEC (correct implementation target) accurately reflects the PM-accepted decision. The FSPEC text is documentation debt, not a TSPEC defect. PLAN authoring is not blocked.
+
+**Required action:** PM to update FSPEC §5.4 text to read:
+> "Content chunking behavior (splitting long responses across multiple messages) is updated for Phase 7 compatibility: the chunk size is reduced from 4096 to 2000 characters to match Discord's plain message limit. The chunking logic itself (splitting and posting multiple messages for long responses) is otherwise unchanged — only the chunk boundary and the removal of the embed wrapper change."
+
+This is a PM-owned documentation update; no TSPEC changes are required.
+
 ---
 
 ## Open Questions Resolved (v1.0 / v1.1)
@@ -78,6 +108,34 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 
 ---
 
+## REQ → TSPEC Coverage Verification (v1.4 pass)
+
+| Requirement | TSPEC Section(s) | Verdict |
+|-------------|-----------------|---------|
+| REQ-DI-06 — Archive Resolved Threads | §6 Archiving Algorithm, §4.2.2 `archiveThread()`, §8 Error Handling (archive scenarios) | ✅ Covered |
+| REQ-DI-10 — Discord Embed Formatting | §4.2.4 ResponsePoster (4 embed types + plain agent response), §7 EVT-OB-07/08, §8 embed error handling | ✅ Covered |
+| REQ-RP-06 — Error Message UX | §4.2.5 ErrorMessages module (5 ERR-RP templates, pure `buildErrorMessage()`), §8 error routing table | ✅ Covered |
+| REQ-NF-08 — Agent Extensibility | §4.2.3 AgentRegistry + AgentEntry types, §5 Config Schema Migration (before/after, hard cut-over rationale), §11 integration points | ✅ Covered |
+| REQ-NF-09 — Structured Log Output | §4.2.1 Logger Protocol (`forComponent()`, `ComponentLogger`, format string), §9.2 FakeLogger | ✅ Covered |
+| REQ-NF-10 — Operator Observability | §7 EVT-OB-01..10 (full lifecycle coverage: receive → match → invoke → respond → post → commit → archive/escalate/error) | ✅ Covered |
+
+---
+
+## FSPEC → TSPEC Alignment Check (v1.4 pass)
+
+| FSPEC | Key Behavioral Points | TSPEC Alignment |
+|-------|-----------------------|-----------------|
+| FSPEC-DI-02 — Thread Archiving | Resolution signals (LGTM/TASK_COMPLETE only); post-content, post-commit ordering; non-fatal on failure; idempotency via registry; WARN on failure, registry not updated | ✅ All 7 business rules (BR-DI-02-01..07) translated faithfully in §6 |
+| FSPEC-EX-01 — Agent Extensibility | Validate required fields + format + file existence; skip invalid entries; duplicate ID/mention_id handling; display_name fallback | ✅ §5.4 algorithm matches FSPEC §4.3 step-for-step; minor component naming divergence noted separately |
+| FSPEC-DI-03 — Embed Formatting | 4 embed types with defined colors, titles, body fields; agent response → plain message; embed fallback to plain on failure | ✅ §4.2.4 ResponsePoster matches embed schemas. Chunk size 2000 (correct per OQ-TSPEC-03). FSPEC §5.4 text stale — see F-09 |
+| FSPEC-RP-01 — Error Message UX | 5 error types (ERR-RP-01..05); pure builder function; no stack traces; caller extracts safe context | ✅ §4.2.5 `buildErrorMessage()` design rule ("pure function, never receives Error objects") matches FSPEC intent |
+| FSPEC-LG-01 — Structured Logging | `[ptah:{component}] LEVEL: message` format; all 8 modules get component-scoped loggers | ✅ §4.2.1 Logger Protocol + constructor pattern in §7 |
+| FSPEC-OB-01 — Observability | 10 lifecycle events covering message-received through archive/error | ✅ §7 EVT-OB-01..10 maps to full PDLC lifecycle |
+
+**Component naming note (not a finding):** FSPEC-EX-01 §4.3/§4.8 prescribes `[ptah:orchestrator]` for agent registration log lines. TSPEC §5.4/§8 assigns these to `[ptah:config]` — a more accurate technical assignment since `buildAgentRegistry()` is a config-layer concern. REQ-NF-09 specifies the format `[ptah:{component}]` but does not mandate which component handles which log lines. The TSPEC's assignment is a valid engineering refinement; no product concern.
+
+---
+
 ## Positive Observations
 
 - Full REQ traceability throughout the document — every requirement in REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10 is addressed.
@@ -86,6 +144,9 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 - §6 archiving algorithm places `postResolutionNotificationEmbed()` before `archiveThread()` — ensures the user sees the resolution notification before the thread disappears from active threads.
 - WARN fallback in the archiving algorithm (step 3b fallback to `postPlainMessage()`) is the correct defensive pattern.
 - §9.2 `FakeLogger` shared-store design enables end-to-end log assertions across component boundaries. Usage example (Option B) is clear and the Option A anti-pattern warning prevents a common test authoring mistake.
+- EVT-OB-01..10 coverage is complete — an operator can reconstruct the full routing lifecycle (trigger → match → invoke → signal → post → commit → archive/escalate/error) from log output alone, satisfying REQ-NF-10.
+- Error handling table in §8 correctly differentiates archive failure scenarios: "Thread not found" is treated as success (registry updated); network/permission failures leave the registry untouched (enabling user-initiated retry per BR-DI-02-07).
+- `AgentValidationError` interface provides rich diagnostic context (index, agentId, field, reason) for config validation failures.
 
 ---
 
@@ -93,7 +154,9 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 
 **Approved.**
 
-All findings resolved. F-08 (the sole remaining Medium finding) was self-certified by Backend Engineer in TSPEC v1.3: §4.2.4 now reads "chunk size is reduced from 4096 to 2000 chars for plain-message compatibility", aligning with OQ-TSPEC-03. No re-review required per PM authorization in v1.2 recommendation. TSPEC is cleared for PLAN authoring.
+TSPEC v1.3 is correct and cleared for PLAN authoring. All High and Medium findings (F-01, F-08) are resolved. Only a Low documentation note (F-09) remains, which is PM-owned FSPEC debt — PM will update FSPEC §5.4 to reflect the accepted chunk size change. No TSPEC changes required. No re-review required.
+
+**Post-approval PM action:** Update FSPEC-DI-03 §5.4 to replace "Content chunking behavior...is unchanged" with text that accurately reflects the 4096 → 2000 chunk size reduction accepted in OQ-TSPEC-03.
 
 ---
 
@@ -105,6 +168,7 @@ All findings resolved. F-08 (the sole remaining Medium finding) was self-certifi
 | 1.1 | March 17, 2026 | Backend Engineer | Updated to reflect F-01 resolution in TSPEC v1.1, OQ confirmations in TSPEC v1.2. Recommendation upgraded to Approved. |
 | 1.2 | March 17, 2026 | Product Manager | Re-review of TSPEC v1.2 — New F-08 Medium finding: §4.2.4 contradicts OQ-TSPEC-03 on chunk size (4096 vs 2000). Recommendation downgraded to Needs revision. One-line fix required; self-certification permitted. |
 | 1.3 | March 17, 2026 | Backend Engineer | Self-certified F-08 resolution: §4.2.4 updated in TSPEC v1.3 to specify 2000-char chunk size. Recommendation updated to Approved. |
+| 1.4 | March 17, 2026 | Product Manager | Full re-review pass of TSPEC v1.3 vs REQ v1.5 and FSPEC v2.1. Added REQ→TSPEC coverage verification table. Added FSPEC→TSPEC alignment check table. New F-09 Low finding: FSPEC §5.4 stale "unchanged" language is PM-owned documentation debt (does not affect TSPEC). Recommendation remains Approved. Component naming note added (non-finding). |
 
 ---
 
