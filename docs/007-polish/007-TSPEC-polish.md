@@ -7,7 +7,7 @@
 | **Functional Specifications** | [007-FSPEC-polish](./007-FSPEC-polish.md) |
 | **Date** | March 16, 2026 |
 | **Author** | Backend Engineer |
-| **Status** | Under Review (v1.4) |
+| **Status** | Under Review (v1.5) |
 
 ---
 
@@ -704,9 +704,9 @@ class FakeLogStore {
 
 export class FakeLogger implements Logger {
   private store: FakeLogStore;
-  private _component: string;
+  private _component: Component;
 
-  constructor(component: string = 'test', store?: FakeLogStore) {
+  constructor(component: Component = 'orchestrator', store?: FakeLogStore) {
     this._component = component;
     this.store = store ?? new FakeLogStore();
   }
@@ -738,7 +738,7 @@ export class FakeLogger implements Logger {
 // The module under test calls `deps.logger.forComponent('skill-invoker')` internally.
 // All log entries from all scoped loggers accumulate on rootLogger.entries.
 
-const rootLogger = new FakeLogger();
+const rootLogger = new FakeLogger('orchestrator');
 const deps = { logger: rootLogger, discord: fakeDiscord, ... };
 const skillInvoker = new DefaultSkillInvoker(deps);
 
@@ -793,6 +793,44 @@ export class FakeAgentRegistry implements AgentRegistry {
   getAllAgents(): RegisteredAgent[] { return [...this.agents]; }
 }
 ```
+
+#### FakeFileSystem (new)
+
+`FakeFileSystem` does not exist in any prior phase. Phase 7 introduces it to support unit testing of `buildAgentRegistry()`, which calls `fs.exists(skill_path)` and `fs.exists(log_file)`. It implements the `FileSystem` protocol from `src/services/filesystem.ts`.
+
+```typescript
+export class FakeFileSystem implements FileSystem {
+  // Map from path → exists result. Paths not present default to true.
+  existsResults: Map<string, boolean> = new Map();
+
+  async exists(path: string): Promise<boolean> {
+    if (this.existsResults.has(path)) return this.existsResults.get(path)!;
+    return true; // safe default: assume files exist unless explicitly set false
+  }
+
+  // Remaining FileSystem methods are no-ops / stubs not needed for Phase 7:
+  async mkdir(_path: string): Promise<void> {}
+  async writeFile(_path: string, _content: string): Promise<void> {}
+  async readFile(_path: string): Promise<string> { return ''; }
+  cwd(): string { return '/fake'; }
+  basename(p: string): string { return p.split('/').pop() ?? p; }
+  async readDir(_path: string): Promise<string[]> { return []; }
+  joinPath(...segments: string[]): string { return segments.join('/'); }
+  async appendFile(_path: string, _content: string): Promise<void> {}
+  async rename(_old: string, _new: string): Promise<void> {}
+  async copyFile(_src: string, _dest: string): Promise<void> {}
+}
+```
+
+**Usage in `agent-registry.test.ts`:**
+```typescript
+const fakeFs = new FakeFileSystem();
+fakeFs.existsResults.set('/agents/eng/skills/backend-engineer.md', false); // simulate missing skill file
+const { registry, errors } = await buildAgentRegistry(entries, fakeFs, fakeLogger);
+expect(errors).toContainEqual(expect.objectContaining({ field: 'skill_path' }));
+```
+
+> **Note:** `FakeFileSystem` is added to `tests/fixtures/factories.ts` in Phase 7. It should also be considered for backfill into prior-phase tests that currently rely on real filesystem I/O.
 
 #### FakeResponsePoster (updated methods)
 
@@ -874,6 +912,7 @@ postUserEscalationError: Error | null = null;
 | 1.2 | March 17, 2026 | Backend Engineer | Address remaining PM and TE cross-review items: (1) Added `fromAgentDisplayName: 'Ptah'` fallback test case to §9.3 ResponsePoster description [QA F-07]; (2) Updated OQ-TSPEC-01 resolution — PM confirmed hot-reload semantics: in-flight invocations complete with snapshot, de-registration out of Phase 7 scope; (3) Updated OQ-TSPEC-03 resolution — PM acknowledged and accepted chunk size reduction. |
 | 1.3 | March 17, 2026 | Backend Engineer | Self-certified fix per PM authorization: updated §4.2.4 `postAgentResponse()` behavior change to specify 2000-char chunk size (was 4096), aligning normative spec text with OQ-TSPEC-03 resolution [PM F-08]. |
 | 1.4 | March 17, 2026 | Backend Engineer | Address all BE and TE cross-review findings from v1.3: (1) Removed duplicate `Component` type from §4.2.1 `logger.ts` code block; `logger.ts` now imports from `types.ts` with explicit rationale note [BE F-01]; (2) `buildAgentRegistry()` marked `async`, return type changed to `Promise<{...}>` in §4.2.3 and §5.4 algorithm Output line [BE F-02 / TE F-08]; (3) Added `postSystemMessage()` removal disposition to §4.2.2 with grep guidance [BE F-03]; (4) Added §4.2.6 with updated `RoutingEngine` interface — signatures unchanged, constructor gains `agentRegistry` dep, implementation changes documented [BE F-04]; (5) Replaced `'dispatcher'` with `'invocation-guard'` in `Component` union in `src/types.ts` block; added explanatory comment [TE F-09]; (6) Changed `LogEntry.component: string` to `LogEntry.component: Component` [TE F-10]; (7) Added 2000-char chunk boundary test cases to §9.3 ResponsePoster row [TE F-11]. |
+| 1.5 | March 17, 2026 | Backend Engineer | Address TE cross-review findings from v1.4: (1) Changed `FakeLogger._component` and constructor parameter from `string` to `Component`; default changed from `'test'` (not a valid `Component` member) to `'orchestrator'`; updated `new FakeLogger()` usage example accordingly — all four `store.entries.push()` call sites now type-check correctly [TE F-12]; (2) Added `FakeFileSystem` definition to §9.2 — new in Phase 7, does not exist in any prior phase; `existsResults: Map<string, boolean>` gives per-path `exists()` control; stub implementations of all remaining `FileSystem` methods included; added usage example showing `agent-registry.test.ts` path [TE F-13]. |
 
 ---
 

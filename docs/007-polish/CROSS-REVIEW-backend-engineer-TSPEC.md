@@ -3,7 +3,7 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Backend Engineer (`eng`) |
-| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.4 |
+| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.5 |
 | **REQ Reference** | [007-REQ-polish.md](./007-REQ-polish.md) |
 | **FSPEC Reference** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.1 |
 | **Date** | March 17, 2026 |
@@ -13,17 +13,21 @@
 
 ## Summary
 
-TSPEC v1.4 resolves all four findings from this review (F-01 through F-04) and the four TE v1.3 findings (F-08 through F-11). The document is now technically sound and ready for PLAN authoring and PROPERTIES derivation.
+TSPEC v1.5 resolves all six findings from this review cycle (F-01 through F-04) and the six TE findings (F-08 through F-13). The document is now technically sound and ready for PLAN authoring and PROPERTIES derivation.
 
-**v1.3 finding resolutions confirmed:**
+**v1.3 finding resolutions confirmed (carried from v1.4):**
 - **F-01 (Medium):** `Component` removed from `§4.2.1 logger.ts` code block; imports from `types.ts` with canonical-location rationale note. ✅
 - **F-02 (Medium):** `buildAgentRegistry()` marked `async`; return type is `Promise<{...}>` in both §4.2.3 and §5.4 Output. ✅
 - **F-03 (Low):** `postSystemMessage()` explicitly marked for **removal** in §4.2.2 with grep guidance. ✅
 - **F-04 (Low):** §4.2.6 added with updated `RoutingEngine` interface — signatures unchanged, constructor gains `agentRegistry`, internal implementation changes documented. ✅
 
+**v1.4 TE finding resolutions confirmed (resolved in v1.5):**
+- **TE F-12 (Medium):** `FakeLogger._component` changed from `string` to `Component`; default changed from `'test'` (invalid member) to `'orchestrator'`. All four `push()` call sites now type-check correctly. Usage example updated. ✅
+- **TE F-13 (Low):** `FakeFileSystem` definition added to §9.2 as new in Phase 7. `existsResults: Map<string, boolean>` provides per-path `exists()` control. Usage example in `agent-registry.test.ts` context included. ✅
+
 Prior art:
 - PM cross-review: **Approved** (v1.3, F-08 self-certified)
-- TE cross-review: **Needs revision** (v1.3, F-08/F-09 Medium — all resolved in v1.4)
+- TE cross-review: **Needs revision** (v1.4, F-12/F-13 — resolved in v1.5)
 - BE FSPEC review: **Approved** (v2.1, all findings resolved)
 
 ---
@@ -182,7 +186,7 @@ Confirmed against live `ptah/src/`:
 
 **Approved.**
 
-All four findings (F-01 Medium, F-02 Medium, F-03 Low, F-04 Low) are resolved in v1.4. Combined with TE findings F-08 through F-11 also addressed, the TSPEC is clear and implementation-ready. Proceed to PLAN authoring. TE re-review of F-08/F-09 is still outstanding — route v1.4 to Test Engineer for sign-off before marking the document Approved.
+All four BE findings (F-01 Medium, F-02 Medium, F-03 Low, F-04 Low) were resolved in v1.4. TE findings F-08 through F-11 were also resolved in v1.4. TE findings F-12 (Medium) and F-13 (Low) are resolved in v1.5. The TSPEC is now clear and implementation-ready. Route v1.5 to Test Engineer for final sign-off on F-12 and F-13.
 
 ---
 
@@ -192,6 +196,7 @@ All four findings (F-01 Medium, F-02 Medium, F-03 Low, F-04 Low) are resolved in
 |---------|------|--------|---------|
 | 1.0 | March 17, 2026 | Backend Engineer | Initial review of TSPEC v1.3 — Needs revision (F-01 Medium: Component type duplication; F-02 Medium: buildAgentRegistry() missing async) |
 | 1.1 | March 17, 2026 | Backend Engineer | Re-review of TSPEC v1.4 — Approved. All findings (F-01..F-04) resolved. TE F-08..F-11 also resolved in v1.4 by same edit pass. |
+| 1.2 | March 17, 2026 | Backend Engineer | Re-review of TSPEC v1.5 — Approved. TE F-12 (`FakeLogger._component: Component`, valid default) and F-13 (`FakeFileSystem` definition added to §9.2) confirmed resolved. Document is implementation-ready pending TE sign-off. |
 
 ---
 
