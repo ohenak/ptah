@@ -7,7 +7,7 @@
 | **Functional Specifications** | [007-FSPEC-polish](./007-FSPEC-polish.md) |
 | **Date** | March 16, 2026 |
 | **Author** | Backend Engineer |
-| **Status** | Draft |
+| **Status** | Approved |
 
 ---
 
@@ -53,8 +53,8 @@ ptah/
 │   │   ├── skill-invoker.ts             UPDATED — component logger, observability events
 │   │   ├── artifact-committer.ts        UPDATED — component logger, observability event EVT-OB-06
 │   │   └── invocation-guard.ts          UPDATED — component logger, error message integration
-│   └── types.ts                         UPDATED — AgentEntry, RegisteredAgent, Component, LogLevel,
-│                                                   LogEntry, EmbedType, UserFacingErrorType
+│   └── types.ts                         UPDATED — AgentEntry, RegisteredAgent, AgentValidationError,
+│                                                   Component, LogLevel, LogEntry, UserFacingErrorType
 ├── docs/
 │   └── 007-polish/
 │       └── migration-guide-v4-agents.md NEW — config schema migration guide
@@ -62,13 +62,17 @@ ptah/
 └── tests/
     ├── unit/
     │   ├── agent-registry.test.ts        NEW
+    │   ├── config-loader.test.ts         NEW
     │   ├── error-messages.test.ts        NEW
+    │   ├── logger.test.ts                NEW
     │   ├── response-poster.test.ts       UPDATED — new embed types, plain-text agent responses
-    │   └── orchestrator.test.ts          UPDATED — thread archiving tests
+    │   └── orchestrator.test.ts          UPDATED — thread archiving tests, observability events
+    ├── integration/
+    │   └── routing-loop.test.ts          NEW — full lifecycle integration test
     └── fixtures/
-        └── factories.ts                  UPDATED — FakeLogger (forComponent), FakeDiscordClient
-                                                    (archiveThread, postPlainMessage), FakeAgentRegistry,
-                                                    FakeResponsePoster (new embed methods)
+        └── factories.ts                  UPDATED — FakeLogger NEW behaviors (forComponent, shared-store);
+                                                    FakeDiscordClient (archiveThread, postPlainMessage);
+                                                    FakeAgentRegistry NEW; FakeResponsePoster (new embed methods)
 ```
 
 ---
@@ -238,6 +242,18 @@ export interface UserFacingErrorContext {
   agentDisplayName?: string;
   agentId?: string;
   maxRetries?: number;
+}
+
+/**
+ * Represents a single validation failure returned by buildAgentRegistry().
+ * One error is pushed per invalid or duplicate AgentEntry.
+ */
+export interface AgentValidationError {
+  index: number;          // position in the agents[] config array (0-based)
+  agentId?: string;       // set if id was parseable; undefined if id itself was missing/invalid
+  field: string;          // which field failed (e.g. 'id', 'skill_path', 'mention_id', 'log_file')
+  reason: string;         // human-readable description (e.g. 'missing required field', 'duplicate id',
+                          //   'invalid format', 'file not found')
 }
 ```
 
@@ -558,6 +574,15 @@ After postAgentResponse() and commitAndMerge() complete:
    If state?.status === 'closed' → log DEBUG "Thread {threadId} already archived — skipping." Stop.
    (BR-DI-02-04: zero MCP calls on duplicate signals)
 
+3b. Post Resolution Notification embed:
+    await responsePoster.postResolutionNotificationEmbed({
+      threadId,
+      signalType,   ← 'LGTM' or 'TASK_COMPLETE'
+      agentDisplayName: agentRegistry.getAgentById(currentAgentId)?.display_name ?? currentAgentId
+    })
+    On embed error: log WARN. Fall back to postPlainMessage(). Continue to step 4.
+    (REQ-DI-10: resolution signal must be communicated to the thread before it is archived)
+
 4. Call discordClient.archiveThread(threadId).
    On success:
      log "[ptah:orchestrator] INFO: Thread {threadId} archived after resolution signal '{signalType}'."
@@ -659,7 +684,7 @@ export class FakeLogger implements Logger {
   error(message: string): void { this.store.entries.push({ component: this._component, level: 'ERROR', message }); }
   debug(message: string): void { this.store.entries.push({ component: this._component, level: 'DEBUG', message }); }
 
-  forComponent(component: string): FakeLogger {
+  forComponent(component: Component): FakeLogger {
     return new FakeLogger(component, this.store); // shares store
   }
 
@@ -671,6 +696,27 @@ export class FakeLogger implements Logger {
 ```
 
 **Key design:** `forComponent()` returns a new `FakeLogger` sharing the same `FakeLogStore`. All entries from all scoped loggers accumulate in the root logger's `entries` array. Tests assert `logger.entries` for structured `{ component, level, message }` tuples.
+
+**Correct usage pattern (Option B — root + forComponent):**
+
+```typescript
+// Always pass the root FakeLogger as the `logger` dependency.
+// The module under test calls `deps.logger.forComponent('skill-invoker')` internally.
+// All log entries from all scoped loggers accumulate on rootLogger.entries.
+
+const rootLogger = new FakeLogger();
+const deps = { logger: rootLogger, discord: fakeDiscord, ... };
+const skillInvoker = new DefaultSkillInvoker(deps);
+
+// After executing behavior under test:
+expect(rootLogger.entries).toContainEqual({
+  component: 'skill-invoker',
+  level: 'INFO',
+  message: expect.stringContaining('Invoking skill'),
+});
+```
+
+Do NOT pass `new FakeLogger('skill-invoker')` directly — doing so bypasses the `forComponent()` path and means the shared-store captures no entries from internally-scoped loggers.
 
 #### FakeDiscordClient (additions)
 
@@ -734,14 +780,14 @@ postUserEscalationError: Error | null = null;
 
 | Category | Test File | What is tested |
 |----------|-----------|----------------|
-| AgentRegistry unit | `tests/unit/agent-registry.test.ts` | `buildAgentRegistry()` validation rules, duplicate detection, startup log messages, FakeFs integration |
+| AgentRegistry unit | `tests/unit/agent-registry.test.ts` | `buildAgentRegistry()` validation rules, duplicate detection, startup log messages, FakeFs integration; `AgentValidationError` shape for each failure kind |
 | ErrorMessages unit | `tests/unit/error-messages.test.ts` | `buildErrorMessage()` returns correct title/whatHappened/whatToDo for each of 5 error types; no stack traces in output |
 | ResponsePoster unit | `tests/unit/response-poster.test.ts` | 4 embed type schemas (color, title, footer), plain-text agent response, embed fallback to plain, truncation |
-| Logger unit | `tests/unit/logger.test.ts` | `forComponent()` returns scoped logger; FakeLogger shared-store behavior; ComponentLogger format string |
-| Thread archiving unit | `tests/unit/orchestrator.test.ts` | AT-DI-02-01 through AT-DI-02-09; archiving is last (ordering); non-fatal on failure; idempotency |
-| Observability unit | `tests/unit/orchestrator.test.ts` | EVT-OB-01..10 emitted with correct component, level, and required fields |
-| Config migration unit | `tests/unit/config-loader.test.ts` | New schema parsed; old schema rejected; validation errors; `llm` section |
-| Integration | `tests/integration/routing-loop.test.ts` | Full lifecycle: message received → archived; multi-agent routing traceable via logs |
+| Logger unit | `tests/unit/logger.test.ts` | `forComponent()` returns scoped logger; FakeLogger shared-store behavior; `ComponentLogger` format string `[ptah:{component}] {LEVEL}: {message}` |
+| Thread archiving unit | `tests/unit/orchestrator.test.ts` | AT-DI-02-01 through AT-DI-02-09; `postResolutionNotificationEmbed()` called before `archiveThread()`; archiving is last (ordering); non-fatal on failure; idempotency |
+| Observability unit | `tests/unit/orchestrator.test.ts` | EVT-OB-01..10 emitted with correct component, level, and required fields. EVT-OB-01 and EVT-OB-08 include boundary cases: (a) content > 100 chars → truncated with `…`; (b) content ≤ 100 chars → no truncation |
+| Config migration unit | `tests/unit/config-loader.test.ts` | New `agents[]` schema parsed; old flat schema rejected; `AgentEntry` validation errors; `llm` section required |
+| Integration | `tests/integration/routing-loop.test.ts` | Full lifecycle: message received → resolution signal → `postResolutionNotificationEmbed()` → thread archived. All external boundaries (Discord, FS, Claude API) faked via the §9.2 test doubles. `buildAgentRegistry()` called with real in-memory `AgentEntry[]` (not `FakeAgentRegistry`). Multi-agent routing traceable via `rootLogger.entries`. Classified as cross-module integration (not true I/O integration). |
 
 ---
 
@@ -781,7 +827,7 @@ postUserEscalationError: Error | null = null;
 | OQ-TSPEC-01 | Where does `AgentRegistry` hot-reload fit within `NodeConfigLoader`'s existing hot-reload? Does the registry rebuild on config file change? | **Assumed: yes.** The composition root rebuilds the registry and updates the Orchestrator's registry reference on hot-reload. This mirrors Phase 1 config hot-reload behavior. Confirm with Product Manager if de-registration semantics for in-flight invocations need additional handling. |
 | OQ-TSPEC-02 | FSPEC-EX-01 BR-EX-01-06 says the skill file is read at invocation time (not startup). Should `skill-invoker.ts` use `agentRegistry.getAgentById(agentId).skill_path` at invocation, or cache the path? | **Decision: read path from registry at invocation time.** The registry holds the path string; the file is read from disk by `skill-invoker.ts`. On config hot-reload with a changed `skill_path`, the registry is updated and the next invocation picks up the new path. No file handle caching. |
 | OQ-TSPEC-03 | `postAgentResponse()` currently chunks at 4096 chars (embed limit). After moving to plain messages, Discord's plain message limit is 2000 chars. Should the chunk size change? | **Decision: reduce chunk size to 2000 chars** for plain message compatibility. This is a silent behavioral change from the current embed chunking. Flagging here for PM awareness but not a blocker — it improves compatibility. |
-| OQ-TSPEC-04 | The FSPEC notes that `postProgressEmbed` maps to Routing Notification (§5.5 BR-DI-03-03). The existing `postProgressEmbed()` takes `(threadId, message: string)` — a free-form string. The new `postRoutingNotificationEmbed()` takes structured `{fromAgentDisplayName, toAgentDisplayName}` params. Are there callers of `postProgressEmbed()` that don't have from/to agent context? | **Needs audit:** All `postProgressEmbed()` call sites must be reviewed during implementation. If a call site has only a free-form message (no agent context), it may use the Routing Notification embed with a `fromAgentDisplayName` of `'Ptah'` as a fallback, or the caller must be refactored to provide the context. |
+| OQ-TSPEC-04 | The FSPEC notes that `postProgressEmbed` maps to Routing Notification (§5.5 BR-DI-03-03). The existing `postProgressEmbed()` takes `(threadId, message: string)` — a free-form string. The new `postRoutingNotificationEmbed()` takes structured `{fromAgentDisplayName, toAgentDisplayName}` params. Are there callers of `postProgressEmbed()` that don't have from/to agent context? | **Resolved (audit complete).** 6 call sites found in `orchestrator.ts`. **2 have full from/to agent context** (lines ~604 and ~654 — both "Routing to `**${nextAgentLabel}**`..." patterns; `currentAgentId` is the from-agent). These map cleanly to `postRoutingNotificationEmbed()`. **4 are system-initiated progress notifications** ("Assembling context for...", "Invoking skill...", "Agent completed...", "Retrying agent...") — these have a target agent but no semantic "from" agent. These use `fromAgentDisplayName: 'Ptah'` as the fallback display name. PM confirmed this fallback is approved. Additional test case required in `response-poster.test.ts`: assert `fromAgentDisplayName: 'Ptah'` renders correctly in the Routing Notification embed. |
 
 ---
 
@@ -790,6 +836,7 @@ postUserEscalationError: Error | null = null;
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 16, 2026 | Backend Engineer | Initial draft |
+| 1.1 | March 17, 2026 | Backend Engineer | Address PM and Test Engineer cross-review feedback: (1) Added `postResolutionNotificationEmbed()` call site to §6 archiving algorithm before `archiveThread()` [PM F-01]; (2) Added `logger.test.ts`, `config-loader.test.ts`, `tests/integration/routing-loop.test.ts` to §3 project structure [QA F-01]; (3) Defined `AgentValidationError` interface in §4.2.3 [QA F-02]; (4) Resolved OQ-TSPEC-04 with call-site audit — 4 of 6 sites use `fromAgentDisplayName: 'Ptah'` fallback, PM-approved [QA F-03]; (5) Fixed `FakeLogger.forComponent()` to use `Component` type; added usage example [QA F-04, Q-01]; (6) Removed `EmbedType` from §3 types list (no protocol references it) [QA F-05]; (7) Added truncation boundary test cases to §9.3 EVT-OB-01/OB-08 [QA F-06]; (8) Added integration test scope note in §9.3 [Q-02]. Status set to Approved. |
 
 ---
 
