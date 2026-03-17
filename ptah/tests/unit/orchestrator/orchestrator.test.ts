@@ -1186,7 +1186,7 @@ describe("DefaultOrchestrator", () => {
       routingEngine.resolveHumanResult = "dev-agent";
       discord.threadHistory.set("thread-1", DEFAULT_OLD_HISTORY);
 
-      gitClient.createWorktreeError = new Error("worktree creation failed");
+      gitClient.createWorktreeFromBranchError = new Error("worktree creation failed");
 
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");

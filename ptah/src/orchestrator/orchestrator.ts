@@ -23,7 +23,7 @@ import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
 import { type DispatchAction, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
-import { extractFeatureName, featureNameToSlug } from "./feature-branch.js";
+import { extractFeatureName, featureNameToSlug, featureBranchName } from "./feature-branch.js";
 
 const REVIEW_PHASES = new Set<PdlcPhase>([
   PdlcPhase.REQ_REVIEW,
@@ -367,10 +367,11 @@ export class DefaultOrchestrator implements Orchestrator {
         // If ensureUniqueBranch fails somehow, continue with original
       }
 
-      // Create worktree (outer try — if this fails, no cleanup needed)
-      this.logger.info(`Creating worktree for ${currentAgentId} on branch ${branch}`);
+      // Create worktree from the feature branch (not HEAD)
+      const baseBranch = featureBranchName(extractFeatureName(triggerMessage.threadName));
+      this.logger.info(`Creating worktree for ${currentAgentId} on branch ${branch} from ${baseBranch}`);
       try {
-        await this.gitClient.createWorktree(branch, worktreePath);
+        await this.gitClient.createWorktreeFromBranch(branch, worktreePath, baseBranch);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         await this.responsePoster.postErrorEmbed(
@@ -430,7 +431,7 @@ export class DefaultOrchestrator implements Orchestrator {
           bundle,
           worktreePath,
           branch,
-          featureBranch: branch,
+          featureBranch: baseBranch,
           config: this.config,
           shutdownSignal: this.shutdownSignal,
           debugChannelId: this.debugChannelId,
@@ -907,9 +908,10 @@ export class DefaultOrchestrator implements Orchestrator {
       timestamp: new Date(),
     };
 
-    // Create worktree
+    // Create worktree from the feature branch (not HEAD)
+    const patternBBaseBranch = featureBranchName(extractFeatureName(question.threadName));
     try {
-      await this.gitClient.createWorktree(branch, worktreePath);
+      await this.gitClient.createWorktreeFromBranch(branch, worktreePath, patternBBaseBranch);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await this.responsePoster.postErrorEmbed(
@@ -944,7 +946,7 @@ export class DefaultOrchestrator implements Orchestrator {
         threadName: question.threadName,
         worktreePath,
         branch,
-        featureBranch: branch,
+        featureBranch: patternBBaseBranch,
         artifactChanges: result.artifactChanges,
       });
 
