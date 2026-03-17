@@ -88,3 +88,111 @@ The v2.0 FSPEC is substantially stronger than v1.0 from a testability standpoint
 All blocking findings from the previous "Needs revision" recommendation are resolved. The REQ v1.5 and FSPEC v2.0 are ready for TSPEC authoring. Two new low-severity observations (F-08, F-09) are noted for the TSPEC author's awareness — neither requires a FSPEC revision before TSPEC work begins.
 
 F-06 (test doubles for Discord MCP and filesystem) remains a TSPEC-level action item: the TSPEC must define protocol-based fakes for both boundaries before test scripts can be written.
+
+---
+
+## Addendum: Test Engineer Response to Backend Engineer FSPEC Review
+
+| Field | Detail |
+|-------|--------|
+| **Addendum Date** | March 16, 2026 |
+| **Responding to** | [CROSS-REVIEW-backend-engineer-FSPEC.md](./CROSS-REVIEW-backend-engineer-FSPEC.md) |
+| **BE Recommendation** | Approved with minor changes (F-02, F-03, F-04 require small FSPEC additions) |
+
+---
+
+### Testing Perspective on BE Findings
+
+The Backend Engineer's FSPEC review identifies three protocol gaps that directly affect test design. Each is analyzed below.
+
+#### BE-F-02 — `archiveThread` missing from `DiscordClient` protocol
+
+**Test Engineer perspective: Agree — this is the single most important protocol addition for testability.**
+
+My F-06 finding deferred Discord MCP fake design to the TSPEC. BE-F-02 now confirms the gap is concrete: `archiveThread(threadId: string): Promise<void>` must be added to the `DiscordClient` protocol. Without this method on the protocol, unit tests for the archive path (AT-DI-02-01 through AT-DI-02-09) cannot use a fake implementation — they would require a real Discord connection.
+
+Once `archiveThread` is on the `DiscordClient` protocol, all nine FSPEC-DI-02 acceptance tests map cleanly to unit tests using a `FakeDiscordClient`. This unblocks the entire FSPEC-DI-02 test surface.
+
+**Recommendation for FSPEC update:** Add the sentence BE requested to FSPEC-DI-02 §3.5 Inputs and Outputs: "`DiscordClient.archiveThread(threadId: string): Promise<void>` is a Phase 7 deliverable — this method does not exist in the current protocol and must be added."
+
+**Impact on TSPEC fake design:** The `FakeDiscordClient` must:
+1. Record `archiveThread` calls (to assert AT-DI-02-01 and AT-DI-02-03 — that the call was made exactly once)
+2. Support a configurable error injection mode (to assert AT-DI-02-04 — archive failure leaves registry unchanged)
+3. Support a "thread already archived in Discord" mode returning success (to assert AT-DI-02-03 idempotency at the Discord API level, distinct from the registry-level idempotency in AT-DI-02-07)
+
+---
+
+#### BE-F-03 — `Logger` interface requires protocol change, not per-call-site string concatenation
+
+**Test Engineer perspective: Agree — and this determines whether Logger fakes are trivial or non-trivial.**
+
+If the FSPEC-LG-01 component prefix is implemented as per-call-site string concatenation (Option A implied by misreading the spec), then:
+- `Logger.info("[ptah:router] message")` is called in every router method
+- A fake Logger can capture the raw string — testable, but fragile (component name is in the message body, not a structured field)
+- FSPEC-OB-01 EVT-OB-XX assertions must parse the component out of the message string — regex-dependent
+
+If implemented as a scoped factory (`Logger.forComponent(component): Logger`, BE Option B):
+- `routerLogger.info("message")` where `routerLogger = logger.forComponent("router")`
+- A fake Logger can capture `{ component, level, message }` as structured data — testable without regex
+- FSPEC-OB-01 assertions become `expect(capturedEntry.component).toBe("router")` — clean and unambiguous
+- **This is the better design for testing.** The closed-set assertion over `FSPEC-LG-01 §7.3` component values becomes `expect(VALID_COMPONENTS).toContain(entry.component)` — deterministic.
+
+**Recommendation for FSPEC update:** Add the note BE requested to FSPEC-LG-01 §7.5 Business Rules: "The `[ptah:{component}]` prefix is a Logger-level concern, not a per-call-site string. The Logger protocol must support component-scoped instances (e.g., via a `forComponent(component: string): Logger` factory) so that the component is a structured field, not an embedded string in the message."
+
+**Impact on TSPEC fake design:** The `FakeLogger` must:
+1. Implement the factory method (if Option B is chosen by BE)
+2. Capture log entries as `{ component: string, level: 'info'|'warn'|'error'|'debug', message: string }[]`
+3. Expose a `entries(component?)` query method to filter by component for FSPEC-OB-01 acceptance test assertions
+
+---
+
+#### BE-F-04 — `DiscordClient` has no `postPlainMessage` method
+
+**Test Engineer perspective: Agree — required for FSPEC-DI-03 agent-response plain-text tests.**
+
+FSPEC-DI-03 §5.4 specifies that after Phase 7, agent response text is posted as plain text (not embeds). Without `postPlainMessage(threadId, content)` on the `DiscordClient` protocol, the behavior described in FSPEC-DI-03 §5.4 is not testable in isolation — there is no fake-able method to assert was called.
+
+This also affects the embed fallback path in FSPEC-DI-03 §5.6 (my F-08 finding). The fallback assertion "at least one message was posted to the thread" requires a protocol method that `FakeDiscordClient` can record. `postPlainMessage` is that method.
+
+**Recommendation for FSPEC update:** Add the note BE requested to FSPEC-DI-03 §5.4: "A new `postPlainMessage(threadId: string, content: string): Promise<void>` method must be added to the `DiscordClient` protocol. This is a Phase 7 deliverable."
+
+**Impact on TSPEC fake design:** The `FakeDiscordClient` must:
+1. Record `postPlainMessage` calls (to assert FSPEC-DI-03 §5.4 — agent responses use plain text)
+2. Support configurable failure injection (to assert FSPEC-DI-03 §5.6 fallback — though the fallback path calls `postPlainMessage` for the fallback itself, so the fake must support both success and failure modes per call)
+
+---
+
+#### BE Q-01 — Discord MCP vs. discord.js: which client handles archiving?
+
+**Test Engineer perspective: Relevant to fake scope, but does not block testability.**
+
+From a testing standpoint, either answer results in the same fake interface requirement: `DiscordClient` (the protocol) gains `archiveThread`. Whether the concrete implementation is `DiscordJsClient` extended, or a new MCP-based client, the fake is the same. The TSPEC should resolve this question and document it so the fake implementation target is unambiguous.
+
+#### BE Q-02 — `archive_on_resolution` key nesting
+
+**Test Engineer perspective: Low impact on tests. Test fixtures use the full JSON key path directly.**
+
+Both `orchestrator.archive_on_resolution` (FSPEC) and camelCase variants map to the same test fixture: `{ orchestrator: { archive_on_resolution: false } }`. The TSPEC should confirm the canonical key path and tests should use a typed config fixture (not raw strings) to avoid this ambiguity at the test level.
+
+---
+
+### Updated TSPEC Action Items (F-06 Addendum)
+
+The following TSPEC-level requirements now have additional scope from the BE review:
+
+| Item | Source | TSPEC Action |
+|------|--------|-------------|
+| `FakeDiscordClient.archiveThread` | BE-F-02 | Must record calls, support error injection, support "already archived" mode |
+| `FakeDiscordClient.postPlainMessage` | BE-F-04 | Must record calls, support error injection |
+| `FakeLogger` structured capture | BE-F-03 | Must capture `{ component, level, message }[]`; implement `forComponent()` if protocol uses factory pattern |
+| Discord MCP vs. discord.js clarification | BE-Q-01 | TSPEC must document which concrete class implements the protocol and scope the fake accordingly |
+
+---
+
+### Updated Recommendation
+
+**Approved — overall status unchanged. Three FSPEC additions requested by BE are also recommended from a testing perspective.**
+
+The three additions requested by BE (to FSPEC-DI-02 §3.5, FSPEC-LG-01 §7.5, and FSPEC-DI-03 §5.4) are all testability improvements, not just architectural notes. They convert implicit protocol assumptions into explicit TSPEC scope items. These additions should be made to the FSPEC before TSPEC authoring begins.
+
+The FSPEC v2.0 acceptance tests (AT-DI-02-01 through AT-EX-01-08, AT-OB-01-01 through AT-OB-01-03) remain correct and sufficient. No acceptance test revisions are needed. The test engineer approves proceeding to TSPEC once the three minor FSPEC additions are in place.
