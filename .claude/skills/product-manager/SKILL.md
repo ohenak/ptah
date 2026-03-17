@@ -286,7 +286,16 @@ When feedback is received on your REQ or FSPEC via cross-review files:
    - **Findings** (numbered: F-01, F-02, ...) — specific issues with severity (High / Medium / Low)
    - **Clarification questions** (numbered: Q-01, Q-02, ...) — things you need the requesting skill to explain
    - **Positive observations** — what aligns well with the requirements
-   - **Recommendation:** Approved / Approved with minor changes / Needs revision
+   - **Recommendation:** One of the following, chosen strictly by the decision rules below:
+     - **Approved** — no findings, or only Low-severity findings
+     - **Approved with minor changes** — only Low-severity findings that are non-blocking
+     - **Needs revision** — one or more High or Medium severity findings exist
+
+   **Decision rules (mandatory):**
+   - If ANY finding is High or Medium severity, the recommendation MUST be **Needs revision**. You may NOT use "Approved" or "Approved with minor changes" when High or Medium findings are present.
+   - "Approved with minor changes" is ONLY for Low-severity cosmetic or editorial suggestions.
+   - If **Needs revision**, explicitly state that the author must address all High and Medium findings and route the updated deliverable back for re-review.
+
 6. **Commit and push.** Stage the cross-review file, commit with `docs({NNN}): add product-manager cross-review of {document-type}`, and push to the remote branch. Verify the push succeeds.
 7. **Signal completion** per the Response Contract, referencing the cross-review file path and your recommendation summary.
 
