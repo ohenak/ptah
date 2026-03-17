@@ -201,7 +201,7 @@ Detailed requirements for each phase are in their own documents. Each phase docu
 | **Phase 4 — Artifact Commits** | [004-REQ-PTAH-artifact-commits](004-REQ-PTAH-artifact-commits.md) | 6 (SI, NF domains) | All FSPEC'd ([FSPEC-ptah-artifact-commits](../specifications/004-FSPEC-ptah-artifact-commits.md)); TSPECs pending |
 | **Phase 5 — User Questions** | [005-REQ-PTAH-user-questions](005-REQ-PTAH-user-questions.md) | 7 (DI, RP, PQ domains) | Pending specification |
 | **Phase 6 — Guardrails** | [006-REQ-PTAH-guardrails](006-REQ-PTAH-guardrails.md) | 6 (DI, RP, SI, NF domains) | Pending specification |
-| **Phase 7 — Polish** | [007-REQ-PTAH-polish](007-REQ-PTAH-polish.md) | 2 (DI, NF domains) | Pending specification |
+| **Phase 7 — Polish** | [007-REQ-polish](../007-polish/007-REQ-polish.md) | 2 (DI, NF domains) | Pending specification |
 | **Phase 9 — Auto Feature Bootstrap** | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | 8 (AF domain) | All FSPEC'd ([009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)); TSPEC pending |
 
 **Total:** 62 requirements across 8 phases (Phases 1–7 + Phase 9).

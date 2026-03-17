@@ -57,7 +57,7 @@ Full user story details are in the [master requirements document](../requirement
 | **Priority** | P1 |
 | **Phase** | Phase 7 |
 | **Source User Stories** | [US-02] |
-| **Specification** | [FSPEC-DI-02](./007-FSPEC-ptah-polish.md) |
+| **Specification** | [FSPEC-DI-02](./007-FSPEC-polish.md) |
 | **Dependencies** | [REQ-DI-01], [REQ-SI-04], [REQ-SI-05] |
 
 ---
@@ -143,8 +143,8 @@ Full user story details are in the [master requirements document](../requirement
 | P1 | 6 | REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10 |
 
 **Specification status:**
-- REQ-DI-06 → [FSPEC-DI-02](./007-FSPEC-ptah-polish.md) — FSPEC Complete. TSPEC pending.
-- REQ-NF-08 → [FSPEC-EX-01](./007-FSPEC-ptah-polish.md) — FSPEC Complete. TSPEC pending.
+- REQ-DI-06 → [FSPEC-DI-02](./007-FSPEC-polish.md) — FSPEC Complete. TSPEC pending.
+- REQ-NF-08 → [FSPEC-EX-01](./007-FSPEC-polish.md) — FSPEC Complete. TSPEC pending.
 - REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10 — Pending FSPEC.
 
 ---
