@@ -91,7 +91,7 @@ function planDoc(slug: string): ContextDocument {
   const feature = extractFeatureName(slug);
   return {
     type: "plan",
-    relativePath: featureDocPath(slug, `${prefix}-PLAN-TSPEC-${feature}.md`),
+    relativePath: featureDocPath(slug, `${prefix}-PLAN-${feature}.md`),
     required: true,
   };
 }

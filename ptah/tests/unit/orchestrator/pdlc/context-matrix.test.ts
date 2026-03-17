@@ -138,7 +138,7 @@ describe("context-matrix", () => {
       );
     });
 
-    it("generates correct PLAN path (PLAN-TSPEC pattern)", () => {
+    it("generates correct PLAN path (PLAN pattern)", () => {
       const result = getContextDocuments(PdlcPhase.PLAN_CREATION, SLUG, defaultConfig);
       const planDoc = result.documents.find((d) => d.type === "tspec");
       // The TSPEC is the context for PLAN_CREATION
@@ -151,7 +151,7 @@ describe("context-matrix", () => {
       const result = getContextDocuments(PdlcPhase.PLAN_REVIEW, SLUG, defaultConfig);
       const plan = result.documents.find((d) => d.type === "plan");
       expect(plan!.relativePath).toBe(
-        `docs/011-orchestrator-pdlc-state-machine/011-PLAN-TSPEC-orchestrator-pdlc-state-machine.md`,
+        `docs/011-orchestrator-pdlc-state-machine/011-PLAN-orchestrator-pdlc-state-machine.md`,
       );
     });
 

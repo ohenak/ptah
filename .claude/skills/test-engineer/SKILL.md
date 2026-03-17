@@ -384,7 +384,7 @@ This skill operates alongside the Backend Engineer, Frontend Engineer, and Produ
 | Functional Specs | `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
 | Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (protocols, algorithms, error handling) |
-| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown with test files |
+| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-{feature-name}.md` | Task breakdown with test files |
 | Properties Template | `docs/templates/properties-template.md` | Standard format for all properties documents |
 | Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Properties documents (produced by this skill) |
 | TE Reviews | `docs/{NNN}-{feature-name}/REVIEW-*.md` | Review documents produced by this skill |
@@ -405,7 +405,7 @@ This skill operates alongside the Backend Engineer, Frontend Engineer, and Produ
 
 Documents are prefixed with a sequential number (`{NNN}-`) to group related artifacts:
 - `002-TSPEC-ptah-discord-bot.md`
-- `002-PLAN-TSPEC-ptah-discord-bot.md`
+- `002-PLAN-ptah-discord-bot.md`
 - `002-PROPERTIES-ptah-discord-bot.md`
 
 ---
