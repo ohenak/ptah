@@ -86,3 +86,20 @@ What specific task should both the test-engineer and product-manager perform, on
 Review docs/007-polish/007-TSPEC-polish.md
 
 ---
+
+<!-- Q-0006 -->
+**ID:** Q-0006
+**Agent:** qa
+**Thread:** 007-polish
+**Thread ID:** 1483355633959833703
+**Asked:** 2026-03-17T09:39:24.736Z
+**Answered:** 2026-03-17T16:58:47.357Z
+**Discord Message ID:** 1483399349353316393
+
+**Question:**
+Feature '007-polish' has exceeded the maximum of 3 revision cycles in phase TSPEC_REVIEW.
+
+**Answer:**
+It is approved, move on to properties creation
+
+---
