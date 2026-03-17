@@ -3,21 +3,27 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Backend Engineer (`eng`) |
-| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.3 |
+| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.4 |
 | **REQ Reference** | [007-REQ-polish.md](./007-REQ-polish.md) |
 | **FSPEC Reference** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.1 |
 | **Date** | March 17, 2026 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
 ## Summary
 
-TSPEC v1.3 is well-structured and technically sound in most areas. Two Medium findings prevent approval: (1) the `Component` type is defined in both `src/services/logger.ts` and `src/types.ts` — a source-of-truth conflict that will cause import ambiguity; and (2) `buildAgentRegistry()` is specified as a synchronous function despite its algorithm requiring `await` — a compile-time defect in the spec. Two Low findings are also noted but are non-blocking.
+TSPEC v1.4 resolves all four findings from this review (F-01 through F-04) and the four TE v1.3 findings (F-08 through F-11). The document is now technically sound and ready for PLAN authoring and PROPERTIES derivation.
+
+**v1.3 finding resolutions confirmed:**
+- **F-01 (Medium):** `Component` removed from `§4.2.1 logger.ts` code block; imports from `types.ts` with canonical-location rationale note. ✅
+- **F-02 (Medium):** `buildAgentRegistry()` marked `async`; return type is `Promise<{...}>` in both §4.2.3 and §5.4 Output. ✅
+- **F-03 (Low):** `postSystemMessage()` explicitly marked for **removal** in §4.2.2 with grep guidance. ✅
+- **F-04 (Low):** §4.2.6 added with updated `RoutingEngine` interface — signatures unchanged, constructor gains `agentRegistry`, internal implementation changes documented. ✅
 
 Prior art:
 - PM cross-review: **Approved** (v1.3, F-08 self-certified)
-- TE cross-review: **Approved with minor changes** (v1.1, F-07 addressed in v1.2)
+- TE cross-review: **Needs revision** (v1.3, F-08/F-09 Medium — all resolved in v1.4)
 - BE FSPEC review: **Approved** (v2.1, all findings resolved)
 
 ---
@@ -174,14 +180,9 @@ Confirmed against live `ptah/src/`:
 
 ## Recommendation
 
-**Needs revision.**
+**Approved.**
 
-Two Medium findings must be addressed before PLAN authoring:
-
-1. **F-01:** Designate a single canonical location for `Component` type. Remove the duplicate definition from whichever file is not canonical.
-2. **F-02:** Mark `buildAgentRegistry()` as `async` and update the return type to `Promise<{ registry: AgentRegistry; errors: AgentValidationError[] }>`.
-
-The two Low findings (F-03, F-04) are non-blocking — they should be addressed in the same edit pass but do not require a re-review if clearly resolved. Once F-01 and F-02 are fixed, route the updated TSPEC back for re-review.
+All four findings (F-01 Medium, F-02 Medium, F-03 Low, F-04 Low) are resolved in v1.4. Combined with TE findings F-08 through F-11 also addressed, the TSPEC is clear and implementation-ready. Proceed to PLAN authoring. TE re-review of F-08/F-09 is still outstanding — route v1.4 to Test Engineer for sign-off before marking the document Approved.
 
 ---
 
@@ -190,6 +191,7 @@ The two Low findings (F-03, F-04) are non-blocking — they should be addressed 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 17, 2026 | Backend Engineer | Initial review of TSPEC v1.3 — Needs revision (F-01 Medium: Component type duplication; F-02 Medium: buildAgentRegistry() missing async) |
+| 1.1 | March 17, 2026 | Backend Engineer | Re-review of TSPEC v1.4 — Approved. All findings (F-01..F-04) resolved. TE F-08..F-11 also resolved in v1.4 by same edit pass. |
 
 ---
 
