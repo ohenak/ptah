@@ -83,3 +83,4 @@ The TSPEC is cleared for:
 |---------|------|--------|---------|
 | 1.0 | March 17, 2026 | Test Engineer | Initial review of TSPEC v1.0 — Needs revision (3 Medium findings) |
 | 1.1 | March 17, 2026 | Test Engineer | Re-review of TSPEC v1.1 — Approved with minor changes (F-07 Low, non-blocking) |
+| 1.2 | March 17, 2026 | Backend Engineer | F-07 addressed in TSPEC v1.2 — `fromAgentDisplayName: 'Ptah'` fallback added to §9.3 ResponsePoster description. All TE findings resolved. |
