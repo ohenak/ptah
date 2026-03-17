@@ -3,7 +3,7 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Product Manager |
-| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.3 |
+| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.4 |
 | **Date** | March 17, 2026 |
 | **Recommendation** | **Approved** |
 
@@ -13,7 +13,20 @@
 
 Full re-review pass against the approved REQ (v1.5) and FSPEC (v2.1). All six requirements (REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10) are addressed with appropriate technical components. All previously resolved findings (F-01 through F-08) remain resolved.
 
-One new documentation note is recorded (F-09 — Low): FSPEC §5.4 contains stale language ("Content chunking behavior is unchanged") that contradicts the PM-accepted chunk size reduction in OQ-TSPEC-03. The TSPEC is correct; the defect is in FSPEC text, not the TSPEC. This is PM-owned documentation debt and does not block PLAN authoring.
+One new documentation note was recorded (F-09 — Low): FSPEC §5.4 contained stale language ("Content chunking behavior is unchanged") that contradicted the PM-accepted chunk size reduction in OQ-TSPEC-03. The TSPEC was correct; the defect was in FSPEC text, not the TSPEC. **F-09 is now resolved**: FSPEC §5.4 updated to v2.2 in this same review pass.
+
+**v1.5 re-review (TSPEC v1.4):** Seven changes were applied in TSPEC v1.4 to resolve BE F-01–F-04 and TE F-08–F-11. All changes reviewed from a product perspective — no new product-level findings. Recommendation remains **Approved**.
+
+**v1.5 pass summary of TSPEC v1.4 changes (product perspective):**
+
+| Change | Product Impact |
+|--------|----------------|
+| `Component` type moved to `types.ts` only; `'dispatcher'` → `'invocation-guard'` | Observable log output uses `[ptah:invocation-guard]` for `invocation-guard.ts`. Correct — `'invocation-guard'` now appears in the `Component` union and matches the actual source file. §7 EVT-OB component assignments unchanged (no EVT is directly owned by `invocation-guard`; its errors flow through EVT-OB-10 per-component). No REQ-NF-09 / REQ-NF-10 concerns. |
+| `buildAgentRegistry()` marked `async` with `Promise<>` return type | Implementation detail only. No product behavior change. |
+| `postSystemMessage()` removal documented in §4.2.2 | Confirms Phase 7 product intent: all Orchestrator messages now route through typed embed methods or `postPlainMessage()`. Aligns with REQ-DI-10. |
+| `RoutingEngine` interface signatures documented as unchanged | Internal implementation detail. No product behavior change. |
+| `LogEntry.component: Component` (was `string`) | Test infrastructure improvement. No product behavior change. |
+| 2000-char chunk boundary test cases added to §9.3 | Confirms correct product behavior per OQ-TSPEC-03 decision. Aligns with REQ-DI-10. |
 
 ---
 
@@ -154,9 +167,9 @@ Rebuild registry on hot-reload. In-flight invocations complete with their snapsh
 
 **Approved.**
 
-TSPEC v1.3 is correct and cleared for PLAN authoring. All High and Medium findings (F-01, F-08) are resolved. Only a Low documentation note (F-09) remains, which is PM-owned FSPEC debt — PM will update FSPEC §5.4 to reflect the accepted chunk size change. No TSPEC changes required. No re-review required.
+TSPEC v1.4 is correct and cleared for PLAN authoring. All High and Medium findings (F-01, F-08 across all review cycles) are resolved. The previously noted Low documentation note (F-09 — FSPEC §5.4 stale language) is now resolved: FSPEC §5.4 updated to v2.2 in this pass.
 
-**Post-approval PM action:** Update FSPEC-DI-03 §5.4 to replace "Content chunking behavior...is unchanged" with text that accurately reflects the 4096 → 2000 chunk size reduction accepted in OQ-TSPEC-03.
+**No TSPEC changes required. No re-review required.**
 
 ---
 
@@ -169,6 +182,7 @@ TSPEC v1.3 is correct and cleared for PLAN authoring. All High and Medium findin
 | 1.2 | March 17, 2026 | Product Manager | Re-review of TSPEC v1.2 — New F-08 Medium finding: §4.2.4 contradicts OQ-TSPEC-03 on chunk size (4096 vs 2000). Recommendation downgraded to Needs revision. One-line fix required; self-certification permitted. |
 | 1.3 | March 17, 2026 | Backend Engineer | Self-certified F-08 resolution: §4.2.4 updated in TSPEC v1.3 to specify 2000-char chunk size. Recommendation updated to Approved. |
 | 1.4 | March 17, 2026 | Product Manager | Full re-review pass of TSPEC v1.3 vs REQ v1.5 and FSPEC v2.1. Added REQ→TSPEC coverage verification table. Added FSPEC→TSPEC alignment check table. New F-09 Low finding: FSPEC §5.4 stale "unchanged" language is PM-owned documentation debt (does not affect TSPEC). Recommendation remains Approved. Component naming note added (non-finding). |
+| 1.5 | March 17, 2026 | Product Manager | Re-review of TSPEC v1.4 — all seven BE/TE-driven changes verified from product perspective. No new findings. `'invocation-guard'` component name correct and consistent with §7 EVT-OB. F-09 (Low — FSPEC §5.4 stale chunking language) resolved in this pass: FSPEC §5.4 updated to v2.2. Recommendation: Approved. |
 
 ---
 

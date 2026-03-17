@@ -4,8 +4,8 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE7 |
 | **Parent Document** | [007-REQ-polish](./007-REQ-polish.md) |
-| **Version** | 2.1 |
-| **Date** | March 16, 2026 |
+| **Version** | 2.2 |
+| **Date** | March 17, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 
@@ -594,11 +594,11 @@ Phase 7 defines **four** Orchestrator embed types:
 
 ### 5.4 Agent Response Text (Plain Messages)
 
-After Phase 7, agent-authored response text is posted as a **plain Discord message**, not an embed. The `postAgentResponse()` method is updated to remove embed wrapping. Content chunking behavior (splitting long responses across multiple messages) is unchanged — only the formatting wrapper changes.
+After Phase 7, agent-authored response text is posted as a **plain Discord message**, not an embed. The `postAgentResponse()` method is updated to remove embed wrapping.
 
-**What changes:** `postAgentResponse()` no longer wraps content in a Discord embed.
+**What changes:** `postAgentResponse()` no longer wraps content in a Discord embed. The chunk size is reduced from 4096 to 2000 characters to match Discord's plain message character limit. (Previously, embed field content used a 4096-char limit; plain messages are capped at 2000 chars. This was accepted in OQ-TSPEC-03 during engineering review.)
 
-**What does not change:** Content length splitting, agent-specific color (removed), message ordering.
+**What does not change:** The chunking logic itself — long responses are still split into multiple sequential `postPlainMessage()` calls. Message ordering is preserved. Agent-specific color is removed (it was part of the embed wrapper that is eliminated).
 
 > **Phase 7 protocol deliverable — `DiscordClient.postPlainMessage`:** The live `DiscordClient` interface has no plain-message posting method. `postPlainMessage(threadId: string, content: string): Promise<void>` must be added to the `DiscordClient` protocol and implemented in `DiscordJsClient` as a Phase 7 deliverable. The existing `postEmbed()` and `postSystemMessage()` are both embed-based (`channel.send({ embeds: [...] })`); plain text requires a separate call (`channel.send({ content })`). `postAgentResponse()` must be updated to call `postPlainMessage` instead of the current embed path. The `FakeDiscordClient` in tests must implement this method (recording calls and supporting failure injection) to enable unit-testing of AT-DI-03-04.
 
