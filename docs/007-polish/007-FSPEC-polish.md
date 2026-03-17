@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-PTAH-PHASE7 |
 | **Parent Document** | [007-REQ-polish](./007-REQ-polish.md) |
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Date** | March 16, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -151,6 +151,8 @@ A **resolution signal** is a routing signal (as defined in [REQ-SI-04]) whose ty
 | **Output** | Discord thread archived (via Discord MCP) |
 | **Output** | Thread registry updated: thread marked archived (on success only) |
 | **Output** | Log entry confirming archiving or skip reason |
+
+> **Phase 7 protocol deliverable — `DiscordClient.archiveThread`:** The live `DiscordClient` interface has no thread-archive operation. `archiveThread(threadId: string): Promise<void>` must be added to the `DiscordClient` protocol and implemented in `DiscordJsClient` as a Phase 7 deliverable. The underlying discord.js `ThreadChannel` type exposes `.setArchived(true)`, confirming the capability is available. Engineering must add this method in TSPEC; it is not optional. The `FakeDiscordClient` in tests must implement this method (recording calls and supporting error injection) to enable unit-testing of AT-DI-02-01 through AT-DI-02-09.
 
 ### 3.6 Error Scenarios
 
@@ -598,6 +600,10 @@ After Phase 7, agent-authored response text is posted as a **plain Discord messa
 
 **What does not change:** Content length splitting, agent-specific color (removed), message ordering.
 
+> **Phase 7 protocol deliverable — `DiscordClient.postPlainMessage`:** The live `DiscordClient` interface has no plain-message posting method. `postPlainMessage(threadId: string, content: string): Promise<void>` must be added to the `DiscordClient` protocol and implemented in `DiscordJsClient` as a Phase 7 deliverable. The existing `postEmbed()` and `postSystemMessage()` are both embed-based (`channel.send({ embeds: [...] })`); plain text requires a separate call (`channel.send({ content })`). `postAgentResponse()` must be updated to call `postPlainMessage` instead of the current embed path. The `FakeDiscordClient` in tests must implement this method (recording calls and supporting failure injection) to enable unit-testing of AT-DI-03-04.
+
+> **`createCoordinationThread()` disposition:** The live `createCoordinationThread()` method posts the initial message for a new coordination thread using a per-agent colour embed (via `resolveColour(agentId, config)`). After Phase 7, the `colour` field is removed from the agent config schema (FSPEC-EX-01 §4.2) and per-agent colours are eliminated. **The initial coordination thread message must be updated to use the Routing Notification embed type** (§5.2, color `0x5865F2`) instead of the per-agent colour embed. Creating a coordination thread is an Orchestrator-initiated action announcing that work is being dispatched to an agent — semantically equivalent to a routing event. Engineering must update `createCoordinationThread()` to post a Routing Notification embed in TSPEC. `resolveColour()` is eliminated entirely as a Phase 7 deliverable.
+
 ### 5.5 Behavioral Rules
 
 | Rule | Details |
@@ -611,8 +617,19 @@ After Phase 7, agent-authored response text is posted as a **plain Discord messa
 
 | Scenario | Behavior |
 |----------|----------|
-| Discord MCP embed creation fails | Log the error. Fall back to posting a plain text equivalent of the metadata message (do not silently skip). |
+| Discord MCP embed creation fails | Log the error. Fall back to posting a plain text equivalent of the metadata message via `postPlainMessage` (do not silently skip). |
 | Embed field value exceeds Discord character limits | Truncate the field value with an ellipsis (`…`) to fit within Discord embed limits. Do not crash or skip the message. |
+
+**Embed fallback plain-text formats (per embed type):**
+
+| Embed Type | Plain-text fallback content |
+|------------|----------------------------|
+| Routing Notification | `↗ Routing to {display_name} (from {source_agent_display_name})` |
+| Resolution Notification | `✅ Thread resolved. Signal: {signal_type}. Resolved by: {agent_display_name}` |
+| Error Report | `⚠ Error — {short_error_description}. {what_to_do}` |
+| User Escalation | `❓ Input needed from {agent_display_name}: {question_text}` |
+
+These fallback strings ensure the thread receives a human-readable notification even if embed creation fails. An automated test verifying the fallback path can assert that at least one message was posted to the thread containing the relevant agent name or signal type.
 
 ### 5.7 Acceptance Tests
 
@@ -838,6 +855,8 @@ Every log line must use one of the following `{component}` values. No other valu
 | `config` | Config loading, validation, and hot-reload |
 | `discord` | Discord MCP client operations (thread management, message operations) |
 
+**Fallback rule for unlisted modules:** Orchestrator submodules not named in the table above (e.g., `question-poller`, `question-store`, `agent-log-writer`, `context-assembler`, `pattern-b-context-builder`, `pdlc/state-store`) must use the `orchestrator` component value. These are internal orchestration concerns owned by the top-level coordination scope. If a future submodule warrants its own named component, it must be added to this table via a FSPEC amendment before use.
+
 ### 7.4 Log Level Enumeration
 
 | Level | Meaning |
@@ -851,10 +870,11 @@ Every log line must use one of the following `{component}` values. No other valu
 
 | Rule | Details |
 |------|---------|
-| **BR-LG-01-01: Every log line has a component** | No log line may omit the `[ptah:{component}]` prefix. The component must be one of the eight values in §7.3. |
+| **BR-LG-01-01: Every log line has a component** | No log line may omit the `[ptah:{component}]` prefix. The component must be one of the eight values in §7.3 (or `orchestrator` per the fallback rule). |
 | **BR-LG-01-02: Every log line has a level** | The level follows the component prefix and must be one of DEBUG, INFO, WARN, ERROR. |
 | **BR-LG-01-03: One component per call site** | Each call site in the codebase uses the component that owns that code. A call site in `skill-invoker.ts` uses `[ptah:skill-invoker]`. |
 | **BR-LG-01-04: Messages are self-contained** | A log message should be understandable without surrounding context. Include the thread_id, agent_id, or other relevant identifiers inline. |
+| **BR-LG-01-05: Component prefix is a Logger-level concern** | The `[ptah:{component}]` prefix must be emitted by the Logger itself — it is NOT a per-call-site string concatenation. Call sites must not manually prepend `"[ptah:router]"` to their message strings. The Logger protocol must support component-scoped instances so that the component is a structured field, not an embedded string in the message body. The recommended approach is a factory method (e.g., `logger.forComponent('router'): Logger`) that returns a scoped logger instance constructed at module initialization time. This design enables `FakeLogger` implementations to capture log entries as structured data (`{ component, level, message }`) for deterministic test assertions — the component set assertion in AT-LG-01-01 becomes `expect(VALID_COMPONENTS).toContain(entry.component)` rather than a fragile regex match. Engineering must design the `Logger` protocol interface in TSPEC to enforce this contract. |
 
 ### 7.6 Acceptance Tests
 
@@ -1096,6 +1116,7 @@ THEN:  EVT-OB-09 is present naming both source ('backend-engineer') and target (
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | March 15, 2026 | Product Manager | Initial draft — FSPEC-DI-02 (thread archiving) and FSPEC-EX-01 (agent extensibility). |
+| 2.1 | March 16, 2026 | Product Manager | Applied BE + TE cross-review feedback (second pass). (1) **FSPEC-DI-02 §3.5**: Added protocol scope note for `DiscordClient.archiveThread(threadId, string): Promise<void>` as a Phase 7 deliverable (BE-F-02, TE BE-F-02). (2) **FSPEC-DI-03 §5.4**: Added protocol scope note for `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` as a Phase 7 deliverable (BE-F-04, TE BE-F-04). Added `createCoordinationThread()` disposition: uses Routing Notification embed type after Phase 7; `resolveColour()` eliminated (BE-REQ-F-01). (3) **FSPEC-DI-03 §5.6**: Added per-embed-type plain-text fallback format strings (TE-F-08). (4) **FSPEC-LG-01 §7.3**: Added fallback rule for unlisted modules — use `orchestrator` component (BE-REQ-F-02). (5) **FSPEC-LG-01 §7.5**: Added BR-LG-01-05 specifying that the component prefix is a Logger-level concern, not per-call-site concatenation; Logger protocol must support `forComponent()` factory or equivalent (BE-F-03, TE BE-F-03). |
 | 2.0 | March 16, 2026 | Product Manager | Applied cross-review feedback (BE + TE). (1) Fixed all signal naming throughout: `lgtm` → `LGTM`, `task_done`+status → `TASK_COMPLETE`/`ROUTE_TO_USER`, `route_to` → `ROUTE_TO_AGENT`, `escalate_to_user` → `ROUTE_TO_USER`. (2) Updated FSPEC-DI-02 §3.3 behavioral flow to add registry pre-check before MCP call (BE F-02, TE F-01). (3) Added BR-DI-02-07 (archive failures are retryable — registry not updated on failure). (4) Updated AT-DI-02-01 through AT-DI-02-03 to use live signal names. (5) Fixed AT-DI-02-05 to add explicit registry state assertion (TE F-04). (6) Added AT-DI-02-07 (idempotency), AT-DI-02-08 (config absent defaults to true), AT-DI-02-09 (non-boolean config) (TE F-03). (7) Added BR-EX-01-07 (display_name defaults to id). (8) Added AT-EX-01-06 (duplicate mention_id), AT-EX-01-07 (display_name defaults), AT-EX-01-08 (hot-reload de-registration) (TE F-05). (9) Added migration note to FSPEC-EX-01 §4.1 (BE F-01). (10) Added FSPEC-DI-03 (embed formatting), FSPEC-RP-01 (error message UX), FSPEC-LG-01 (structured logging), FSPEC-OB-01 (operator observability) to fulfil pending FSPECs for REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10 (BE F-05, TE F-02). |
 
 ---
