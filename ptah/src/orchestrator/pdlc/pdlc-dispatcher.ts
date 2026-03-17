@@ -271,22 +271,29 @@ export class DefaultPdlcDispatcher implements PdlcDispatcher {
 
     // Determine cross-review file path
     const reviewFilePath = crossReviewPath(params.featureSlug, skillName, docType);
-    const fullPath = `${params.worktreePath}/${reviewFilePath}`;
+    const worktreeFullPath = `${params.worktreePath}/${reviewFilePath}`;
+    // Fallback: if worktree was cleaned up (no-changes path), read from main repo
+    const mainRepoFullPath = this.fs.joinPath(this.docsRoot, params.featureSlug,
+      reviewFilePath.split("/").pop()!);
 
-    // Read cross-review file
+    // Read cross-review file (try worktree first, then main repo)
     let fileContent: string;
     try {
-      fileContent = await this.fs.readFile(fullPath);
-    } catch (err) {
-      const error = err as NodeJS.ErrnoException;
-      if (error.code === "ENOENT" || error.message?.includes("ENOENT")) {
-        return {
-          action: "pause",
-          reason: "file_missing",
-          message: `Cross-review file not found: ${reviewFilePath}. The reviewer agent did not produce the expected cross-review document.`,
-        };
+      fileContent = await this.fs.readFile(worktreeFullPath);
+    } catch {
+      try {
+        fileContent = await this.fs.readFile(mainRepoFullPath);
+      } catch (err) {
+        const error = err as NodeJS.ErrnoException;
+        if (error.code === "ENOENT" || error.message?.includes("ENOENT")) {
+          return {
+            action: "pause",
+            reason: "file_missing",
+            message: `Cross-review file not found: ${reviewFilePath}. The reviewer agent did not produce the expected cross-review document.`,
+          };
+        }
+        throw err;
       }
-      throw err;
     }
 
     // Parse recommendation
