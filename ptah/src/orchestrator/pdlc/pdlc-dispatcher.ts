@@ -201,10 +201,21 @@ export class DefaultPdlcDispatcher implements PdlcDispatcher {
 
     // Artifact validation (skip for IMPLEMENTATION phase)
     if (phase !== Phase.IMPLEMENTATION) {
-      const artifactPath = expectedArtifactPath(this.docsRoot, params.featureSlug, phase);
+      const worktreeDocsRoot = this.docsRoot.replace(/^(?:\.\.\/)+/, "");
+      const artifactPath = expectedArtifactPath(worktreeDocsRoot, params.featureSlug, phase);
       if (artifactPath) {
-        const fullPath = `${params.worktreePath}/${artifactPath}`;
-        const exists = await this.fs.exists(fullPath);
+        // Check worktree first; if worktree was already cleaned up (no-changes path),
+        // fall back to checking the main repo via docsRoot relative to cwd.
+        const worktreePath = `${params.worktreePath}/${artifactPath}`;
+        const mainRepoPath = this.fs.joinPath(this.docsRoot, params.featureSlug,
+          artifactPath.split("/").pop()!);
+        const worktreeExists = await this.fs.exists(worktreePath);
+        const mainRepoExists = !worktreeExists && await this.fs.exists(mainRepoPath);
+        const exists = worktreeExists || mainRepoExists;
+        this.logger.info(
+          `[artifact-check] artifactPath="${artifactPath}" worktreePath="${worktreePath}" ` +
+          `worktreeExists=${worktreeExists} mainRepoPath="${mainRepoPath}" mainRepoExists=${mainRepoExists}`,
+        );
         if (!exists) {
           return {
             action: "retry_agent",

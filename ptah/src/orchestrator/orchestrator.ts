@@ -22,8 +22,17 @@ import type { InvocationGuard } from "./invocation-guard.js";
 import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
-import type { DispatchAction, FeatureConfig, Discipline } from "./pdlc/phases.js";
+import { type DispatchAction, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
 import { extractFeatureName, featureNameToSlug } from "./feature-branch.js";
+
+const REVIEW_PHASES = new Set<PdlcPhase>([
+  PdlcPhase.REQ_REVIEW,
+  PdlcPhase.FSPEC_REVIEW,
+  PdlcPhase.TSPEC_REVIEW,
+  PdlcPhase.PLAN_REVIEW,
+  PdlcPhase.PROPERTIES_REVIEW,
+  PdlcPhase.IMPLEMENTATION_REVIEW,
+]);
 
 export interface Orchestrator {
   handleMessage(message: ThreadMessage): Promise<void>;
@@ -544,12 +553,27 @@ export class DefaultOrchestrator implements Orchestrator {
         if (effectivelyManaged) {
           // PDLC-managed feature path
           if (signal.type === "LGTM" || signal.type === "TASK_COMPLETE") {
-            const dispatchAction = await this.pdlcDispatcher.processAgentCompletion({
-              featureSlug,
-              agentId: currentAgentId,
-              signal: signal.type as "LGTM" | "TASK_COMPLETE",
-              worktreePath,
-            });
+            // Determine if the feature is in a review phase — if so, route
+            // through processReviewCompletion so the cross-review file is
+            // parsed and a review_submitted event is fired instead of lgtm.
+            const featureState = await this.pdlcDispatcher.getFeatureState(featureSlug);
+            const isReviewPhase = featureState != null && REVIEW_PHASES.has(featureState.phase);
+
+            let dispatchAction: DispatchAction;
+            if (isReviewPhase) {
+              dispatchAction = await this.pdlcDispatcher.processReviewCompletion({
+                featureSlug,
+                reviewerAgentId: currentAgentId,
+                worktreePath,
+              });
+            } else {
+              dispatchAction = await this.pdlcDispatcher.processAgentCompletion({
+                featureSlug,
+                agentId: currentAgentId,
+                signal: signal.type as "LGTM" | "TASK_COMPLETE",
+                worktreePath,
+              });
+            }
             const loopResult = await this.handleDispatchAction(
               dispatchAction,
               triggerMessage,
