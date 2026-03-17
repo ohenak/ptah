@@ -1,208 +1,99 @@
-# Cross-Review: Backend Engineer — REQ-PTAH-P7 (Phase 7: Polish)
+# Cross-Review: Backend Engineer — REQ-PTAH-P7 v1.5 + FSPEC v2.0 (Phase 7: Polish)
 
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Backend Engineer |
-| **Document Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.2 |
-| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v1.0 |
+| **Document Reviewed** | [007-REQ-polish.md](./007-REQ-polish.md) v1.5 |
+| **FSPEC Reviewed** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.0 |
 | **Date** | March 16, 2026 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved with minor changes** |
 
 ---
 
-## Findings
+## Prior Review Resolution
 
-### F-01 (High) — REQ-NF-08 / FSPEC-EX-01: Proposed config schema is a breaking change to the existing config format
+All findings from the v1.2 review (CROSS-REVIEW-backend-engineer-REQ.md, filed against v1.2) have been properly addressed in v1.5 + FSPEC v2.0:
 
-**Affected:** REQ-NF-08 + FSPEC-EX-01
+| Prior Finding | Status | Evidence |
+|---------------|--------|----------|
+| F-01 (High): Config migration scope not in REQ | ✅ Resolved | REQ v1.5 §5 Risks: migration guide in scope, automated script out of scope; engineering determines shim vs. hard cut-over in TSPEC |
+| F-02 (High): Signal naming mismatch in FSPEC-DI-02 | ✅ Resolved | FSPEC v2.0 §3.2 uses live contract (`LGTM`, `TASK_COMPLETE`, `ROUTE_TO_USER`, `ROUTE_TO_AGENT`) throughout; §6 Assumptions confirms fix |
+| F-03 (Medium): REQ-DI-10 ambiguous about embed-to-plain-text change | ✅ Resolved | REQ-DI-10 description now explicitly frames the two-part change: (a) four embed types formalized, (b) `postAgentResponse()` moves to plain text |
+| F-04 (Medium): Logger refactor scope understated | ✅ Resolved | Acknowledged in §5 Risks — call-site footprint flagged; no REQ text change needed |
+| F-05 (Low): Four requirements had no FSPEC | ✅ Resolved | FSPEC v2.0 adds FSPEC-DI-03, FSPEC-RP-01, FSPEC-LG-01, FSPEC-OB-01 — all six requirements now have complete FSPECs |
+| F-06 (Low): Discord MCP archive capability unverified | ✅ Deferred appropriately | Correctly assigned to TSPEC research |
+| Q-01: Migration guide scope? | ✅ Answered | §5 Risks: migration guide in scope, automated script out of scope |
+| Q-02: New embed types vs. existing methods? | ✅ Answered | REQ-DI-10 description names the three existing methods as partial foundation; Phase 7 adds routing notification and user escalation types |
 
-FSPEC-EX-01 proposes a new `agents` array of objects:
+---
 
-```json
-[
-  { "id": "backend-engineer", "skill_path": "...", "log_file": "...", "mention_id": "...", "display_name": "..." }
-]
-```
+## New Findings
 
-The **live** `ptah.config.json` schema (confirmed in `ptah/src/types.ts` and `ptah/ptah.config.json`) uses a fundamentally different structure:
+### F-01 (Medium) — FSPEC-DI-03 does not address `createCoordinationThread()` disposition after Phase 7
 
+**Affected:** REQ-DI-10 + REQ-NF-08 interaction
+
+FSPEC-DI-03 §5.4 specifies that `postAgentResponse()` moves from embeds to plain text. It does not address `createCoordinationThread()`, which also uses per-agent colour embeds for the initial message posted when a new coordination thread is created.
+
+Confirmed in `ptah/src/orchestrator/response-poster.ts`:
 ```typescript
-// Live AgentConfig in src/types.ts
-interface AgentConfig {
-  active: string[];
-  skills: Record<string, string>;
-  model: string;
-  max_tokens: number;
-  colours?: Record<string, string>;
-  role_mentions?: Record<string, string>;
-}
+// createCoordinationThread() calls resolveColour(agentId, config) which reads:
+const hex = config.agents.colours?.[agentId];
 ```
 
-These are mutually incompatible. FSPEC-EX-01's schema requires restructuring every existing agent entry. This is a **breaking migration** that affects:
+The new agent config schema (FSPEC-EX-01 §4.2) removes the `colour` field from agent entries. After the FSPEC-NF-08 migration, `config.agents.colours` will no longer exist. Any call to `resolveColour(agentId, config)` will always fall through to the gray default — silently degrading the coordination thread UX without an error.
 
-1. `src/types.ts` — `AgentConfig` interface must be replaced or extended
-2. `src/config/loader.ts` — validation logic referencing `agents.active`, `agents.skills`, `agents.colours`, `agents.role_mentions` must all be rewritten (confirmed: loader validates all four keys)
-3. All consumer code that reads `config.agents.active`, `config.agents.skills[agentId]`, `config.agents.colours[agentId]`, `config.agents.role_mentions`
-4. Any existing `ptah.config.json` file in deployment
+**Three possible resolutions (engineering cannot choose without PM direction):**
 
-The REQ does not acknowledge this migration scope. **Engineering cannot produce an accurate execution plan without knowing whether config migration tooling is in scope, whether backward compatibility is required, or whether a hard cut-over is expected.**
+1. **`createCoordinationThread()` is Orchestrator metadata** — the initial thread message uses one of the four fixed-colour embed types from FSPEC-DI-03 (most likely Routing Notification). The per-agent colour is removed.
+2. **`createCoordinationThread()` is agent content** — the initial thread message follows the same plain-text path as `postAgentResponse()`. No embed, no colour.
+3. **Add a `colour` field to the new agent config schema** — the new `agents[]` entries add an optional `colour` field for use in coordination thread creation. This preserves per-agent colour without keeping the old flat-object schema.
 
-**Action required:** The PM should explicitly call out that Phase 7 includes a config schema migration in scope/risks. Engineering will determine during TSPEC whether to use a backward compatibility shim or require a direct migration.
-
----
-
-### F-02 (High) — Signal naming mismatch between FSPEC-DI-02 and the live routing contract must be resolved before TSPEC
-
-**Affected:** REQ-DI-06 + FSPEC-DI-02
-
-The REQ correctly flags this risk in §5: "Engineering must not begin REQ-DI-06 implementation until the signal contract in FSPEC-DI-02 is reconciled with the live routing signal contract."
-
-This finding confirms the mismatch exists in production code. The live signal contract (confirmed in `ptah/src/types.ts` and `ptah/src/orchestrator/router.ts`):
-
-```typescript
-type RoutingSignalType = "ROUTE_TO_AGENT" | "ROUTE_TO_USER" | "LGTM" | "TASK_COMPLETE";
-
-interface RoutingSignal {
-  type: RoutingSignalType;
-  agentId?: string;
-  question?: string;
-  threadAction?: "reply" | "new_thread";
-}
-```
-
-The FSPEC-DI-02 uses a completely different schema:
-
-| FSPEC-DI-02 (proposed) | Live `router.ts` / `types.ts` |
-|------------------------|-------------------------------|
-| `lgtm` | `LGTM` |
-| `task_done` with `status: DONE` | `TASK_COMPLETE` (no sub-status field) |
-| `task_done` with `status: BLOCKED` | `ROUTE_TO_USER` (separate signal type, no sub-status) |
-| `route_to` | `ROUTE_TO_AGENT` |
-| `escalate_to_user` | `ROUTE_TO_USER` |
-
-The sub-status pattern (`status: DONE / BLOCKED`) does not exist in the live contract at all. The live contract uses separate top-level signal types. FSPEC-DI-02's behavioral flow (§3.2, §3.3) is written around a contract that production has never implemented.
-
-This is a **requirement-level contract decision** — it cannot be deferred to TSPEC. Engineering recommends the PM update FSPEC-DI-02 to use live signal names (`LGTM` / `TASK_COMPLETE`) and remove the `status` sub-field pattern, since `TASK_COMPLETE` already unambiguously means "done" and there is no live equivalent of `task_done BLOCKED` (that case is handled by `ROUTE_TO_USER`).
-
-**Action required:** PM to update FSPEC-DI-02 signal type table (§3.2) and behavioral flow (§3.3) to match the live contract before Phase 7 engineering begins.
+**Action required:** PM to specify which resolution applies in FSPEC-DI-03 §5.4 (or FSPEC-EX-01 §4.2) before TSPEC authoring for REQ-DI-10. This is a blocking gap for those two requirements' interaction.
 
 ---
 
-### F-03 (Medium) — REQ-DI-10 acceptance criteria conflict with existing ResponsePoster behavior
-
-**Affected:** REQ-DI-10
-
-The acceptance criteria state: _"agent response content is not wrapped in an embed — only Orchestrator metadata messages use embeds."_
-
-The existing `response-poster.ts` (confirmed by codebase review) already wraps agent content in Discord embeds via `postAgentResponse()`. This is established, shipped behavior — `postAgentResponse()` splits content into embed chunks using agent-specific colors from config.
-
-Additionally, the following Orchestrator system-message embed methods **already exist**:
-- `postCompletionEmbed()` — green embed for completion
-- `postErrorEmbed()` — gray embed for errors
-- `postProgressEmbed()` — dark gray embed for progress updates
-
-This means REQ-DI-10 may be describing work that is **largely already implemented**. Two interpretations remain:
-
-1. **Additive** — REQ-DI-10 adds new embed message types not yet implemented (e.g., routing notification embeds, escalation embeds). The existing methods are partial coverage; the requirement fills the gaps.
-2. **Corrective** — The requirement wants to change existing behavior so agent content (`postAgentResponse`) uses plain text, and embeds are reserved for system messages only.
-
-If interpretation 2 is intended, this is a disruptive scope change affecting existing UX. If interpretation 1, the requirement should describe what *new* embed types are being added rather than making a statement ("agent content is not wrapped") that contradicts current behavior.
-
-**Action required:** Clarify the intent. If additive, replace the clause "agent response content is not wrapped in an embed" with an enumeration of the *new* embed types being added. Also clarify whether `postCompletionEmbed` / `postProgressEmbed` / `postErrorEmbed` satisfy this requirement or whether new embed message types are needed.
-
----
-
-### F-04 (Medium) — REQ-NF-09: Logger interface refactor scope is larger than the REQ implies
+### F-02 (Low) — FSPEC-LG-01 §7.3 component enumeration is incomplete
 
 **Affected:** REQ-NF-09
 
-The requirement asks for `[ptah:{component}]` prefixes. The live `Logger` interface (confirmed in `src/services/logger.ts`):
+FSPEC-LG-01 §7.3 declares a **closed** enumeration of 8 valid component values with the constraint "No other values are valid." The live codebase (confirmed by inspection) contains additional modules that inject and call the logger but are not covered by the 8 listed components:
 
-```typescript
-interface Logger {
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string): void;
-}
+| Module | Current logger usage | Missing from §7.3? |
+|--------|---------------------|---------------------|
+| `question-poller.ts` | `this.logger.info/warn/error` | ✅ Not listed |
+| `question-store.ts` | `this.logger.info/warn` | ✅ Not listed |
+| `agent-log-writer.ts` | `this.logger.warn/error` | ✅ Not listed |
+| `context-assembler.ts` | `this.logger.debug/info` | ✅ Not listed |
+| `pattern-b-context-builder.ts` | `this.logger.debug` | ✅ Not listed |
+| `pdlc/state-store.ts` | `this.logger.warn/error` | ✅ Not listed |
 
-class ConsoleLogger implements Logger {
-  info(message: string): void { console.log(`[ptah] ${message}`); }
-  warn(message: string): void { console.log(`[ptah] WARN: ${message}`); }
-  error(message: string): void { console.error(`[ptah] Error: ${message}`); }
-}
-```
+If REQ-NF-09 compliance means every log line uses a listed component, these modules are currently uncompliant and engineering needs PM guidance on the correct component label. The most natural resolution is either (a) adding a catch-all rule ("modules not listed above use `orchestrator`"), or (b) expanding the enumeration with entries for `question-poller`, `agent-log-writer`, and `context-assembler` as notable standalone components.
 
-There is no `component` parameter. Adding `[ptah:{component}]` to every log line requires updating the Logger interface (constructor parameter or per-call parameter) and updating every call site across:
-
-- `orchestrator.ts` (~1,100 lines, many log calls)
-- `router.ts`, `pdlc/*.ts` (dispatcher, state machine, review tracker, etc.)
-- `skill-invoker.ts`, `artifact-committer.ts`, `response-poster.ts`, and all other orchestrator submodules
-
-The §5 Risks entry ("scope this as a targeted audit pass") is the right framing but understates the surface area. This has the highest call-site count of any Phase 7 requirement.
-
-**Action required (informational):** No REQ text change required. The PM should be aware that REQ-NF-09 carries the largest implementation surface area in Phase 7 before committing to a fixed-scope execution plan.
-
----
-
-### F-05 (Low) — REQ-DI-06: Four requirements (REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10) have no FSPEC
-
-**Affected:** REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10
-
-The REQ §7 Specification Status confirms: "REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10 — Pending FSPEC."
-
-Without FSPECs for these four requirements, engineering cannot write TSPEC for them. Specifically:
-
-- **REQ-DI-10** — Which embed types are new? What are the embed field schemas (title, color, body fields) for each type?
-- **REQ-RP-06** — What are the exact error message templates? What actionable suggestions are required per error type?
-- **REQ-NF-09** — What is the full enumeration of `{component}` values? What is the exact format of a compliant log line?
-- **REQ-NF-10** — What log events are required to reconstruct the routing lifecycle? Minimum required event set?
-
-These are not blocking the REQ approval itself (the REQ correctly marks them as pending FSPEC) — but TSPEC and PLAN cannot begin for these four requirements until FSPECs exist.
-
-**Action required:** FSPECs for REQ-DI-10, REQ-RP-06, REQ-NF-09, REQ-NF-10 should be authored before engineering begins TSPEC. Blocking F-01 and F-02 above must also be resolved before any TSPEC work starts.
-
----
-
-### F-06 (Low) — REQ-DI-06: Discord MCP thread-archive capability needs explicit verification
-
-**Affected:** REQ-DI-06
-
-The REQ §6 Assumptions covers embed creation but not thread archiving. Discord thread archiving requires `MANAGE_THREADS` permission and the Discord MCP wrapper must expose a thread-archive operation. If the MCP wrapper does not support this, engineering must add it — a scope expansion that is currently invisible.
-
-**Action required:** Engineering will verify Discord MCP thread-archive support during TSPEC research for REQ-DI-06. If absent from MCP, this will be raised as a blocker before Phase 7 engineering begins.
-
----
-
-## Clarification Questions
-
-### Q-01 — REQ-NF-08: Is a config migration guide or script in scope for Phase 7?
-
-The schema change required by FSPEC-EX-01 will break existing `ptah.config.json` files. Should authoring a migration guide or migration script be part of the Phase 7 deliverable? Engineering needs to know whether to scope migration tooling.
-
-### Q-02 — REQ-DI-10: Are "routing notification" embeds new message types or renamed versions of existing `postProgressEmbed` / `postCompletionEmbed`?
-
-If they are the same embeds as what already exists, the requirement may already be substantially implemented and the scope is styling/content only. If they are net-new, the requirement should enumerate them explicitly to define the engineering scope.
+**Action required:** Add a fallback rule to FSPEC-LG-01 §7.3 (e.g., "for orchestrator submodules not listed above, use `orchestrator`") or expand the component list. This is not a blocker for TSPEC but must be resolved before engineering implements REQ-NF-09 to avoid ambiguous decisions at every unlisted call site.
 
 ---
 
 ## Positive Observations
 
-- **REQ-NF-10 (Operator Observability)** acceptance criteria are well-specified. The checklist — triggering message, invoked agent, signal type, post-signal actions, and errors — gives engineering a clear and testable completeness definition. No changes needed.
-- **FSPEC-DI-02 behavioral flow** (§3.3) correctly orders archiving as the final post-routing step. BR-DI-02-03 (non-blocking failure) is the right engineering call — a failed archive must never fail the routing cycle. The error scenario table (§3.6) is thorough and covers all meaningful failure modes.
-- **FSPEC-EX-01 validation logic** (§4.3) handles all meaningful failure modes with correct "skip and continue" semantics. BR-EX-01-03 and BR-EX-01-04 (first-wins deduplication for `id` and `mention_id`) are correctly specified and will produce deterministic behavior.
-- **REQ-RP-06 (Error Message UX)** is tightly scoped and the "at least one actionable suggestion" criterion is measurable — exactly what engineering needs to write a passing test.
-- **v1.2 changelog entry** (removing the `console.log` clause from REQ-NF-09) was the correct call — observable log format is a product requirement; code hygiene is an engineering concern.
+- **FSPEC-DI-02 signal contract (§3.2)** is now exactly aligned with `RoutingSignalType` in `ptah/src/types.ts`. The table is unambiguous and directly testable against the live enum.
+- **FSPEC-EX-01 §4.2 agent config schema** is well-specified. The `display_name` optional field with id-as-default fallback is a clean engineering contract. Validation rules in §4.3 and §4.8 cover all meaningful failure modes.
+- **FSPEC-DI-03 §5.3 embed field schemas** provide exact color integers, field names, and footer text for all four embed types. Engineering can write acceptance tests directly against these schemas with no ambiguity.
+- **FSPEC-RP-01 §6.2 error message templates** enumerate exact field values per error type. `ERR-RP-01` through `ERR-RP-05` give engineering a complete, testable surface area for REQ-RP-06 — nothing is left to interpretation.
+- **FSPEC-LG-01 §7.3 component table** (for the 8 listed components) is exactly what engineering needs: named scopes map clearly to existing source modules. Zero guesswork for those modules.
+- **REQ §5 Risks** continues to be unusually thorough. The logging call-site scope warning, the config migration scope acknowledgement, and the MCP capability verification flag are all items engineering would have raised in TSPEC; having them in the REQ reduces review iteration.
 
 ---
 
 ## Recommendation
 
-**Needs revision.**
+**Approved with minor changes.**
 
-Two high-severity findings must be resolved before engineering can write TSPEC for any Phase 7 requirement:
+Both prior high-severity blockers (F-01, F-02 from v1.2 review) are fully resolved. The v1.5 REQ and FSPEC v2.0 are ready for TSPEC authoring for **four of the six requirements** (REQ-DI-06, REQ-RP-06, REQ-NF-09, REQ-NF-10) with no further PM input needed.
 
-1. **F-01** — FSPEC-EX-01's proposed config schema is a breaking migration from the live `AgentConfig` structure. The REQ must explicitly acknowledge the config migration scope so it is visible to product planning.
+Two clarifications are needed before TSPEC can begin for REQ-DI-10 and REQ-NF-08:
 
-2. **F-02** — FSPEC-DI-02 is written against a signal contract that does not match production (`lgtm`/`task_done`+status vs. `LGTM`/`TASK_COMPLETE`/`ROUTE_TO_USER`). The PM must update FSPEC-DI-02 to use the live signal names before engineering begins.
+1. **F-01 (Medium)** — `createCoordinationThread()` disposition must be specified in FSPEC-DI-03 §5.4 or FSPEC-EX-01 §4.2. Blocks TSPEC for the REQ-DI-10 ↔ REQ-NF-08 interaction only.
+2. **F-02 (Low)** — FSPEC-LG-01 §7.3 needs a fallback rule or expanded enumeration for logger-using modules not currently listed. Blocks precise REQ-NF-09 implementation but can be resolved with a one-line addendum.
 
-Medium findings F-03 and F-04 should be addressed to avoid ambiguity during TSPEC authoring. F-05 (four requirements lacking FSPECs) is expected at this stage but blocks TSPEC work for those requirements. F-06 (MCP archive capability) will be resolved during TSPEC research.
+Neither finding is a rewrite. Both are additive clarifications that can be resolved in a targeted FSPEC v2.1 patch.
