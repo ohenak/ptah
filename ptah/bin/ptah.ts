@@ -160,8 +160,8 @@ async function main(): Promise<void> {
         git,
         mergeLock,
         logger,
-        "docs/open-questions/pending.md",
-        "docs/open-questions/resolved.md",
+        "../docs/open-questions/pending.md",
+        "../docs/open-questions/resolved.md",
       );
       let orchestrator: DefaultOrchestrator;
       const questionPoller = new DefaultQuestionPoller(
