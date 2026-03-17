@@ -196,3 +196,27 @@ The following TSPEC-level requirements now have additional scope from the BE rev
 The three additions requested by BE (to FSPEC-DI-02 §3.5, FSPEC-LG-01 §7.5, and FSPEC-DI-03 §5.4) are all testability improvements, not just architectural notes. They convert implicit protocol assumptions into explicit TSPEC scope items. These additions should be made to the FSPEC before TSPEC authoring begins.
 
 The FSPEC v2.0 acceptance tests (AT-DI-02-01 through AT-EX-01-08, AT-OB-01-01 through AT-OB-01-03) remain correct and sufficient. No acceptance test revisions are needed. The test engineer approves proceeding to TSPEC once the three minor FSPEC additions are in place.
+
+---
+
+## TSPEC Readiness Verification — March 16, 2026
+
+| Field | Detail |
+|-------|--------|
+| **Verification Date** | March 16, 2026 |
+| **FSPEC Version Checked** | 2.0 (current on `feat-polish`) |
+| **Purpose** | Confirm whether the three FSPEC additions (BE-F-02, BE-F-03, BE-F-04) required before TSPEC authoring are present in the document |
+
+### Verification Results
+
+| Item | Location | Required Addition | Present in FSPEC v2.0? |
+|------|----------|-------------------|----------------------|
+| BE-F-02 | §3.5 Inputs and Outputs | Note that `DiscordClient.archiveThread(threadId: string): Promise<void>` does not exist in the live protocol and is a Phase 7 deliverable | ❌ Absent |
+| BE-F-03 | §7.5 Business Rules | Note that `[ptah:{component}]` prefix is a Logger-level concern (not per-call-site string concatenation), and that the Logger protocol must support component-scoped instances | ❌ Absent |
+| BE-F-04 | §5.4 Agent Response Text | Note that `DiscordClient.postPlainMessage(threadId: string, content: string): Promise<void>` does not exist in the live protocol and is a Phase 7 deliverable | ❌ Absent |
+
+### Status: ⛔ TSPEC Not Yet Unblocked
+
+All three protocol scope notes are absent from FSPEC v2.0. As stated in both the BE review (Approved with minor changes) and the TE addendum above, these additions must be present in the FSPEC before TSPEC authoring begins — they define the explicit scope boundaries that unblock fake design for the three affected test surfaces (archiving, logging, plain-text posting).
+
+**Action required (PM):** Add the three notes to FSPEC-DI-02 §3.5, FSPEC-LG-01 §7.5, and FSPEC-DI-03 §5.4. A v2.1 bump is sufficient — no structural changes, acceptance test revisions, or re-review needed. Once the additions are in place, TSPEC authoring may begin.
