@@ -3,21 +3,45 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Test Engineer (`qa`) |
-| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.4 |
+| **Document Reviewed** | [007-TSPEC-polish.md](./007-TSPEC-polish.md) v1.5 |
 | **REQ Reference** | [007-REQ-polish.md](./007-REQ-polish.md) v1.5 |
 | **FSPEC Reference** | [007-FSPEC-polish.md](./007-FSPEC-polish.md) v2.1 |
 | **Date** | March 17, 2026 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
-## v1.4 Re-Review Summary
+## v1.5 Re-Review Summary
+
+Both findings from the v1.4 review cycle are confirmed resolved in v1.5. No new findings were discovered during this pass. The TSPEC is approved for PROPERTIES derivation.
+
+- **F-12 ✅ Resolved** — `FakeLogger._component` and constructor parameter are now typed as `Component`; default changed from `'test'` (invalid) to `'orchestrator'` (valid `Component` member). All four `store.entries.push()` call sites now type-check correctly. `new FakeLogger()` usage in the recommended example also compiles.
+- **F-13 ✅ Resolved** — `FakeFileSystem` is now fully defined in §9.2 with a clear note that it is new in Phase 7. The `existsResults: Map<string, boolean>` design provides per-path control; all remaining `FileSystem` protocol methods are stubbed. A concrete usage example for `agent-registry.test.ts` is included.
+
+---
+
+## Findings (v1.5)
+
+No new findings.
+
+---
+
+## v1.4 Findings (Resolved in v1.5)
+
+| ID | Severity | Status |
+|----|----------|--------|
+| F-12 | Medium | ✅ Resolved v1.5 — `FakeLogger._component: Component`; constructor default `'orchestrator'`; all push() sites type-check |
+| F-13 | Low | ✅ Resolved v1.5 — `FakeFileSystem` fully defined in §9.2; new in Phase 7; `existsResults` map and usage example added |
+
+---
+
+## v1.4 Re-Review Summary (archived)
 
 All four findings from the v1.3 review cycle are confirmed resolved in v1.4. One new Medium finding was discovered during this pass. It is a direct consequence of the F-10 fix applied in v1.4 (changing `LogEntry.component` from `string` to `Component`) not being propagated to the `FakeLogger` implementation in §9.2. The `FakeLogger._component` field and constructor remain typed as `string`, creating a compile error at every `store.entries.push(...)` call site. Re-review required after this is resolved.
 
 ---
 
-## Findings (v1.4)
+## Findings (v1.4 — archived)
 
 ### F-12 (Medium) — `FakeLogger._component` typed as `string`; incompatible with `LogEntry.component: Component`
 
@@ -256,3 +280,4 @@ The author must resolve F-12 (and optionally F-13) and route the updated TSPEC b
 | 1.2 | March 17, 2026 | Backend Engineer | F-07 addressed in TSPEC v1.2 — `fromAgentDisplayName: 'Ptah'` fallback added to §9.3 ResponsePoster description. All TE findings resolved. |
 | 1.3 | March 17, 2026 | Test Engineer | Re-review of TSPEC v1.3 — Needs revision. F-07 and PM F-08 confirmed resolved. New findings: F-08 (Medium — `buildAgentRegistry()` sync/async mismatch), F-09 (Medium — `invocation-guard` absent from `Component` union), F-10 (Low — `LogEntry.component: string`), F-11 (Low — 2000-char chunk boundary test case missing). |
 | 1.4 | March 17, 2026 | Test Engineer | Re-review of TSPEC v1.4 — Needs revision. F-08, F-09, F-10, F-11 all confirmed resolved. New finding: F-12 (Medium — `FakeLogger._component: string` incompatible with `LogEntry.component: Component` after F-10 fix; compile error at all push call sites). F-13 (Low — `FakeFileSystem` referenced in §9.3 but not defined or cross-referenced in §9.2). |
+| 1.5 | March 17, 2026 | Test Engineer | Re-review of TSPEC v1.5 — **Approved**. F-12 and F-13 confirmed resolved. No new findings. TSPEC approved for PROPERTIES derivation. |
