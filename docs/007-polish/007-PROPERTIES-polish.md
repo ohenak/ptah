@@ -8,7 +8,7 @@
 | **Requirements** | [007-REQ-polish](./007-REQ-polish.md) |
 | **Specifications** | [007-FSPEC-polish](./007-FSPEC-polish.md), [007-TSPEC-polish](./007-TSPEC-polish.md) |
 | **Execution Plan** | N/A — not yet produced |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 17, 2026 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -55,15 +55,15 @@ This document catalogs all testable invariants derived from REQ-PTAH-P7, the FSP
 
 | Category | Count | Requirements Covered | Test Level |
 |----------|-------|----------------------|------------|
-| Functional | 32 | REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10 | Unit |
+| Functional | 33 | REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08, REQ-NF-09, REQ-NF-10 | Unit |
 | Contract | 6 | REQ-DI-06, REQ-DI-10, REQ-NF-08, REQ-NF-09 | Unit / Integration |
 | Error Handling | 9 | REQ-DI-06, REQ-DI-10, REQ-RP-06, REQ-NF-08 | Unit |
 | Data Integrity | 4 | REQ-NF-08, REQ-NF-10 | Unit |
-| Integration | 3 | REQ-DI-06, REQ-NF-08, REQ-NF-09 | Integration |
+| Integration | 4 | REQ-DI-06, REQ-NF-08, REQ-NF-09 | Integration |
 | Security | 3 | REQ-RP-06 | Unit |
 | Idempotency | 2 | REQ-DI-06, REQ-NF-08 | Unit |
 | Observability | 10 | REQ-NF-10 | Unit |
-| **Total** | **69** | | |
+| **Total** | **71** | | |
 
 ---
 
@@ -178,8 +178,8 @@ Data transformations, mapping correctness, and data preservation.
 
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
-| PROP-EX-17 | Config loader must parse the new `agents[]` array schema and reject (or not parse) the old flat `AgentConfig` object schema (`active`, `skills`, `colours`, `role_mentions` keys) | [REQ-NF-08], [TSPEC §5.1], [TSPEC §5.3] | Unit | P1 |
-| PROP-EX-18 | Config loader must parse `llm.model` and `llm.max_tokens` from the top-level `llm` section of `ptah.config.json` | [REQ-NF-08], [TSPEC §5.2], [TSPEC §5.3] | Unit | P1 |
+| PROP-EX-17 | Config loader must parse `agents[]` using the new array schema; the old flat `AgentConfig` keys (`active`, `skills`, `colours`, `role_mentions`) must be absent from the parsed config object — they are silently dropped by the schema parser, not thrown as errors | [REQ-NF-08], [TSPEC §5.1], [TSPEC §5.3] | Unit | P1 |
+| PROP-EX-18 | Config loader must parse `llm.model` and `llm.max_tokens` from the top-level `llm` section of `ptah.config.json` | [TSPEC §5.2], [TSPEC §5.3] *(TSPEC-derived schema migration constraint; not a direct REQ-NF-08 acceptance criterion)* | Unit | P1 |
 | PROP-OB-01 | EVT-OB-01 and EVT-OB-08 log messages must truncate message content at 100 characters followed by `…` when the content exceeds 100 characters | [REQ-NF-10], [FSPEC-OB-01 §8.2], [TSPEC §9.3] | Unit | P1 |
 | PROP-OB-02 | EVT-OB-06 log message must include the short git commit SHA (7 characters) and the file count | [REQ-NF-10], [FSPEC-OB-01 §8.2 EVT-OB-06] | Unit | P1 |
 
@@ -194,6 +194,13 @@ Cross-module interactions, dependency wiring, and composition.
 | PROP-DI-21 | Full routing lifecycle integration test must trace EVT-OB-01 through EVT-OB-10 across the correct components via a shared `FakeLogger` root store — all with faked Discord, FS, and Claude API boundaries | [REQ-NF-10], [REQ-DI-06], [TSPEC §9.3 integration] | Integration | P1 |
 | PROP-EX-19 | `DefaultRoutingEngine` must accept `AgentRegistry` as a constructor dependency and use it for both `resolveHumanMessage()` and `decide()` — not read from `config.agents.*` directly | [REQ-NF-08], [TSPEC §4.2.6] | Integration | P1 |
 | PROP-LG-06 | `FakeLogger.forComponent()` must return a new `FakeLogger` instance sharing the same internal `FakeLogStore` so that all scoped loggers (across all modules) accumulate entries on the root logger | [REQ-NF-09], [TSPEC §9.2 FakeLogger] | Integration | P1 |
+| PROP-EX-21 | After a config hot-reload that removes an agent from `agents[]`, `DefaultRoutingEngine` must treat that agent's ID as unknown on the next routing decision and post an ERR-RP-02 Error Report embed to the originating thread | [REQ-NF-08], [FSPEC-EX-01 §4.4], [AT-EX-01-08] | Integration | P1 |
+
+---
+
+### 3.6 Performance Properties
+
+*No performance properties are warranted for Phase 7.* All Phase 7 changes are purely behavioral — embed field values, log format, thread archiving sequencing, and config validation. REQ-PTAH-P7 defines no latency targets, throughput constraints, or resource consumption requirements for these features.
 
 ---
 
@@ -203,7 +210,7 @@ Authentication, authorization, input validation, and secrets handling.
 
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
-| PROP-RP-08 | Discord-facing error messages must NEVER contain stack trace lines (patterns matching `at <identifier> (<file>:<line>:<col>)`), exception class names (e.g., `Error:`, `TypeError:`), or raw API response bodies | [REQ-RP-06], [FSPEC-RP-01 §6.3 BR-RP-01-01], [AT-RP-01-03] | Unit | P1 |
+| PROP-RP-08 | The `buildErrorMessage()` return value fields (`title`, `whatHappened`, `whatToDo`) must NEVER contain stack trace lines (patterns matching `at <identifier> (<file>:<line>:<col>)`), exception class names (e.g., `Error:`, `TypeError:`), or raw API response bodies — verified by asserting on the function return value directly | [REQ-RP-06], [FSPEC-RP-01 §6.3 BR-RP-01-01], [AT-RP-01-03] | Unit | P1 |
 | PROP-RP-09 | `buildErrorMessage()` must be a pure function — it must NOT accept `Error` objects, stack trace strings, or raw exception messages as arguments; callers must extract safe context values before calling it | [REQ-RP-06], [TSPEC §4.2.5] | Unit | P1 |
 | PROP-RP-10 | Agent names used in Discord-facing error messages must always come from `RegisteredAgent.display_name` (a sanitized config field), never from raw exception message text | [REQ-RP-06], [FSPEC-RP-01 §6.2], [TSPEC §4.2.5] | Unit | P1 |
 
@@ -249,9 +256,10 @@ Properties that define what the system must NOT do.
 | PROP-DI-N02 | Orchestrator must NOT update the thread registry when `archiveThread()` fails (any failure mode except "thread not found") | [REQ-DI-06], [FSPEC-DI-02 §3.4 BR-DI-02-03], [AT-DI-02-05] | Unit | P1 |
 | PROP-DI-N03 | `postAgentResponse()` must NOT wrap agent response text in a Discord embed — agent responses must be plain messages | [REQ-DI-10], [FSPEC-DI-03 §5.4], [AT-DI-03-04] | Unit | P1 |
 | PROP-DI-N04 | Embed colors must NOT be configurable per-agent or per-thread — all four embed types have fixed color integers | [REQ-DI-10], [FSPEC-DI-03 §5.5 BR-DI-03-02] | Unit | P1 |
+| PROP-DI-N05 | `ResponsePoster` protocol must NOT expose `postSystemMessage()` — the method must be absent from the interface definition and all implementing classes | [TSPEC §4.2.2] | Unit (TypeScript compile-time) | P1 |
 | PROP-EX-N01 | `buildAgentRegistry()` must NOT register both entries when two entries share the same `id` — only the first is registered | [REQ-NF-08], [FSPEC-EX-01 §4.6 BR-EX-01-03] | Unit | P1 |
 | PROP-EX-N02 | `buildAgentRegistry()` must NOT crash or throw when any agent entry is invalid — invalid entries are skipped, startup continues | [REQ-NF-08], [FSPEC-EX-01 §4.6 BR-EX-01-02] | Unit | P1 |
-| PROP-RP-N01 | Discord-posted error messages must NOT contain stack trace lines, exception class names, or raw API error payloads in any message field | [REQ-RP-06], [FSPEC-RP-01 §6.3 BR-RP-01-01], [AT-RP-01-03] | Unit | P1 |
+| PROP-RP-N01 | The final Discord-posted error message embed fields (as captured by `FakeDiscordClient.capturedEmbeds` after `postErrorReportEmbed()` processes an `ErrorMessage`) must NOT contain stack trace lines, exception class names, or raw API error payloads — verified by asserting on the embed fields as seen by the Discord client, distinct from the `buildErrorMessage()` output assertion in PROP-RP-08 | [REQ-RP-06], [FSPEC-RP-01 §6.3 BR-RP-01-01], [AT-RP-01-03] | Unit | P1 |
 | PROP-LG-N01 | Individual call sites must NOT prepend `[ptah:{component}]` manually to message strings — the component prefix is a Logger-level concern only | [REQ-NF-09], [FSPEC-LG-01 §7.5 BR-LG-01-05] | Unit | P1 |
 | PROP-LG-N02 | The `Component` type must NOT be redefined in `src/services/logger.ts` — it is defined once in `src/types.ts` and imported | [REQ-NF-09], [TSPEC §4.2.1] | Unit | P1 |
 
@@ -264,9 +272,9 @@ Properties that define what the system must NOT do.
 | Requirement | Properties | Coverage |
 |-------------|------------|----------|
 | REQ-DI-06 | PROP-DI-01..08, PROP-DI-16, PROP-DI-18, PROP-DI-21, PROP-DI-22, PROP-DI-N01, PROP-DI-N02 | Full |
-| REQ-DI-10 | PROP-DI-09..15, PROP-DI-17, PROP-DI-19, PROP-DI-20, PROP-RP-05, PROP-DI-N03, PROP-DI-N04 | Full |
+| REQ-DI-10 | PROP-DI-09..15, PROP-DI-17, PROP-DI-19, PROP-DI-20, PROP-RP-05, PROP-DI-N03, PROP-DI-N04, PROP-DI-N05 | Full |
 | REQ-RP-06 | PROP-RP-01..04, PROP-RP-06..10, PROP-RP-N01 | Full |
-| REQ-NF-08 | PROP-EX-01..20, PROP-EX-12..19, PROP-LG-06, PROP-DI-21 | Full |
+| REQ-NF-08 | PROP-EX-01..17, PROP-EX-19..21, PROP-LG-06, PROP-DI-21 | Full |
 | REQ-NF-09 | PROP-LG-01..06, PROP-LG-N01, PROP-LG-N02 | Full |
 | REQ-NF-10 | PROP-OB-01..12, PROP-DI-21 | Full |
 
@@ -277,10 +285,10 @@ Properties that define what the system must NOT do.
 | FSPEC-DI-02 (Thread Archiving) | PROP-DI-01..08, PROP-DI-16, PROP-DI-18, PROP-DI-22, PROP-DI-N01, PROP-DI-N02 | Full |
 | FSPEC-DI-03 (Embed Formatting) | PROP-DI-09..15, PROP-DI-17, PROP-DI-19, PROP-DI-20, PROP-RP-05, PROP-DI-N03, PROP-DI-N04 | Full |
 | FSPEC-RP-01 (Error Message UX) | PROP-RP-01..10, PROP-RP-N01 | Full |
-| FSPEC-EX-01 (Extensibility) | PROP-EX-01..20, PROP-EX-12..19, PROP-EX-N01, PROP-EX-N02 | Full |
+| FSPEC-EX-01 (Extensibility) | PROP-EX-01..17, PROP-EX-19..21, PROP-EX-N01, PROP-EX-N02 | Full |
 | FSPEC-LG-01 (Structured Logging) | PROP-LG-01..06, PROP-LG-N01, PROP-LG-N02 | Full |
 | FSPEC-OB-01 (Observability) | PROP-OB-01..12 | Full |
-| TSPEC (Logger/FakeLogger design) | PROP-LG-04, PROP-LG-06, PROP-EX-12, PROP-EX-13 | Full |
+| TSPEC (Logger/FakeLogger design; LLM config schema) | PROP-LG-04, PROP-LG-06, PROP-EX-12, PROP-EX-13, PROP-EX-18, PROP-DI-N05 | Full |
 
 ### 5.3 Coverage by Priority
 
@@ -299,18 +307,18 @@ Summary of how properties are distributed across the test pyramid.
 ```
         /  E2E  \          0 — no E2E tests warranted; all coverage achievable at lower levels
        /----------\
-      / Integration \      3 — cross-module lifecycle, registry injection, shared FakeLogger
+      / Integration \      4 — cross-module lifecycle, registry injection, shared FakeLogger, hot-reload
      /----------------\
-    /    Unit Tests     \  66 — all protocol, functional, error handling, security, and observability
+    /    Unit Tests     \  67 — all protocol, functional, error handling, security, and observability
    /____________________\
 ```
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 66 | 96% |
-| Integration | 3 | 4% |
+| Unit | 67 | 94% |
+| Integration | 4 | 6% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **69** | **100%** |
+| **Total** | **71** | **100%** |
 
 **E2E justification:** Phase 7 changes are internal to the Orchestrator. All observable behaviors — embed fields, log entries, thread registry state, error message content — can be verified via unit tests using the rich test doubles specified in TSPEC §9.2 (FakeDiscordClient, FakeAgentRegistry, FakeLogger, FakeFileSystem, FakeResponsePoster). The single integration test (PROP-DI-21) covers the full lifecycle assembly without real external I/O. No E2E test is warranted for Phase 7.
 
@@ -320,9 +328,9 @@ Summary of how properties are distributed across the test pyramid.
 
 | # | Gap | Impact | Risk | Recommendation |
 |---|-----|--------|------|----------------|
-| 1 | `postSystemMessage()` removal is not explicitly covered by a property | If call sites are missed during the `postSystemMessage()` removal pass (TSPEC §4.2.2), stale usages silently remain. | Low | Add a property: `ResponsePoster must NOT expose postSystemMessage()` — or verify via a TypeScript compile-time check (method removed from interface). Either the type system or a grep test in the PLAN will catch this. |
+| 1 | ~~`postSystemMessage()` removal is not explicitly covered by a property~~ **RESOLVED** — elevated to named property **PROP-DI-N05** (§4). `ResponsePoster` must NOT expose `postSystemMessage()` — verified at TypeScript compile-time by removing the method from the interface. DoD item is now trackable in the PLAN. | — | — | Closed — see PROP-DI-N05 in §4. |
 | 2 | `resolveColour()` elimination is not directly asserted by a test property | `resolveColour()` is removed entirely in Phase 7 (TSPEC §4.2.4). If residual call sites remain, per-agent colours may persist in unexpected places. | Low | Add a gap test or compile-time check verifying `resolveColour` is unreachable. Covered by the `createCoordinationThread()` Routing Notification embed property (PROP-DI-15) in spirit. |
-| 3 | Hot-reload registry rebuild behavior is confirmed in TSPEC OQ-TSPEC-01 but no dedicated integration property covers it | Config hot-reload removing a registered agent is an AT-EX-01-08 acceptance test but has no corresponding PROPERTIES entry for the registry rebuild path. | Medium | Add a property: `After config hot-reload removing an agent, DefaultRoutingEngine must treat that agent's ID as unknown and post ERR-RP-02`. This is a separate integration property from PROP-EX-19 and should be added before the PLAN is written. |
+| 3 | ~~Hot-reload registry rebuild behavior is confirmed in TSPEC OQ-TSPEC-01 but no dedicated integration property covers it~~ **RESOLVED** — added as **PROP-EX-21** (§3.5). Integration test level confirmed by TE and BE. | — | — | Closed — see PROP-EX-21 in §3.5. |
 | 4 | The 2000-char chunk boundary edge cases (exactly 2000 chars → 1 call; 2001 chars → 2 calls) in TSPEC §9.3 are mentioned but not property IDs | These boundary cases are specified in the TSPEC test category table but not reified as named properties. | Low | These are sub-cases of PROP-DI-14 (chunking at 2000-char boundary). Ensure the PLAN test script for PROP-DI-14 includes both boundary cases explicitly. |
 
 ---
@@ -340,6 +348,7 @@ Summary of how properties are distributed across the test pyramid.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | March 17, 2026 | Test Engineer | Revision addressing cross-review findings (TE v1.2, BE v1.2, PM v1.3): added PROP-EX-21 (hot-reload integration, §3.5); added §3.6 Performance placeholder; added PROP-DI-N05 (postSystemMessage removal, §4); fixed §2 Functional count (32→33), Integration count (3→4), Total (69→71); fixed §6 Unit (66→67), Integration (3→4); disambiguated PROP-EX-17 (silent schema drop); retraced PROP-EX-18 source to TSPEC; removed redundant PROP-EX-12..19 sub-range from §5.1/§5.2; differentiated PROP-RP-08 vs PROP-RP-N01 scope; updated §5 coverage matrix; resolved Gaps #1 and #3 as closed |
 | 1.0 | March 17, 2026 | Test Engineer | Initial properties document — derived from REQ-PTAH-P7 v1.5, FSPEC-PTAH-PHASE7 v2.2, TSPEC-PTAH-PHASE7 v1.5 |
 
 ---
