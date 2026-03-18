@@ -693,6 +693,25 @@ export class DefaultOrchestrator implements Orchestrator {
         }
 
         // ROUTE_TO_AGENT with reply — loop with new agent
+        // Guard: reject routing to non-reviewers during review phases
+        if (featureSlug) {
+          const currentState = await this.pdlcDispatcher.getFeatureState(featureSlug);
+          if (currentState && REVIEW_PHASES.has(currentState.phase)) {
+            const manifest = computeReviewerManifest(currentState.phase, currentState.config.discipline);
+            const allowedAgentIds = new Set(manifest.map(e => e.agentId));
+            if (!allowedAgentIds.has(decision.targetAgentId!)) {
+              this.logger.warn(
+                `Blocked ROUTE_TO_AGENT → "${decision.targetAgentId}" during ${currentState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
+              );
+              await this.responsePoster.postProgressEmbed(
+                triggerMessage.threadId,
+                `Blocked routing to **${formatAgentName(decision.targetAgentId!)}** — not an authorized reviewer for this phase.`,
+              );
+              return;
+            }
+          }
+        }
+
         const nextAgentLabel = formatAgentName(decision.targetAgentId!);
         await this.responsePoster.postProgressEmbed(
           triggerMessage.threadId,
@@ -1058,7 +1077,30 @@ export class DefaultOrchestrator implements Orchestrator {
         return;
       }
 
-      // ROUTE_TO_AGENT — continue with executeRoutingLoop
+      // ROUTE_TO_AGENT — guard non-reviewers, then continue with executeRoutingLoop
+      let patternBSlug: string | null = null;
+      try {
+        patternBSlug = featureNameToSlug(extractFeatureName(question.threadName));
+      } catch {
+        // Slug resolution failed — skip guard
+      }
+      if (patternBSlug) {
+        const pbState = await this.pdlcDispatcher.getFeatureState(patternBSlug);
+        if (pbState && REVIEW_PHASES.has(pbState.phase)) {
+          const manifest = computeReviewerManifest(pbState.phase, pbState.config.discipline);
+          const allowedAgentIds = new Set(manifest.map(e => e.agentId));
+          if (!allowedAgentIds.has(decision.targetAgentId!)) {
+            this.logger.warn(
+              `Blocked Pattern B ROUTE_TO_AGENT → "${decision.targetAgentId}" during ${pbState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
+            );
+            await this.responsePoster.postProgressEmbed(
+              question.threadId,
+              `Blocked routing to **${formatAgentName(decision.targetAgentId!)}** — not an authorized reviewer for this phase.`,
+            );
+            return;
+          }
+        }
+      }
       await this.executeRoutingLoop(decision.targetAgentId!, syntheticTrigger);
     } catch (error) {
       await this.cleanupWorktree(worktreePath, branch);
