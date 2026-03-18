@@ -5,17 +5,15 @@
 | **Reviewer** | Product Manager |
 | **Document Reviewed** | `docs/007-polish/007-PROPERTIES-polish.md` v1.0 |
 | **Upstream Reviews Considered** | `CROSS-REVIEW-backend-engineer-PROPERTIES.md`, `CROSS-REVIEW-test-engineer-PROPERTIES.md` |
-| **Review Version** | v1.2 (re-review — document committed to feat-007-polish at v1.0; prior findings unresolved) |
+| **Review Version** | v1.3 (re-review — document remains at v1.0; no revisions committed since v1.2 review) |
 | **Review Date** | March 17, 2026 |
 | **Recommendation** | **Needs revision** |
 
 ---
 
-## Status Update from v1.1
+## Status Update from v1.2
 
-**F-03 (wrong branch) — RESOLVED.** The PROPERTIES document was committed to `feat-007-polish` at commit `79f2f7f`. This blocking finding is closed.
-
-All other Medium findings from v1.1 remain outstanding. The document was committed at v1.0 without addressing any review feedback. This v1.2 review reflects the current document state.
+**Document not revised.** The PROPERTIES document was committed once at `79f2f7f` (v1.0) and has not been updated. All Medium findings from v1.2 remain outstanding. This v1.3 review confirms the current document state is unchanged and all prior findings are still open.
 
 ---
 
@@ -23,7 +21,7 @@ All other Medium findings from v1.1 remain outstanding. The document was committ
 
 ### F-01 — Medium | Missing PROP-EX-21 — Hot-Reload Registry Rebuild Path Not Covered
 
-**Status:** Unresolved from v1.1 F-01 (confirmed by BE Q-01, TE F-02, TE Q-01).
+**Status:** Unresolved (carried from v1.1 F-01 → v1.2 F-01 → v1.3).
 
 **Location:** §7 Gap #3; REQ-NF-08 acceptance criterion AT-EX-01-08.
 
@@ -42,7 +40,7 @@ After adding PROP-EX-21: update §2 Integration count (3 → 4), §5.1 REQ-NF-08
 
 ### F-02 — Medium | Property Count Discrepancy — §2 and §6 Under-Count by One
 
-**Status:** Unresolved from v1.1 F-02 (confirmed by all three reviewers).
+**Status:** Unresolved (carried from v1.1 F-02 → v1.2 F-02 → v1.3).
 
 **Location:** §2 Property Summary table (Functional row, Total); §6 Test Level Distribution table.
 
@@ -67,7 +65,7 @@ The PLAN's Definition of Done gate will be derived from the §2 total. A gate se
 
 ### F-03 — Low | Section Numbering Gap: §3.6 Missing
 
-**Status:** Unresolved from v1.1 F-04 (confirmed by TE F-04).
+**Status:** Unresolved (carried from v1.1 F-04 → v1.2 F-03 → v1.3).
 
 **Location:** §3 Properties, section headers.
 
@@ -79,7 +77,7 @@ The PLAN's Definition of Done gate will be derived from the §2 total. A gate se
 
 ### F-04 — Low | PROP-EX-18 Traceability — LLM Config Parsing Not in REQ-NF-08 Acceptance Criteria
 
-**Status:** Unresolved from v1.1 F-05 (confirmed by TE F-07).
+**Status:** Unresolved (carried from v1.1 F-05 → v1.2 F-04 → v1.3).
 
 **Location:** §3.4 PROP-EX-18; §5.1 Coverage Matrix REQ-NF-08 row.
 
@@ -91,7 +89,7 @@ The PLAN's Definition of Done gate will be derived from the §2 total. A gate se
 
 ### F-05 — Low | PROP-EX-17 Failure Mode Is Ambiguous for Test Authoring
 
-**Status:** Unresolved from v1.1 F-06 (confirmed by BE F-03, TE F-06).
+**Status:** Unresolved (carried from v1.1 F-06 → v1.2 F-05 → v1.3).
 
 **Location:** §3.4, PROP-EX-17.
 
@@ -105,7 +103,7 @@ The PLAN's Definition of Done gate will be derived from the §2 total. A gate se
 
 ### F-06 — Low | Redundant Sub-Range in §5.1 REQ-NF-08 Coverage Row
 
-**Status:** Unresolved from v1.1 F-07 (confirmed by BE F-02, TE F-05).
+**Status:** Unresolved (carried from v1.1 F-07 → v1.2 F-06 → v1.3).
 
 **Location:** §5.1 Requirement Coverage, REQ-NF-08 row; §5.2 FSPEC-EX-01 row.
 
@@ -115,9 +113,9 @@ The PLAN's Definition of Done gate will be derived from the §2 total. A gate se
 
 ---
 
-### F-07 — Low | Gap #1 Should Be Elevated to a Named Negative Property (New — from TE F-08)
+### F-07 — Low | Gap #1 Should Be Elevated to a Named Negative Property
 
-**Status:** New finding from TE F-08 (not in prior PM review).
+**Status:** Unresolved (carried from v1.2 F-07 → v1.3; originally TE F-08).
 
 **Location:** §7 Gap #1; §4 Negative Properties.
 
@@ -134,10 +132,7 @@ This converts Gap #1 from an open risk to a closed, trackable item.
 
 ## Clarification Questions
 
-*None — all questions from v1.1 are resolved:*
-
-- **F-03 branch discrepancy (v1.1):** RESOLVED — document is on `feat-007-polish`.
-- **PROP-EX-21 test level:** Integration confirmed by BE Q-01 and TE Q-01.
+*None — all questions are resolved.*
 
 ---
 
@@ -159,14 +154,12 @@ This converts Gap #1 from an open risk to a closed, trackable item.
 
 **Needs revision.**
 
-Two Medium findings must be resolved before this document is approved:
+The PROPERTIES document has not been revised since its initial commit (v1.0). Two Medium findings must be resolved before this document can be approved:
 
 1. **F-01** — Add PROP-EX-21 (hot-reload Integration property); update §2 Integration count (3 → 4), §5.1 REQ-NF-08 row, §5.2 FSPEC-EX-01 row, §6 pyramid.
 2. **F-02** — Fix property count discrepancy: §2 Functional (32 → 33), Total corrected. Address F-01 and F-02 in a single pass — final corrected grand total is **71** (70 after count fix +1 for PROP-EX-21).
 
 Low-severity findings (F-03 through F-07) should be addressed in the same revision pass.
-
-**Previously blocking F-03 (wrong branch) is now RESOLVED** — the document is on `feat-007-polski`. Once F-01 and F-02 are resolved, this document can be approved without further PM review.
 
 **Required before approval:**
 - [ ] Add PROP-EX-21 (Integration, P1); update §2 Integration (3 → 4), §5.1, §5.2, §6
