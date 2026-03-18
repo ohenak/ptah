@@ -1,0 +1,3 @@
+# 014 Tech Lead Orchestration
+
+Ptah's PDLC implementation phase currently dispatches work to a single backend-engineer or frontend-engineer agent (or both in fork/join for fullstack). This feature introduces a tech-lead orchestration layer that analyzes approved execution plans (PLAN documents), computes parallelizable batches from the dependency graph using topological layering, and dispatches multiple engineer subagents in parallel within each batch. This enables faster implementation cycles by maximizing concurrency while respecting task dependencies, with test validation gates between batches to catch regressions early.
