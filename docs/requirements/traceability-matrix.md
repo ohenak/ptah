@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | March 16, 2026 |
-| **Version** | 2.7 |
+| **Date** | March 18, 2026 |
+| **Version** | 2.8 |
 | **Status** | Draft |
 
 ---
@@ -165,6 +165,32 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-20], [US-21], [US-22] | [REQ-NF-01] | Pending TSPEC | P1 | 13 | Pending Spec |
 | [US-20], [US-21], [US-22] | [REQ-NF-02] | Pending TSPEC | P0 | 13 | Pending Spec |
 | [US-20], [US-21], [US-22] | [REQ-NF-03] | Pending TSPEC | P0 | 13 | Pending Spec |
+| [US-23] | [REQ-PD-01] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-PD-02] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-PD-03] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-24] | [REQ-PD-04] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-PD-05] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23] | [REQ-BD-01] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-BD-02] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-BD-03] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-BD-04] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-BD-05] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-24] | [REQ-BD-06] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23], [US-25] | [REQ-BD-07] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-24], [US-25] | [REQ-BD-08] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23] | [REQ-TL-01] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-TL-02] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-TL-03] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23] | [REQ-TL-04] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23] | [REQ-TL-05] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-25] | [REQ-PR-01] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-25] | [REQ-PR-02] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-25] | [REQ-PR-03] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-25] | [REQ-PR-04] | Pending Spec | P2 | 14 | Pending Spec |
+| [US-23], [US-24], [US-25] | [REQ-NF-14-01] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23], [US-24], [US-25] | [REQ-NF-14-02] | Pending Spec | P1 | 14 | Pending Spec |
+| [US-23], [US-24], [US-25] | [REQ-NF-14-03] | Pending Spec | P0 | 14 | Pending Spec |
+| [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending Spec | P0 | 14 | Pending Spec |
 
 ---
 
@@ -195,6 +221,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-20] | New Feature Auto-Registers in PDLC | 5 | Yes (5 of 5 FSPEC'd) |
 | [US-21] | Existing Unmanaged Features Are Not Disrupted | 2 | Yes (2 of 2 FSPEC'd) |
 | [US-22] | Developer Specifies Feature Discipline | 3 | Yes (3 of 3 FSPEC'd) |
+| [US-23] | Developer Wants Faster Implementation of Large Plans | 16 | No (0 of 16 specified) |
+| [US-24] | Developer Wants to Resume Implementation from a Specific Batch | 5 | No (0 of 5 specified) |
+| [US-25] | Developer Wants Visibility into Parallel Execution Progress | 10 | No (0 of 10 specified) |
 
 ### 3.2 Requirement Coverage
 
@@ -561,6 +590,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.5 | March 14, 2026 | Product Manager | Added FSPEC mappings for Phase 11. 7 FSPECs created: FSPEC-SM-01 (transition logic), FSPEC-SM-02 (persistence/recovery), FSPEC-RT-01 (approval detection), FSPEC-RT-02 (review lifecycle), FSPEC-AI-01 (agent dispatch), FSPEC-FC-01 (reviewer computation), FSPEC-CA-01 (context assembly). 31 of 45 Phase 11 requirements FSPEC'd; 14 direct-to-TSPEC. Phase 11 view updated with FSPEC column. |
 | 2.6 | March 15, 2026 | Product Manager | Added Phase 13 (PDLC Auto-Initialization). 3 new user stories (US-20, US-21, US-22). 13 requirements added across 3 domains: PI (PDLC Initialization, 5 reqs), BC (Backward Compatibility, 2 reqs), DC (Discipline Configuration, 3 reqs), plus 3 non-functional (NF). 3 FSPECs created: FSPEC-PI-01 (auto-init decision flow), FSPEC-BC-01 (age guard), FSPEC-DC-01 (keyword parsing). 10 of 13 requirements FSPEC'd; 3 NFRs pending TSPEC. Total requirements: 137. |
 | 2.7 | March 15, 2026 | Product Manager | Added FSPEC mappings for Phase 7 (Polish). 2 FSPECs created: FSPEC-DI-02 (thread archiving on resolution), FSPEC-EX-01 (configuration-driven agent extensibility). Phase 7 view updated with FSPEC column. Both Phase 7 requirements now FSPEC'd; pending TSPEC. |
+| 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
 
 ---
 
