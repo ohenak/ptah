@@ -95,21 +95,26 @@ export class DefaultContextAssembler implements ContextAssembler {
     let layer3: string;
 
     // PDLC task directive — inject when taskType is provided by the dispatcher
-    if (taskType && documentType) {
-      const directive = `ACTION: ${taskType} ${documentType}`;
+    if (taskType) {
+      const docLabel = documentType || "feature";
+      const directive = `ACTION: ${taskType}${documentType ? ` ${documentType}` : ""}`;
       layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
         `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
         `**${directive}**\n\n`;
       if (taskType === "Revise" || taskType === "Resubmit") {
-        layer1 += `You MUST revise the existing ${documentType} document to address the findings in the CROSS-REVIEW files. ` +
+        layer1 += `You MUST revise the existing ${docLabel} document to address the findings in the CROSS-REVIEW files. ` +
           `Do NOT create a new CROSS-REVIEW file. Do NOT review documents. ` +
-          `Read the cross-review findings and UPDATE the ${documentType} document accordingly.`;
+          `Read the cross-review findings and UPDATE the ${docLabel} document accordingly.`;
       } else if (taskType === "Review") {
-        layer1 += `You MUST review the ${documentType} document and write a CROSS-REVIEW file with your findings and recommendation. ` +
-          `Do NOT modify the ${documentType} document itself.`;
+        layer1 += `You MUST review the ${docLabel} document and write a CROSS-REVIEW file with your findings and recommendation. ` +
+          `Do NOT modify the ${docLabel} document itself.`;
       } else if (taskType === "Create") {
-        layer1 += `You MUST create the ${documentType} document. Do NOT review documents. Do NOT summarize prior work. ` +
+        layer1 += `You MUST create the ${docLabel} document. Do NOT review documents. Do NOT summarize prior work. ` +
           `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
+      } else if (taskType === "Implement") {
+        layer1 += `You MUST implement the feature according to the execution PLAN and technical specification (TSPEC). ` +
+          `Follow the task list in the PLAN document. Write code and tests — do NOT review documents. ` +
+          `Do NOT write a CROSS-REVIEW file. Do NOT modify any documents in the docs/ folder.`;
       } else {
         layer1 += `You MUST perform this task: ${directive}.`;
       }
