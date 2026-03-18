@@ -333,7 +333,32 @@ export class DefaultOrchestrator implements Orchestrator {
 
     this.logger.info(`Message received from ${message.authorName} in thread "${message.threadName}" → agent: ${agentId}`);
 
-    // Step 5: Run the routing loop starting with the resolved agent
+    // Step 5: Phase guard — block non-reviewers from being invoked during review phases
+    let featureSlug: string | null = null;
+    try {
+      featureSlug = featureNameToSlug(extractFeatureName(message.threadName));
+    } catch {
+      // Slug resolution failed — skip guard
+    }
+    if (featureSlug) {
+      const featureState = await this.pdlcDispatcher.getFeatureState(featureSlug);
+      if (featureState && REVIEW_PHASES.has(featureState.phase)) {
+        const manifest = computeReviewerManifest(featureState.phase, featureState.config.discipline);
+        const allowedAgentIds = new Set(manifest.map(e => e.agentId));
+        if (!allowedAgentIds.has(agentId)) {
+          this.logger.warn(
+            `Blocked @mention → "${agentId}" during ${featureState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
+          );
+          await this.discord.postSystemMessage(
+            message.threadId,
+            `**${formatAgentName(agentId)}** is not an authorized reviewer for this phase. Authorized reviewers: ${[...allowedAgentIds].map(formatAgentName).join(", ")}.`,
+          );
+          return;
+        }
+      }
+    }
+
+    // Step 6: Run the routing loop starting with the resolved agent
     await this.executeRoutingLoop(agentId, message);
   }
 
