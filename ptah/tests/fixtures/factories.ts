@@ -29,7 +29,7 @@ import type {
   MergeResult,
   CommitParams,
   CommitResult,
-  LogEntry,
+  ArtifactLogEntry,
   PendingQuestion,
   RegisteredQuestion,
   ChannelMessage,
@@ -1015,10 +1015,10 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
 
 // Task 13: FakeAgentLogWriter
 export class FakeAgentLogWriter implements AgentLogWriter {
-  entries: LogEntry[] = [];
+  entries: ArtifactLogEntry[] = [];
   appendError: Error | null = null;
 
-  async append(entry: LogEntry): Promise<void> {
+  async append(entry: ArtifactLogEntry): Promise<void> {
     if (this.appendError) throw this.appendError;
     this.entries.push(entry);
   }

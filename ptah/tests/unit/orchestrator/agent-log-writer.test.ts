@@ -4,9 +4,9 @@ import {
   formatAgentName,
 } from "../../../src/orchestrator/agent-log-writer.js";
 import { FakeFileSystem, FakeLogger, FakeMergeLock } from "../../fixtures/factories.js";
-import type { LogEntry, LogStatus } from "../../../src/types.js";
+import type { ArtifactLogEntry, LogStatus } from "../../../src/types.js";
 
-function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
+function makeEntry(overrides: Partial<ArtifactLogEntry> = {}): ArtifactLogEntry {
   return {
     timestamp: "2026-03-10 14:30",
     agentId: "dev-agent",

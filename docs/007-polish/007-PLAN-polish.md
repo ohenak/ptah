@@ -24,7 +24,7 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| A1 | Add `AgentEntry`, `RegisteredAgent`, `AgentValidationError`, `Component`, `LogLevel`, `LogEntry`, `UserFacingErrorType`, `UserFacingErrorContext` to `src/types.ts` | _(pure type declarations — no runtime behavior to test)_ | `src/types.ts` | ⬚ Not Started |
+| A1 | Add `AgentEntry`, `RegisteredAgent`, `AgentValidationError`, `Component`, `LogLevel`, `LogEntry`, `UserFacingErrorType`, `UserFacingErrorContext` to `src/types.ts` | _(pure type declarations — no runtime behavior to test)_ | `src/types.ts` | ✅ Done |
 
 **Rationale:** All downstream modules import from `src/types.ts`. These types must exist before any test or implementation file is written. No runtime behavior — type correctness is verified by TypeScript compilation in subsequent tasks.
 

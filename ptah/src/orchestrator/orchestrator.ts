@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ThreadMessage, PtahConfig, CommitResult, LogStatus, LogEntry, PendingQuestion, ChannelMessage } from "../types.js";
+import type { ThreadMessage, PtahConfig, CommitResult, LogStatus, ArtifactLogEntry, PendingQuestion, ChannelMessage } from "../types.js";
 import type { DiscordClient } from "../services/discord.js";
 import type { GitClient } from "../services/git.js";
 import type { Logger } from "../services/logger.js";
@@ -1287,7 +1287,7 @@ export class DefaultOrchestrator implements Orchestrator {
     commitSha: string | null,
   ): Promise<void> {
     const summary = extractDescription(triggerMessage.threadName);
-    const entry: LogEntry = {
+    const entry: ArtifactLogEntry = {
       timestamp: new Date(),
       agentId,
       threadId: triggerMessage.threadId,

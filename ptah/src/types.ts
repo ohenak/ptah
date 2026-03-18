@@ -253,7 +253,7 @@ export interface CommitResult {
 
 export type LogStatus = "completed" | "completed (no changes)" | "conflict" | "error";
 
-export interface LogEntry {
+export interface ArtifactLogEntry {
   agentId: string;
   threadId: string;
   threadName: string;
@@ -261,4 +261,60 @@ export interface LogEntry {
   commitSha: string | null;
   summary: string;
   timestamp: Date;
+}
+
+// --- Phase 7: Polish types ---
+
+/** One entry in the ptah.config.json agents[] array. */
+export interface AgentEntry {
+  id: string;           // unique, /^[a-z0-9-]+$/
+  skill_path: string;   // relative path from project root
+  log_file: string;     // relative path from project root
+  mention_id: string;   // Discord snowflake — /^\d+$/
+  display_name?: string; // defaults to id if absent
+}
+
+/** A fully validated, registered agent in the live Orchestrator registry. */
+export interface RegisteredAgent {
+  id: string;
+  skill_path: string;
+  log_file: string;
+  mention_id: string;
+  display_name: string; // always set (id used as fallback)
+}
+
+export type Component =
+  | 'orchestrator' | 'router' | 'invocation-guard' | 'skill-invoker'
+  | 'artifact-committer' | 'response-poster' | 'config' | 'discord';
+
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface LogEntry {
+  component: Component;
+  level: LogLevel;
+  message: string;
+}
+
+export type UserFacingErrorType =
+  | 'ERR-RP-01' // retry exhaustion
+  | 'ERR-RP-02' // unknown agent
+  | 'ERR-RP-03' // Discord MCP failure
+  | 'ERR-RP-04' // routing signal parse failure
+  | 'ERR-RP-05'; // skill file missing
+
+export interface UserFacingErrorContext {
+  agentDisplayName?: string;
+  agentId?: string;
+  maxRetries?: number;
+}
+
+/**
+ * Represents a single validation failure returned by buildAgentRegistry().
+ * One error is pushed per invalid or duplicate AgentEntry.
+ */
+export interface AgentValidationError {
+  index: number;          // position in the agents[] config array (0-based)
+  agentId?: string;       // set if id was parseable; undefined if id itself was missing/invalid
+  field: string;          // which field failed (e.g. 'id', 'skill_path', 'mention_id', 'log_file')
+  reason: string;         // human-readable description
 }
