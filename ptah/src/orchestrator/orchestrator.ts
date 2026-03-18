@@ -22,7 +22,7 @@ import type { InvocationGuard } from "./invocation-guard.js";
 import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
-import { type DispatchAction, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
+import { type DispatchAction, type AgentDispatch, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
 import { computeReviewerManifest } from "./pdlc/review-tracker.js";
 import { extractFeatureName, featureNameToSlug, featureBranchName } from "./feature-branch.js";
 
@@ -365,6 +365,7 @@ export class DefaultOrchestrator implements Orchestrator {
   private async executeRoutingLoop(
     initialAgentId: string,
     triggerMessage: ThreadMessage,
+    pdlcDispatch?: AgentDispatch,
   ): Promise<void> {
     let currentAgentId = initialAgentId;
     let routingMessage: string | undefined;
@@ -432,6 +433,9 @@ export class DefaultOrchestrator implements Orchestrator {
           config: this.config,
           worktreePath,
           routingMessage,
+          contextDocuments: pdlcDispatch?.contextDocuments,
+          taskType: pdlcDispatch?.taskType,
+          documentType: pdlcDispatch?.documentType,
         });
 
         this.logger.info(`--- Prompt for ${currentAgentId} (thread: "${triggerMessage.threadName}", pattern: ${bundle.resumePattern}, turn: ${bundle.turnNumber}) ---`);
@@ -826,7 +830,7 @@ export class DefaultOrchestrator implements Orchestrator {
       case "dispatch": {
         // Set next agent(s) and continue loop — dispatch first agent sequentially
         for (const agentDispatch of dispatchAction.agents) {
-          await this.executeRoutingLoop(agentDispatch.agentId, triggerMessage);
+          await this.executeRoutingLoop(agentDispatch.agentId, triggerMessage, agentDispatch);
         }
         return "continue";
       }

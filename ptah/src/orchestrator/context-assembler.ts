@@ -22,6 +22,8 @@ export interface ContextAssembler {
     worktreePath?: string;  // Phase 4: read Layer 2 from worktree when provided
     routingMessage?: string; // The previous agent's response text when routing between agents
     contextDocuments?: ContextDocumentSet; // Phase 11: PDLC phase-aware document set
+    taskType?: string;       // Phase 11: PDLC task type (Create, Review, Revise, Resubmit, Implement)
+    documentType?: string;   // Phase 11: PDLC document type (REQ, FSPEC, TSPEC, PLAN, PROPERTIES, IMPLEMENTATION)
   }): Promise<ContextBundle>;
 }
 
@@ -60,8 +62,10 @@ export class DefaultContextAssembler implements ContextAssembler {
     worktreePath?: string;
     routingMessage?: string;
     contextDocuments?: ContextDocumentSet;
+    taskType?: string;
+    documentType?: string;
   }): Promise<ContextBundle> {
-    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments } = params;
+    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments, taskType, documentType } = params;
 
     const featureName = this.extractFeatureName(threadName);
     const resumePattern = this.detectResumePattern(agentId, threadHistory);
@@ -90,23 +94,46 @@ export class DefaultContextAssembler implements ContextAssembler {
     const latestMessage = routingMessage ?? triggerMessage.content;
     let layer3: string;
 
-    // Check for ACTION directive in the latest message
-    const actionDirective = this.extractActionDirective(latestMessage);
-
-    if (actionDirective) {
-      // Inject into system prompt (Layer 1) — highest priority
+    // PDLC task directive — inject when taskType is provided by the dispatcher
+    if (taskType && documentType) {
+      const directive = `ACTION: ${taskType} ${documentType}`;
       layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
         `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
-        `**${actionDirective}**\n\n` +
-        `You MUST perform this task. Do NOT review documents. Do NOT summarize prior work. ` +
-        `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
-
-      // Layer 3 = the routing message content (strip routing tags)
+        `**${directive}**\n\n`;
+      if (taskType === "Revise" || taskType === "Resubmit") {
+        layer1 += `You MUST revise the existing ${documentType} document to address the findings in the CROSS-REVIEW files. ` +
+          `Do NOT create a new CROSS-REVIEW file. Do NOT review documents. ` +
+          `Read the cross-review findings and UPDATE the ${documentType} document accordingly.`;
+      } else if (taskType === "Review") {
+        layer1 += `You MUST review the ${documentType} document and write a CROSS-REVIEW file with your findings and recommendation. ` +
+          `Do NOT modify the ${documentType} document itself.`;
+      } else if (taskType === "Create") {
+        layer1 += `You MUST create the ${documentType} document. Do NOT review documents. Do NOT summarize prior work. ` +
+          `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
+      } else {
+        layer1 += `You MUST perform this task: ${directive}.`;
+      }
       layer3 = latestMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
-      this.logger.info(`ACTION directive detected: "${actionDirective}" — using action-only context`);
+      this.logger.info(`PDLC task directive injected: "${directive}"`);
     } else {
-      // No ACTION directive — use the latest message as-is
-      layer3 = latestMessage;
+      // Check for ACTION directive in the latest message (legacy path)
+      const actionDirective = this.extractActionDirective(latestMessage);
+
+      if (actionDirective) {
+        // Inject into system prompt (Layer 1) — highest priority
+        layer1 += `\n\n## ACTIVE TASK DIRECTIVE\n\n` +
+          `**⚠ YOU HAVE BEEN ASSIGNED A SPECIFIC TASK. THIS OVERRIDES ALL OTHER CONSIDERATIONS.**\n\n` +
+          `**${actionDirective}**\n\n` +
+          `You MUST perform this task. Do NOT review documents. Do NOT summarize prior work. ` +
+          `Do NOT write a CROSS-REVIEW file. Read the referenced input documents and CREATE the requested output.`;
+
+        // Layer 3 = the routing message content (strip routing tags)
+        layer3 = latestMessage.replace(/<routing>[\s\S]*?<\/routing>/g, "").trim();
+        this.logger.info(`ACTION directive detected: "${actionDirective}" — using action-only context`);
+      } else {
+        // No ACTION directive — use the latest message as-is
+        layer3 = latestMessage;
+      }
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
