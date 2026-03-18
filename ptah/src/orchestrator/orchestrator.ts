@@ -23,6 +23,7 @@ import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
 import { type DispatchAction, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
+import { computeReviewerManifest } from "./pdlc/review-tracker.js";
 import { extractFeatureName, featureNameToSlug, featureBranchName } from "./feature-branch.js";
 
 const REVIEW_PHASES = new Set<PdlcPhase>([
@@ -600,6 +601,23 @@ export class DefaultOrchestrator implements Orchestrator {
             );
             const targetAgentId = (signal as { agentId?: string }).agentId;
             if (targetAgentId) {
+              // Guard: reject routing to non-reviewers during review phases
+              const latestState = await this.pdlcDispatcher.getFeatureState(featureSlug);
+              if (latestState && REVIEW_PHASES.has(latestState.phase)) {
+                const manifest = computeReviewerManifest(latestState.phase, latestState.config.discipline);
+                const allowedAgentIds = new Set(manifest.map(e => e.agentId));
+                if (!allowedAgentIds.has(targetAgentId)) {
+                  this.logger.warn(
+                    `Blocked ROUTE_TO_AGENT → "${targetAgentId}" during ${latestState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
+                  );
+                  await this.responsePoster.postProgressEmbed(
+                    triggerMessage.threadId,
+                    `Blocked routing to **${formatAgentName(targetAgentId)}** — not an authorized reviewer for this phase.`,
+                  );
+                  return;
+                }
+              }
+
               const nextAgentLabel = formatAgentName(targetAgentId);
               await this.responsePoster.postProgressEmbed(
                 triggerMessage.threadId,
