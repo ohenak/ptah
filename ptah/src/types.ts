@@ -52,6 +52,7 @@ export interface PtahConfig {
   };
   agents: AgentConfig;
   agentEntries: AgentEntry[];
+  llm?: LlmConfig;
   discord: DiscordConfig;
   orchestrator: {
     max_turns_per_thread: number;
@@ -265,6 +266,12 @@ export interface ArtifactLogEntry {
 }
 
 // --- Phase 7: Polish types ---
+
+/** LLM model configuration — extracted from AgentConfig in Phase 7 migration. */
+export interface LlmConfig {
+  model: string;
+  max_tokens: number;
+}
 
 /** One entry in the ptah.config.json agents[] array. */
 export interface AgentEntry {

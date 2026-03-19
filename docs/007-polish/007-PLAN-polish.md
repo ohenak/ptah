@@ -75,7 +75,7 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| F1 | Update `src/config/loader.ts` to parse and validate `agents: AgentEntry[]` array schema; reject old flat `AgentConfig` object schema with a clear validation error; validate `llm` section is present | `tests/unit/config-loader.test.ts` | `src/config/loader.ts` | ⬚ Not Started |
+| F1 | Update `src/config/loader.ts` to parse and validate `agents: AgentEntry[]` array schema; reject old flat `AgentConfig` object schema with a clear validation error; validate `llm` section is present | `tests/unit/config-loader.test.ts` | `src/config/loader.ts` | ✅ Done |
 | F2 | Update `ptah.config.json` to new `agents[]` array schema matching `AgentEntry` type | _(smoke-tested by config-loader integration path)_ | `ptah.config.json` | ⬚ Not Started |
 
 ---
