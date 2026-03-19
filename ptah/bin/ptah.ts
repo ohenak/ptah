@@ -29,6 +29,7 @@ import { InMemoryThreadStateManager } from "../src/orchestrator/thread-state-man
 import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js";
 import { FileStateStore } from "../src/orchestrator/pdlc/state-store.js";
 import { DefaultPdlcDispatcher } from "../src/orchestrator/pdlc/pdlc-dispatcher.js";
+import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -99,6 +100,15 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
+
+      // Phase 7 (Phase I): Build agent registry from config.agentEntries.
+      // buildAgentRegistry logs each validation error and the final registration summary.
+      const configLogger = logger.forComponent('config');
+      const { registry: agentRegistry } = await buildAgentRegistry(
+        config.agentEntries,
+        fs,
+        configLogger,
+      );
 
       // Build Claude Code client
       const claudeCodeInvokeFn: ClaudeCodeInvokeFn = async (options) => {

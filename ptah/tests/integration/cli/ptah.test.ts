@@ -165,6 +165,87 @@ describe("CLI integration", () => {
       expect(result.stderr).toContain("ptah.config.json not found");
       expect(result.stderr).toContain("ptah init");
     });
+
+    // Phase I: Composition root wiring — buildAgentRegistry is called after config load
+    it("logs 'no agents registered' warning when agentEntries is empty", async () => {
+      // Write a minimal valid config with no agentEntries
+      const config = {
+        project: { name: "test", version: "1.0.0" },
+        agents: {
+          active: ["pm"],
+          skills: { pm: "./pm-skill.md" },
+          model: "claude-sonnet-4-6",
+          max_tokens: 8192,
+        },
+        agentEntries: [],
+        discord: {
+          bot_token_env: "PTAH_TEST_NO_TOKEN_VAR",
+          server_id: "123456789",
+          channels: { updates: "agent-updates", questions: "open-questions", debug: "agent-debug" },
+          mention_user_id: "987654321",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: false },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      await nodeFs.writeFile(
+        nodePath.join(tempDir, "ptah.config.json"),
+        JSON.stringify(config, null, 2),
+      );
+
+      // ptah start will fail at the Discord token check (env var not set) — exit 1
+      // but buildAgentRegistry runs before StartCommand.execute(), so the warning is logged
+      const result = await runCli(tempDir, "start");
+      expect(result.exitCode).toBe(1);
+      // The "no agents registered" warning must appear in stderr before the token error
+      expect(result.stderr).toContain("no agents registered");
+    });
+
+    it("logs registered agent ids when agentEntries are valid", async () => {
+      // Write a skill file so the registry can validate it
+      await nodeFs.writeFile(nodePath.join(tempDir, "pm-skill.md"), "# PM Skill");
+      await nodeFs.writeFile(nodePath.join(tempDir, "pm-log.md"), "");
+
+      const config = {
+        project: { name: "test", version: "1.0.0" },
+        agents: {
+          active: ["pm"],
+          skills: { pm: "./pm-skill.md" },
+          model: "claude-sonnet-4-6",
+          max_tokens: 8192,
+        },
+        agentEntries: [
+          {
+            id: "pm",
+            skill_path: nodePath.join(tempDir, "pm-skill.md"),
+            log_file: nodePath.join(tempDir, "pm-log.md"),
+            mention_id: "111222333",
+            display_name: "Product Manager",
+          },
+        ],
+        discord: {
+          bot_token_env: "PTAH_TEST_NO_TOKEN_VAR",
+          server_id: "123456789",
+          channels: { updates: "agent-updates", questions: "open-questions", debug: "agent-debug" },
+          mention_user_id: "987654321",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: false },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      await nodeFs.writeFile(
+        nodePath.join(tempDir, "ptah.config.json"),
+        JSON.stringify(config, null, 2),
+      );
+
+      // ptah start will fail at the Discord token check — exit 1
+      // but the registry INFO log (via logger.info → console.log → stdout) must appear before that
+      const result = await runCli(tempDir, "start");
+      expect(result.exitCode).toBe(1);
+      // Verify the agent "pm" was registered — INFO goes to stdout
+      const combined = result.stdout + result.stderr;
+      expect(combined).toContain("pm");
+    });
   });
 
   // Task 39: CLI exit codes
