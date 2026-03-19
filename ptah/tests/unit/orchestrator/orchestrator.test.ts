@@ -187,12 +187,12 @@ describe("DefaultOrchestrator", () => {
       expect(invocationGuard.callCount).toBe(1);
 
       // Verify response poster was called
-      expect(responsePoster.postedEmbeds).toHaveLength(1);
-      expect(responsePoster.postedEmbeds[0].agentId).toBe("dev-agent");
-      expect(responsePoster.postedEmbeds[0].text).toBe("I implemented the feature");
+      expect(responsePoster.agentResponseCalls).toHaveLength(1);
+      expect(responsePoster.agentResponseCalls[0].agentId).toBe("dev-agent");
+      expect(responsePoster.agentResponseCalls[0].text).toBe("I implemented the feature");
 
-      // Verify completion embed was posted (terminal signal)
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
+      // Verify resolution notification embed was posted (terminal signal)
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
     });
   });
 
@@ -419,9 +419,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
-      expect(responsePoster.completionEmbeds[0].threadId).toBe("thread-1");
-      expect(responsePoster.completionEmbeds[0].agentId).toBe("dev-agent");
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
+      expect(responsePoster.resolutionNotificationCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.resolutionNotificationCalls[0].agentDisplayName).toBe("Dev Agent");
     });
   });
 
@@ -459,9 +459,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
-      expect(responsePoster.completionEmbeds[0].threadId).toBe("thread-1");
-      expect(responsePoster.completionEmbeds[0].agentId).toBe("dev-agent");
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
+      expect(responsePoster.resolutionNotificationCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.resolutionNotificationCalls[0].agentDisplayName).toBe("Dev Agent");
     });
   });
 
@@ -519,10 +519,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].threadId).toBe("thread-1");
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Routing error:");
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("missing routing signal");
+      expect(responsePoster.errorReportCalls).toHaveLength(1);
+      expect(responsePoster.errorReportCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-04");
     });
   });
 
@@ -952,7 +951,7 @@ describe("DefaultOrchestrator", () => {
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
       // No response was posted (guard handled that)
-      expect(responsePoster.postedEmbeds).toHaveLength(0);
+      expect(responsePoster.agentResponseCalls).toHaveLength(0);
     });
   });
 
@@ -976,7 +975,7 @@ describe("DefaultOrchestrator", () => {
       expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
-      expect(responsePoster.postedEmbeds).toHaveLength(0);
+      expect(responsePoster.agentResponseCalls).toHaveLength(0);
     });
   });
 
@@ -1194,8 +1193,8 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-1");
 
       // Error embed posted
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Worktree creation failed");
+      expect(responsePoster.errorReportCalls).toHaveLength(1);
+      expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-03");
 
       // No skill invocation
       expect(skillInvoker.invokeCalls).toHaveLength(0);
@@ -1733,7 +1732,7 @@ describe("DefaultOrchestrator", () => {
       expect(skillInvoker.invokeCalls.length).toBeGreaterThanOrEqual(1);
 
       // Response posted to originating thread
-      expect(responsePoster.postedEmbeds.some((e) => e.threadId === threadId)).toBe(true);
+      expect(responsePoster.agentResponseCalls.some((e) => e.threadId === threadId)).toBe(true);
 
       // Question archived (moved from pending to archived)
       const pending = await questionStore.readPendingQuestions();
@@ -1875,7 +1874,7 @@ describe("DefaultOrchestrator", () => {
       expect(pending.find((p) => p.id === qId)).toBeDefined();
 
       // Error embed posted
-      expect(responsePoster.postedErrors.some((e) => e.threadId === threadId)).toBe(true);
+      expect(responsePoster.errorReportCalls.some((e) => e.threadId === threadId)).toBe(true);
     });
   });
 

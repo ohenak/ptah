@@ -400,11 +400,11 @@ export class DefaultOrchestrator implements Orchestrator {
       try {
         await this.gitClient.createWorktreeFromBranch(branch, worktreePath, baseBranch);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Worktree creation failed: ${errorMessage}`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: formatAgentName(currentAgentId) },
+        });
         // Write error log entry
         await this.writeLogEntry(currentAgentId, triggerMessage, "error", null);
         return;
@@ -420,10 +420,11 @@ export class DefaultOrchestrator implements Orchestrator {
         // Assemble context (with worktreePath for Layer 2)
         const agentLabel = formatAgentName(currentAgentId);
         this.logger.info(`Assembling context for ${currentAgentId} (feature: "${triggerMessage.threadName}")`);
-        await this.responsePoster.postProgressEmbed(
-          triggerMessage.threadId,
-          `Assembling context for **${agentLabel}**...`,
-        );
+        await this.responsePoster.postRoutingNotificationEmbed({
+          threadId: triggerMessage.threadId,
+          fromAgentDisplayName: 'orchestrator',
+          toAgentDisplayName: agentLabel,
+        });
         const bundle = await this.contextAssembler.assemble({
           agentId: currentAgentId,
           threadId: triggerMessage.threadId,
@@ -445,10 +446,11 @@ export class DefaultOrchestrator implements Orchestrator {
 
         const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
         this.logger.info(`Invoking ${currentAgentId} skill (timeout: ${timeoutSec}s)...`);
-        await this.responsePoster.postProgressEmbed(
-          triggerMessage.threadId,
-          `Invoking **${agentLabel}** skill (timeout: ${timeoutSec}s)...`,
-        );
+        await this.responsePoster.postRoutingNotificationEmbed({
+          threadId: triggerMessage.threadId,
+          fromAgentDisplayName: 'orchestrator',
+          toAgentDisplayName: agentLabel,
+        });
 
         // Phase 6: Register worktree BEFORE invoking guard
         this.worktreeRegistry.register(worktreePath, branch);
@@ -480,10 +482,6 @@ export class DefaultOrchestrator implements Orchestrator {
           ? `${Math.round(result.durationMs / 1000)}s`
           : `${result.durationMs}ms`;
         this.logger.info(`Skill ${currentAgentId} completed in ${durationLabel} (${result.artifactChanges.length} artifact changes)`);
-        await this.responsePoster.postProgressEmbed(
-          triggerMessage.threadId,
-          `**${agentLabel}** completed in ${durationLabel} — ${result.artifactChanges.length} file(s) changed.`,
-        );
 
         // Cleanup worktree on no-changes path
         if (commitResult.mergeStatus === "no-changes") {
@@ -639,19 +637,21 @@ export class DefaultOrchestrator implements Orchestrator {
                   this.logger.warn(
                     `Blocked ROUTE_TO_AGENT → "${targetAgentId}" during ${latestState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
                   );
-                  await this.responsePoster.postProgressEmbed(
-                    triggerMessage.threadId,
-                    `Blocked routing to **${formatAgentName(targetAgentId)}** — not an authorized reviewer for this phase.`,
-                  );
+                  await this.responsePoster.postRoutingNotificationEmbed({
+                    threadId: triggerMessage.threadId,
+                    fromAgentDisplayName: formatAgentName(currentAgentId),
+                    toAgentDisplayName: 'orchestrator',
+                  });
                   return;
                 }
               }
 
               const nextAgentLabel = formatAgentName(targetAgentId);
-              await this.responsePoster.postProgressEmbed(
-                triggerMessage.threadId,
-                `Routing to **${nextAgentLabel}**...`,
-              );
+              await this.responsePoster.postRoutingNotificationEmbed({
+                threadId: triggerMessage.threadId,
+                fromAgentDisplayName: formatAgentName(currentAgentId),
+                toAgentDisplayName: nextAgentLabel,
+              });
               currentAgentId = targetAgentId;
               routingMessage = result.textResponse;
               continue;
@@ -669,11 +669,11 @@ export class DefaultOrchestrator implements Orchestrator {
         // Handle decision
         this.logger.info(`Routing decision: ${decision.signal.type}${decision.targetAgentId ? ` → ${decision.targetAgentId}` : ""}`);
         if (decision.isTerminal) {
-          await this.responsePoster.postCompletionEmbed(
-            triggerMessage.threadId,
-            currentAgentId,
-            this.config,
-          );
+          await this.responsePoster.postResolutionNotificationEmbed({
+            threadId: triggerMessage.threadId,
+            signalType: 'LGTM',
+            agentDisplayName: formatAgentName(currentAgentId),
+          });
           return;
         }
 
@@ -707,20 +707,22 @@ export class DefaultOrchestrator implements Orchestrator {
               this.logger.warn(
                 `Blocked ROUTE_TO_AGENT → "${decision.targetAgentId}" during ${currentState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
               );
-              await this.responsePoster.postProgressEmbed(
-                triggerMessage.threadId,
-                `Blocked routing to **${formatAgentName(decision.targetAgentId!)}** — not an authorized reviewer for this phase.`,
-              );
+              await this.responsePoster.postRoutingNotificationEmbed({
+                threadId: triggerMessage.threadId,
+                fromAgentDisplayName: formatAgentName(currentAgentId),
+                toAgentDisplayName: 'orchestrator',
+              });
               return;
             }
           }
         }
 
         const nextAgentLabel = formatAgentName(decision.targetAgentId!);
-        await this.responsePoster.postProgressEmbed(
-          triggerMessage.threadId,
-          `Routing to **${nextAgentLabel}**...`,
-        );
+        await this.responsePoster.postRoutingNotificationEmbed({
+          threadId: triggerMessage.threadId,
+          fromAgentDisplayName: formatAgentName(currentAgentId),
+          toAgentDisplayName: nextAgentLabel,
+        });
         currentAgentId = decision.targetAgentId!;
         routingMessage = result.textResponse;
         // Continue the while loop
@@ -735,29 +737,29 @@ export class DefaultOrchestrator implements Orchestrator {
         await this.writeLogEntry(currentAgentId, triggerMessage, "error", null);
 
         if (error instanceof RoutingParseError) {
-          await this.responsePoster.postErrorEmbed(
-            triggerMessage.threadId,
-            `Routing error: ${error.message}`,
-          );
+          await this.responsePoster.postErrorReportEmbed({
+            threadId: triggerMessage.threadId,
+            errorType: 'ERR-RP-04',
+            context: { agentDisplayName: formatAgentName(currentAgentId) },
+          });
           return;
         }
 
         if (error instanceof InvocationTimeoutError) {
-          const timeoutSec = Math.round((this.config.orchestrator.invocation_timeout_ms ?? 900_000) / 1000);
-          await this.responsePoster.postErrorEmbed(
-            triggerMessage.threadId,
-            `Skill invocation timed out (>${timeoutSec}s)`,
-          );
+          await this.responsePoster.postErrorReportEmbed({
+            threadId: triggerMessage.threadId,
+            errorType: 'ERR-RP-01',
+            context: { agentDisplayName: formatAgentName(currentAgentId) },
+          });
           return;
         }
 
         // Generic error (InvocationError or other)
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Skill invocation failed: ${errorMessage}`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: formatAgentName(currentAgentId) },
+        });
         return;
       }
     }
@@ -839,11 +841,12 @@ export class DefaultOrchestrator implements Orchestrator {
         this.logger.warn(
           `PDLC retry_agent: ${dispatchAction.reason} — ${dispatchAction.message}`,
         );
-        // Post the retry message and re-enter routing loop
-        await this.responsePoster.postProgressEmbed(
-          triggerMessage.threadId,
-          `Retrying agent: ${dispatchAction.message}`,
-        );
+        // Post the retry notification and re-enter routing loop
+        await this.responsePoster.postRoutingNotificationEmbed({
+          threadId: triggerMessage.threadId,
+          fromAgentDisplayName: 'orchestrator',
+          toAgentDisplayName: formatAgentName(currentAgentId),
+        });
         await this.executeRoutingLoop(currentAgentId, triggerMessage);
         return "continue";
       }
@@ -853,12 +856,12 @@ export class DefaultOrchestrator implements Orchestrator {
         return "stop";
       }
       case "done": {
-        // Post completion embed
-        await this.responsePoster.postCompletionEmbed(
-          triggerMessage.threadId,
-          currentAgentId,
-          this.config,
-        );
+        // Post resolution notification embed
+        await this.responsePoster.postResolutionNotificationEmbed({
+          threadId: triggerMessage.threadId,
+          signalType: 'LGTM',
+          agentDisplayName: formatAgentName(currentAgentId),
+        });
         return "stop";
       }
       case "wait": {
@@ -978,12 +981,12 @@ export class DefaultOrchestrator implements Orchestrator {
     const patternBBaseBranch = featureBranchName(extractFeatureName(question.threadName));
     try {
       await this.gitClient.createWorktreeFromBranch(branch, worktreePath, patternBBaseBranch);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await this.responsePoster.postErrorEmbed(
-        question.threadId,
-        `Worktree creation failed (Pattern B): ${errorMessage}`,
-      );
+    } catch (_error) {
+      await this.responsePoster.postErrorReportEmbed({
+        threadId: question.threadId,
+        errorType: 'ERR-RP-03',
+        context: { agentDisplayName: formatAgentName(question.agentId) },
+      });
       await this.writeLogEntry(question.agentId, syntheticTrigger, "error", null);
       return;
     }
@@ -1107,10 +1110,11 @@ export class DefaultOrchestrator implements Orchestrator {
                 this.logger.warn(
                   `Blocked managed Pattern B ROUTE_TO_AGENT → "${targetAgentId}" during ${pbManagedState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
                 );
-                await this.responsePoster.postProgressEmbed(
-                  question.threadId,
-                  `Blocked routing to **${formatAgentName(targetAgentId)}** — not an authorized reviewer for this phase.`,
-                );
+                await this.responsePoster.postRoutingNotificationEmbed({
+                  threadId: question.threadId,
+                  fromAgentDisplayName: formatAgentName(question.agentId),
+                  toAgentDisplayName: 'orchestrator',
+                });
                 return;
               }
             }
@@ -1127,11 +1131,11 @@ export class DefaultOrchestrator implements Orchestrator {
       const decision = this.routingEngine.decide(signal, this.config);
 
       if (decision.isTerminal) {
-        await this.responsePoster.postCompletionEmbed(
-          question.threadId,
-          question.agentId,
-          this.config,
-        );
+        await this.responsePoster.postResolutionNotificationEmbed({
+          threadId: question.threadId,
+          signalType: 'LGTM',
+          agentDisplayName: formatAgentName(question.agentId),
+        });
         return;
       }
 
@@ -1173,10 +1177,11 @@ export class DefaultOrchestrator implements Orchestrator {
             this.logger.warn(
               `Blocked Pattern B ROUTE_TO_AGENT → "${decision.targetAgentId}" during ${pbState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
             );
-            await this.responsePoster.postProgressEmbed(
-              question.threadId,
-              `Blocked routing to **${formatAgentName(decision.targetAgentId!)}** — not an authorized reviewer for this phase.`,
-            );
+            await this.responsePoster.postRoutingNotificationEmbed({
+              threadId: question.threadId,
+              fromAgentDisplayName: formatAgentName(question.agentId),
+              toAgentDisplayName: 'orchestrator',
+            });
             return;
           }
         }
@@ -1186,11 +1191,11 @@ export class DefaultOrchestrator implements Orchestrator {
       await this.cleanupWorktree(worktreePath, branch);
       await this.writeLogEntry(question.agentId, syntheticTrigger, "error", null);
 
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await this.responsePoster.postErrorEmbed(
-        question.threadId,
-        `Pattern B resume failed: ${errorMessage}`,
-      );
+      await this.responsePoster.postErrorReportEmbed({
+        threadId: question.threadId,
+        errorType: 'ERR-RP-03',
+        context: { agentDisplayName: formatAgentName(question.agentId) },
+      });
       // Question remains in pending.md for retry — do NOT clear pausedThreadIds
     }
   }
@@ -1236,22 +1241,22 @@ export class DefaultOrchestrator implements Orchestrator {
   ): Promise<void> {
     switch (commitResult.mergeStatus) {
       case "conflict":
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Merge conflict: ${agentDisplayName}'s changes in ${branch} ` +
-            `conflict with recent changes on main. The worktree has been ` +
-            `retained at ${worktreePath} for manual resolution.`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: agentDisplayName },
+        });
         this.logger.error(
           `Merge conflict for ${branch}: ${commitResult.conflictMessage}`,
         );
         break;
 
       case "commit-error":
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Commit failed: ${commitResult.conflictMessage}`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: agentDisplayName },
+        });
         this.logger.error(
           `Commit error for ${branch}: ${commitResult.conflictMessage}`,
         );
@@ -1259,22 +1264,22 @@ export class DefaultOrchestrator implements Orchestrator {
         break;
 
       case "merge-error":
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Merge failed: ${commitResult.conflictMessage}. ` +
-            `Worktree retained at ${worktreePath} for manual resolution.`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: agentDisplayName },
+        });
         this.logger.error(
           `Merge error for ${branch}: ${commitResult.conflictMessage}`,
         );
         break;
 
       case "lock-timeout":
-        await this.responsePoster.postErrorEmbed(
-          triggerMessage.threadId,
-          `Merge lock timeout: could not acquire merge lock within 10s. ` +
-            `Worktree retained for manual resolution.`,
-        );
+        await this.responsePoster.postErrorReportEmbed({
+          threadId: triggerMessage.threadId,
+          errorType: 'ERR-RP-03',
+          context: { agentDisplayName: agentDisplayName },
+        });
         this.logger.error(`Merge lock timeout for ${branch}`);
         break;
     }

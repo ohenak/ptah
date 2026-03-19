@@ -38,6 +38,8 @@ import type {
   LogLevel,
   AgentEntry,
   RegisteredAgent,
+  UserFacingErrorType,
+  UserFacingErrorContext,
 } from "../../src/types.js";
 import type { QuestionStore } from "../../src/orchestrator/question-store.js";
 import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
@@ -834,15 +836,30 @@ export class FakeSkillInvoker implements SkillInvoker {
 
 // Task 22: FakeResponsePoster
 export class FakeResponsePoster implements ResponsePoster {
-  postedEmbeds: Array<{
+  // postAgentResponse tracking
+  agentResponseCalls: Array<{
     threadId: string;
     agentId: string;
     text: string;
     config: PtahConfig;
     footer?: string;
   }> = [];
-  postedErrors: Array<{ threadId: string; errorMessage: string }> = [];
-  completionEmbeds: Array<{ threadId: string; agentId: string; config: PtahConfig }> = [];
+  agentResponseResult: PostResult = { messageId: "msg1", threadId: "t1", newThreadCreated: false };
+  agentResponseError: Error | null = null;
+
+  // New typed embed tracking (D4)
+  routingNotificationCalls: Array<{ threadId: string; fromAgentDisplayName: string; toAgentDisplayName: string }> = [];
+  resolutionNotificationCalls: Array<{ threadId: string; signalType: 'LGTM' | 'TASK_COMPLETE'; agentDisplayName: string }> = [];
+  errorReportCalls: Array<{ threadId: string; errorType: UserFacingErrorType; context: UserFacingErrorContext }> = [];
+  userEscalationCalls: Array<{ threadId: string; agentDisplayName: string; question: string }> = [];
+
+  // Error injection for typed embeds
+  routingNotificationError: Error | null = null;
+  resolutionNotificationError: Error | null = null;
+  errorReportError: Error | null = null;
+  userEscalationError: Error | null = null;
+
+  // createCoordinationThread tracking
   createdThreads: Array<{
     channelId: string;
     featureName: string;
@@ -860,7 +877,8 @@ export class FakeResponsePoster implements ResponsePoster {
     config: PtahConfig;
     footer?: string;
   }): Promise<PostResult> {
-    this.postedEmbeds.push(params);
+    this.agentResponseCalls.push(params);
+    if (this.agentResponseError) throw this.agentResponseError;
     return {
       messageId: `resp-msg-${this.nextMessageId++}`,
       threadId: params.threadId,
@@ -868,16 +886,40 @@ export class FakeResponsePoster implements ResponsePoster {
     };
   }
 
-  async postCompletionEmbed(threadId: string, agentId: string, config: PtahConfig): Promise<void> {
-    this.completionEmbeds.push({ threadId, agentId, config });
+  async postRoutingNotificationEmbed(params: {
+    threadId: string;
+    fromAgentDisplayName: string;
+    toAgentDisplayName: string;
+  }): Promise<void> {
+    this.routingNotificationCalls.push(params);
+    if (this.routingNotificationError) throw this.routingNotificationError;
   }
 
-  async postErrorEmbed(threadId: string, errorMessage: string): Promise<void> {
-    this.postedErrors.push({ threadId, errorMessage });
+  async postResolutionNotificationEmbed(params: {
+    threadId: string;
+    signalType: 'LGTM' | 'TASK_COMPLETE';
+    agentDisplayName: string;
+  }): Promise<void> {
+    this.resolutionNotificationCalls.push(params);
+    if (this.resolutionNotificationError) throw this.resolutionNotificationError;
   }
 
-  async postProgressEmbed(_threadId: string, _message: string): Promise<void> {
-    // no-op in tests
+  async postErrorReportEmbed(params: {
+    threadId: string;
+    errorType: UserFacingErrorType;
+    context: UserFacingErrorContext;
+  }): Promise<void> {
+    this.errorReportCalls.push(params);
+    if (this.errorReportError) throw this.errorReportError;
+  }
+
+  async postUserEscalationEmbed(params: {
+    threadId: string;
+    agentDisplayName: string;
+    question: string;
+  }): Promise<void> {
+    this.userEscalationCalls.push(params);
+    if (this.userEscalationError) throw this.userEscalationError;
   }
 
   async createCoordinationThread(params: {

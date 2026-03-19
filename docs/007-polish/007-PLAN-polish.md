@@ -38,7 +38,7 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 | B2 | Update `FakeDiscordClient`: add `archiveThread()`, `postPlainMessage()`, corresponding call-record arrays, and error-injection fields (`archiveThreadError`, `postPlainMessageError`) | _(verified implicitly by Phase F, I, J tests)_ | `tests/fixtures/factories.ts` | ⬚ Not Started |
 | B3 | Add `FakeAgentRegistry` implementing `AgentRegistry` protocol | _(verified implicitly by Phase H, I, J tests)_ | `tests/fixtures/factories.ts` | ⬚ Not Started |
 | B4 | Add `FakeFileSystem` implementing `FileSystem` protocol with `existsResults` map (defaults to `true`) | _(verified by Phase D agent-registry tests)_ | `tests/fixtures/factories.ts` | ⬚ Not Started |
-| B5 | Update `FakeResponsePoster`: remove `postCompletionEmbed`, `postErrorEmbed`, `postProgressEmbed` fields; add `routingNotificationCalls`, `resolutionNotificationCalls`, `errorReportCalls`, `userEscalationCalls` records and matching error-injection fields | _(verified implicitly by Phase I, J tests)_ | `tests/fixtures/factories.ts` | ⬚ Not Started |
+| B5 | Update `FakeResponsePoster`: remove `postCompletionEmbed`, `postErrorEmbed`, `postProgressEmbed` fields; add `routingNotificationCalls`, `resolutionNotificationCalls`, `errorReportCalls`, `userEscalationCalls` records and matching error-injection fields | _(verified implicitly by Phase I, J tests)_ | `tests/fixtures/factories.ts` | ✅ Done |
 
 **Rationale:** Test doubles must exist before the tests that consume them. `FakeLogger` (B1) is the most complex double and has dedicated test coverage in `logger.test.ts` to validate shared-store accumulation and `forComponent()` scoping. The others (B2–B5) are validated implicitly by downstream phase tests.
 
@@ -93,10 +93,10 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| H1 | Add four new embed methods to `ResponsePoster` interface: `postRoutingNotificationEmbed`, `postResolutionNotificationEmbed`, `postErrorReportEmbed`, `postUserEscalationEmbed` — with correct signatures from TSPEC §4.2.4 | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ⬚ Not Started |
-| H2 | Implement all four embed methods in `DefaultResponsePoster` with correct embed schemas (title, color integer, body fields per FSPEC-DI-03); add embed fallback to `postPlainMessage()` when embed posting throws | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ⬚ Not Started |
-| H3 | Change `postAgentResponse()` to chunk text at **2000-char** boundary and post each chunk via `discordClient.postPlainMessage()` (not embed); test boundary cases: exactly 2000 chars → 1 call; 2001 chars → 2 calls | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ⬚ Not Started |
-| H4 | Update `createCoordinationThread()` to post a Routing Notification embed (color `0x5865F2`, title `↗ Routing to {display_name}`); remove `resolveColour()` helper; remove `postCompletionEmbed()`, `postErrorEmbed()`, `postProgressEmbed()` from interface and implementation | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ⬚ Not Started |
+| H1 | Add four new embed methods to `ResponsePoster` interface: `postRoutingNotificationEmbed`, `postResolutionNotificationEmbed`, `postErrorReportEmbed`, `postUserEscalationEmbed` — with correct signatures from TSPEC §4.2.4 | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ✅ Done |
+| H2 | Implement all four embed methods in `DefaultResponsePoster` with correct embed schemas (title, color integer, body fields per FSPEC-DI-03); add embed fallback to `postPlainMessage()` when embed posting throws | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ✅ Done |
+| H3 | Change `postAgentResponse()` to chunk text at **2000-char** boundary and post each chunk via `discordClient.postPlainMessage()` (not embed); test boundary cases: exactly 2000 chars → 1 call; 2001 chars → 2 calls | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ✅ Done |
+| H4 | Update `createCoordinationThread()` to post a Routing Notification embed (color `0x5865F2`, title `↗ Routing to {display_name}`); remove `resolveColour()` helper; remove `postCompletionEmbed()`, `postErrorEmbed()`, `postProgressEmbed()` from interface and implementation | `tests/unit/response-poster.test.ts` | `src/orchestrator/response-poster.ts` | ✅ Done |
 
 ---
 

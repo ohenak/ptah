@@ -151,7 +151,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Verify completion embed was posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -201,7 +201,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // LGTM completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -284,7 +284,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -368,7 +368,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
