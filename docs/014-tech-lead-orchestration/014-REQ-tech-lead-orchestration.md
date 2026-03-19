@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | 014-REQ-tech-lead-orchestration |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -169,7 +169,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 18 | REQ-PD-01, REQ-PD-02, REQ-PD-03, REQ-PD-04, REQ-PD-06, REQ-BD-01, REQ-BD-02, REQ-BD-03, REQ-BD-04, REQ-BD-05, REQ-BD-07, REQ-TL-01, REQ-TL-02, REQ-TL-03, REQ-TL-05, REQ-NF-14-03, REQ-NF-14-04 |
+| P0 | 17 | REQ-PD-01, REQ-PD-02, REQ-PD-03, REQ-PD-04, REQ-PD-06, REQ-BD-01, REQ-BD-02, REQ-BD-03, REQ-BD-04, REQ-BD-05, REQ-BD-07, REQ-TL-01, REQ-TL-02, REQ-TL-03, REQ-TL-05, REQ-NF-14-03, REQ-NF-14-04 |
 | P1 | 9 | REQ-PD-05, REQ-BD-06, REQ-BD-08, REQ-TL-04, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-NF-14-01, REQ-NF-14-02 |
 | P2 | 1 | REQ-PR-04 |
 
@@ -177,7 +177,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 
 | Phase | Count | IDs |
 |-------|-------|-----|
-| Phase 14 | 28 | All requirements in this document |
+| Phase 14 | 27 | All requirements in this document |
 
 ---
 
@@ -230,6 +230,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-18 | Product Manager | Initial requirements document |
+| 1.2 | 2026-03-19 | Product Manager | Corrected requirements summary counts: P0 count 18 → 17, Phase 14 total 28 → 27 (cosmetic fix per TE cross-review F-01) |
 | 1.1 | 2026-03-19 | Product Manager | Addressed cross-review feedback: clarified plan dependency format (fan-out syntax support + template update); specified partial batch failure merge semantics (no partial merges); clarified worktree mechanism (Agent tool `isolation: "worktree"`); added `useTechLead` config field for dispatcher routing; added REQ-PD-06 for cycle detection; made REQ-PD-02 batch formula precise; added mixed-path skill conflict resolution to REQ-PD-03; narrowed REQ-TL-02 modification/rejection protocol; specified sub-batch test gate semantics in REQ-NF-14-01; added all-phases-done edge case to REQ-PD-04; added serialization note to REQ-BD-08; distinguished test invocation vs. assertion failure in REQ-BD-05; added agent timeout config reference to REQ-BD-07; updated R-05 to Low likelihood |
 
 ---
