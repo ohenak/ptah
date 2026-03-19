@@ -4,141 +4,66 @@
 |-------|--------|
 | **Reviewer** | backend-engineer |
 | **Document Reviewed** | [014-REQ-tech-lead-orchestration](014-REQ-tech-lead-orchestration.md) |
+| **Review Round** | 2 (re-review of v1.2) |
 | **Date** | 2026-03-19 |
-| **Recommendation** | **Needs Revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
-## Findings
+## Re-Review Summary
 
-### F-01 — HIGH: Plan dependency format is insufficient for true DAG expression
-
-**Affected requirements:** REQ-PD-01, REQ-PD-02, A-01
-
-The plan template (`docs/templates/backend-plans-template.md`, Section 4 "Task Dependency Notes") defines the dependency format as:
-
-```
-Phase A (1-N) → Phase B (N+1-M) → Phase C (M+1-P) → ...
-```
-
-This is a **linear chain format**, not a DAG. It has no syntax for expressing fan-out dependencies like "Phase A unlocks both Phase B and Phase C independently." Without fan-out expression, the only graphs that can be represented are straight chains — which always produce batches of size 1 (no parallelism).
-
-REQ-PD-01 states the tech lead "must parse the Task Dependency Notes section and construct a DAG," and REQ-PD-02 requires maximum parallelism within each batch. But if every existing plan encodes only linear chains, the batch algorithm will always produce single-phase batches, delivering no parallelism benefit.
-
-**Resolution needed:** Either (a) specify an extended dependency syntax in the plan template that supports fan-out (e.g., `A → [B, C, D]` or structured YAML), or (b) acknowledge that the current template must be updated as part of this feature and add a requirement for template evolution. The plan template compatibility constraint in REQ-NF-14-04 says "no changes to the plan template are required," which directly conflicts with enabling true DAG expression.
+This is a re-review of v1.2, revised in response to Round 1 findings from both the backend engineer and test engineer. All six backend-engineer findings (F-01 through F-06) and all test-engineer findings have been resolved. No new High or Medium findings identified.
 
 ---
 
-### F-02 — HIGH: Partial batch failure merge semantics are undefined
+## Prior Findings — Resolution Status
 
-**Affected requirements:** REQ-BD-07, REQ-BD-04
-
-REQ-BD-07 specifies that when a phase fails, "other agents in the same batch that are still running should be allowed to complete." This is correct for not wasting in-flight work. However, the REQ does not specify what happens to the **successful phases** in a failed batch:
-
-- Are the successful phases' worktree branches merged into the feature branch?
-- Or are they left un-merged, and the entire batch must be re-run after the failure is fixed?
-
-These are materially different behaviors. If successful phases are merged, the feature branch is in a partially-implemented state (some phases done, one failed). The developer then has to figure out which tasks are done and which aren't to resume. If they are NOT merged, the successful agents' work is discarded, causing wasted re-execution.
-
-Neither path is specified. This undefined state will produce a design gap in the TSPEC.
-
-**Resolution needed:** Add an explicit behavior clause to REQ-BD-07 specifying whether successful sibling phases are merged after a batch failure, and under what conditions re-execution of those phases would be required.
+| Finding | Severity | Description | Status |
+|---------|----------|-------------|--------|
+| BE-F-01 | HIGH | Plan template format couldn't express fan-out dependencies | ✅ Resolved — REQ-PD-01 now explicitly requires fan-out syntax (`A → [B, C]`); REQ-NF-14-04 specifies template update as an in-scope deliverable |
+| BE-F-02 | HIGH | Partial-batch failure merge semantics were undefined | ✅ Resolved — REQ-BD-07 now explicitly states no worktree branches (neither failed nor successful sibling phases) are merged when any phase in a batch fails; batch must be re-run in entirety |
+| BE-F-03 | HIGH | Worktree creation mechanism was unspecified for a SKILL.md agent | ✅ Resolved — A-03, C-03, and REQ-BD-03 now uniformly specify the Agent tool's `isolation: "worktree"` parameter as the sole mechanism; no direct TypeScript API calls required from the tech-lead skill |
+| BE-F-04 | MEDIUM | Integration path into `pdlc-dispatcher.ts` was unspecified | ✅ Resolved — REQ-TL-01 specifies `useTechLead: true` in `FeatureConfig` as the routing condition; REQ-NF-14-03 defines the backward-compatible fallback when the field is absent or false |
+| BE-F-05 | LOW | R-05 risk severity appeared stale (Phase 10 was already committed) | ✅ Resolved — R-05 updated to Low likelihood with explicit note that Phase 10 infrastructure is committed |
+| BE-F-06 | LOW | REQ-BD-08 plan status updates susceptible to concurrent write corruption | ✅ Resolved — REQ-BD-08 now includes an explicit serialization clause: "updates to the plan file must be applied one at a time to prevent concurrent write corruption" |
 
 ---
 
-### F-03 — HIGH: Worktree creation mechanism is unspecified for a SKILL.md agent
+## New Findings
 
-**Affected requirements:** REQ-BD-03, REQ-BD-02, REQ-BD-04
+No new High or Medium findings identified in v1.2.
 
-REQ-BD-03 states each dispatched agent must operate in its own isolated git worktree. The existing worktree infrastructure (from Phase 10) is implemented in TypeScript: `worktree-registry.ts`, `feature-branch.ts`, and `orchestrator.ts` call `createWorktreeFromBranch` as part of the agent invocation lifecycle managed by the orchestrator.
+### F-01 — LOW: `tests/` path assignment may be incorrect for frontend test files
 
-The tech-lead is currently defined as a **SKILL.md prompt agent** (`.claude/skills/tech-lead/SKILL.md`). Prompt-level agents cannot directly call TypeScript methods to create worktrees. The worktree lifecycle (`create → run agent → merge → cleanup`) requires coordination at the TypeScript orchestration layer, not inside the agent prompt.
+**Affected requirement:** REQ-PD-03
 
-Two architecturally distinct implementation paths are possible:
-1. **Promote tech-lead to a TypeScript module** — a new `TechLeadOrchestrator` class that the `pdlc-dispatcher.ts` delegates to, which uses the existing `worktree-registry.ts` and `skill-invoker.ts` directly.
-2. **Keep tech-lead as a SKILL.md** — but rely on the existing orchestrator to create worktrees on its behalf, requiring new orchestrator-level primitives for "launch N agents with isolated worktrees and await all."
+REQ-PD-03 maps `tests/` directory paths to `backend-engineer`. In a project where frontend components also have test files under `tests/components/` or `tests/ui/`, this heuristic would mis-assign those phases to backend-engineer. For the current Ptah codebase (which is primarily a Node/TypeScript backend with no frontend test directory), this is acceptable. However, if future features introduce frontend test files under `tests/`, the skill assignment logic would silently produce wrong assignments.
 
-The REQ does not specify which architecture is intended. Without this clarity, the TSPEC cannot be written. This is the most impactful gap in the document.
+This is a Low/cosmetic finding. No change required before TSPEC authoring — the TSPEC author should be aware of this boundary when implementing the path-to-skill mapping.
 
-**Resolution needed:** Specify whether tech-lead is a TypeScript sub-orchestrator module or a SKILL.md prompt agent. If SKILL.md, specify what new orchestrator primitives (if any) are required to give it worktree management capabilities.
-
----
-
-### F-04 — MEDIUM: Integration path into `pdlc-dispatcher.ts` is unspecified
-
-**Affected requirements:** REQ-TL-01, REQ-NF-14-03
-
-The existing `pdlc-dispatcher.ts` routes `IMPLEMENTATION` phase to `eng` (backend-engineer) and conditionally `fe` (frontend-engineer) in a fork/join pattern — `FORK_JOIN_PHASES` includes `Phase.IMPLEMENTATION`. REQ-TL-01 says the orchestrator "must invoke the tech-lead skill instead of directly invoking backend-engineer or frontend-engineer."
-
-The dispatcher currently reads the feature's `discipline` field (`"backend-only"`, `"frontend-only"`, or `"fullstack"`) to decide fork/join. The REQ does not specify:
-- What config field or condition in the feature state causes the dispatcher to route to tech-lead instead of directly to eng/fe.
-- Whether tech-lead is a new `discipline` value, a new `agentId` alongside `eng`/`fe`, or a conditional override.
-- How `FORK_JOIN_PHASES` classification interacts with tech-lead routing.
-
-REQ-NF-14-03 says fallback to sequential dispatch when tech-lead is not configured, but "configured" is not defined in terms of the existing `FeatureConfig` or `PdlcStateFile` types.
-
-**Resolution needed:** Define the exact config field/value that triggers tech-lead routing, and describe how `pdlc-dispatcher.ts`'s existing fork/join dispatch logic is modified or extended.
-
----
-
-### F-05 — LOW: R-05 risk severity appears stale
-
-**Affected section:** Section 7 Risks, R-05
-
-R-05 rates "Phase 10 branch infrastructure not yet implemented" as **High likelihood / High impact**. However, the Phase 10 implementation is committed to the repository: `worktree-registry.ts`, `feature-branch.ts`, `artifact-committer.ts` (two-tier merge), and the Phase 10 TSPEC is marked "Approved." The infrastructure appears to be in place.
-
-If Phase 10 is implemented, R-05 should be updated to "Low likelihood" (since it's done) or removed, to avoid misleading the TSPEC author into designing unnecessary fallbacks for a risk that has been mitigated.
-
-**Resolution needed:** Verify Phase 10 implementation status and update R-05 likelihood accordingly.
-
----
-
-### F-06 — LOW: REQ-BD-08 plan status update is susceptible to concurrent write conflicts
-
-**Affected requirements:** REQ-BD-08
-
-REQ-BD-08 requires the tech-lead to update task statuses in the plan document after each phase completes. Within a batch, multiple agents may complete near-simultaneously. If the tech-lead processes completions concurrently and writes to the same markdown file without serialization, the file can be silently corrupted (one write overwrites the other's changes).
-
-The requirement is silent on whether plan status updates are serialized. Given the existing `AsyncMutex` / merge-lock pattern in the codebase, this is solvable, but it should be called out explicitly.
-
-**Resolution needed:** Add a note that plan status updates must be serialized (one at a time), even when phases complete concurrently.
+**Recommended acknowledgment:** No REQ change needed; the TSPEC should document the `tests/` assignment heuristic as a known limitation with the recommended workaround (the user may override via REQ-TL-02 confirmation step).
 
 ---
 
 ## Clarification Questions
 
-### Q-01: Is tech-lead a TypeScript module or a SKILL.md agent?
-
-Directly tied to F-03. The answer determines the entire TSPEC architecture. If it's a TypeScript sub-orchestrator, it can use existing services directly. If it's a SKILL.md agent, new orchestrator primitives are needed to give it worktree control. Which is intended?
-
-### Q-02: What is the exact config field that enables tech-lead routing?
-
-For REQ-TL-01 and REQ-NF-14-03: what field in `FeatureConfig` or `PdlcStateFile` signals that the tech-lead should be used? Is it a new `discipline` value (`"parallel"`), a new `agentId` (`"tech-lead"`) listed in registered agents, or something else?
-
-### Q-03: Is the plan template expected to evolve to support fan-out dependencies?
-
-For F-01: REQ-NF-14-04 says "no changes to the plan template are required," but the current template format can only express linear chains. If we accept that current plans only produce Batch-of-1 serialized execution (no real parallelism until plans adopt a richer format), that's a valid MVP scope constraint — but it should be explicitly stated, not implied. Should REQ-NF-14-04 be relaxed to allow template evolution, or is Batch-of-1 acceptable as the initial behavior?
+None. All Round 1 clarification questions (Q-01 through Q-03) have been resolved by the v1.1/v1.2 revisions.
 
 ---
 
 ## Positive Observations
 
-- The requirements are well-structured across four domains (PD, BD, TL, PR) with clear traceability to user scenarios and dependencies between requirements.
-- The scope boundaries (Section 9) are precise and well-reasoned — explicitly excluding automatic conflict resolution and intra-phase task parallelism avoids scope creep.
-- REQ-PD-05 (graceful fallback for unparseable graphs) is a good defensive requirement and directly mitigates the template format risk in F-01.
-- The separation of concerns in REQ-TL-03 (tech lead must not write code) is architecturally clean and testable.
-- Success metrics in Section 4 are quantitative and measurable against a specific baseline (12-phase plan).
-- REQ-NF-14-01 (5-agent concurrency cap) is a pragmatic constraint that prevents runaway parallelism; good to have in the REQ rather than leaving it to the engineer.
-- REQ-BD-06 (resume from specific batch) cleanly maps to REQ-PD-04 (completed phase detection) — the dependency is correct.
+All prior positive observations from Round 1 remain valid. Additional observations on the v1.1/v1.2 improvements:
+
+- **REQ-BD-07's "no partial merges" rule** is architecturally correct. By keeping the feature branch in a clean state after a batch failure, it makes the expected test outcome after re-run deterministic. This is the right tradeoff between "wasted re-execution" and "non-deterministic partial state."
+- **The `useTechLead` feature flag** (REQ-TL-01, REQ-NF-14-03) cleanly separates the new code path from the existing dispatcher. This design makes it straightforward to write regression tests for the existing sequential PDLC flow without mocking tech-lead infrastructure.
+- **A-03's explicit reference to `isolation: "worktree"`** as a provided infrastructure primitive correctly keeps the SKILL.md design lightweight. The tech lead does not need to own worktree lifecycle management — it delegates that to the Agent tool — which reduces implementation surface area and test complexity.
+- **REQ-PD-06's cycle detection** follows the same defensive pattern as REQ-PD-05 (graceful fallback). The combination of these two requirements means the tech lead degrades gracefully to sequential execution for any graph it cannot process, rather than crashing or producing incorrect batches.
 
 ---
 
 ## Recommendation
 
-**Needs revision.** Three High-severity findings (F-01, F-02, F-03) must be resolved before this REQ can be approved for TSPEC authoring:
+**Approved.**
 
-- **F-01** leaves the core value proposition (parallel batching) technically unachievable with the current plan template format.
-- **F-02** leaves the failure recovery state machine in an undefined condition that will produce a design gap in the TSPEC.
-- **F-03** makes the TSPEC impossible to write without knowing whether tech-lead is a TypeScript module or a SKILL.md agent.
-
-Please address F-01 through F-04 and clarify Q-01 through Q-03, then route the updated REQ back for re-review.
+All High, Medium, and Low findings from Round 1 have been fully resolved in v1.2. The single new Low finding (F-01, `tests/` path assignment) is non-blocking and appropriate to defer to the TSPEC. This REQ is ready to proceed to TSPEC authoring.
