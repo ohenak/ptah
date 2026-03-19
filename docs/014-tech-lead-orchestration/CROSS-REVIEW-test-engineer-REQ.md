@@ -4,7 +4,7 @@
 |-------|--------|
 | **Reviewer** | test-engineer |
 | **Document Reviewed** | [014-REQ-tech-lead-orchestration](014-REQ-tech-lead-orchestration.md) |
-| **Review Round** | 3 (re-review of v1.2) |
+| **Review Round** | 4 (re-review of v1.2 following BE Round 3 "Needs revision") |
 | **Date** | 2026-03-19 |
 | **Recommendation** | **Needs revision** |
 
@@ -12,87 +12,75 @@
 
 ## Re-Review Summary
 
-This is a re-review of v1.2, which was revised to correct the requirements summary counts (P0: 17, Phase 14 total: 27). The Round 2 Low finding (TE-F-01, count discrepancy) is confirmed resolved. A fresh review of v1.2 against testability criteria identifies one new Medium finding and three new Low findings.
+This is a Round 4 re-review of v1.2. The REQ document has not been revised since Round 3 — no v1.3 exists. Both blocking Medium findings from Round 3 (TE-F-01 and BE-F-01) remain unresolved in the current document text. This review:
+
+1. Confirms the Round 3 blocking findings remain open.
+2. Concurs with the new BE Round 3 Medium finding (BE-F-01, `isForkJoinPhase` suppression).
+3. Adds one new Low finding identified during the fresh pass.
 
 ---
 
 ## Prior Findings — Resolution Status
 
-| Finding | Severity | Description | Status |
-|---------|----------|-------------|--------|
-| TE-F-01 (Round 2) | LOW | Requirements summary count off-by-one (P0: 18 listed, 17 IDs; total 28 listed, sum = 27) | ✅ Resolved — v1.2 corrects P0 count to 17 and Phase 14 total to 27 |
-
-All High and Medium findings from Rounds 1 and 2 (TE and BE) remain resolved. No regressions introduced in v1.2.
+| Finding | Round | Severity | Description | Status |
+|---------|-------|----------|-------------|--------|
+| TE-F-01 (Round 1–3) | 1–3 | HIGH→resolved, then re-raised | Various — all prior High/Medium fully resolved by v1.1 | ✅ Resolved |
+| TE-F-01 (Round 3) | 3 | MEDIUM | REQ-NF-14-02 description contradicts acceptance criteria; `retain_failed_worktrees` default unspecified | ❌ **Still open** — v1.2 text unchanged |
+| TE-F-02 (Round 3) | 3 | LOW | Plan file precondition failures unspecified | ❌ Still open (recommended REQ clause not added) |
+| TE-F-03 (Round 3) | 3 | LOW | Sub-batch split order unspecified | Deferred to TSPEC — still acceptable |
+| TE-F-04 (Round 3) | 3 | LOW | REQ-TL-02 modification loop termination undocumented | Deferred to TSPEC — still acceptable |
+| BE-F-01 (Round 3) | 3 | MEDIUM | `isForkJoinPhase` not explicitly suppressed when `useTechLead === true` | ❌ **Still open** — v1.2 text unchanged |
+| BE-F-02 (Round 3) | 3 | LOW | `FeatureConfig` extension implied but not named | Deferred to TSPEC — still acceptable |
 
 ---
 
-## New Findings
+## Blocking Findings Carried Forward (Unresolved)
 
-### F-01 — MEDIUM: REQ-NF-14-02 description contradicts acceptance criteria on failure-case worktree cleanup
+### F-01 — MEDIUM (Carried from Round 3 TE-F-01): REQ-NF-14-02 description contradicts acceptance criteria on failure-case worktree cleanup
 
 **Affected requirement:** REQ-NF-14-02 (Worktree cleanup)
 
-The requirement description states:
+The current v1.2 text of REQ-NF-14-02 reads:
 
-> "After each agent completes (success or failure), its worktree must be cleaned up."
+> **Description:** "After each agent completes (success or failure), its worktree must be cleaned up. Worktrees from failed agents must be retained for debugging if the `retain_failed_worktrees` config flag is set."
+>
+> **Acceptance Criteria:** "Worktrees are removed after successful completion; retained on failure if configured."
 
-The second sentence then says:
+The description's first sentence mandates cleanup on both success and failure. The second sentence carves out retention for failure when configured. The acceptance criteria correctly reflects the intended behavior (cleanup on success; conditional on failure). These are contradictory. A test author writing a failure-path test for the case where `retain_failed_worktrees` is absent/false cannot resolve which sentence is authoritative from the description alone.
 
-> "Worktrees from failed agents must be retained for debugging if the `retain_failed_worktrees` config flag is set."
+Additionally, the default value of `retain_failed_worktrees` when the key is absent from configuration remains unspecified. This prevents writing a deterministic test for the default-unconfigured case.
 
-These two sentences contradict each other: the first mandates cleanup on both success and failure, while the second mandates retention on failure (when configured). The acceptance criteria clarifies the intent correctly:
-
-> "Worktrees are removed after successful completion; retained on failure if configured."
-
-However, the contradictory description creates an ambiguity: when `retain_failed_worktrees` is **false** (or absent), should failed-agent worktrees be cleaned up or not? The description implies yes (cleanup on failure), the acceptance criteria implies yes (only "retained on failure if configured" — implying cleanup otherwise). But a test author reading only the description would need to reconcile the contradiction.
-
-Additionally, there is no specified behavior for the default value of `retain_failed_worktrees` when the config key is absent — the requirement should state whether absence means retain or clean up.
-
-**Resolution needed:**
-1. Fix the description to read: "After each agent completes successfully, its worktree must be cleaned up. After a failed agent completes, its worktree must be cleaned up unless `retain_failed_worktrees` is set to `true` in the Ptah configuration."
-2. Specify that `retain_failed_worktrees` defaults to `false` when absent (so cleanup is the default behavior on failure).
+**Required resolution before approval:**
+1. Rewrite the description: "After each agent completes successfully, its worktree must be cleaned up. After a failed agent completes, its worktree must be cleaned up unless `retain_failed_worktrees` is set to `true` in the Ptah configuration."
+2. State explicitly that `retain_failed_worktrees` defaults to `false` when absent, making cleanup the default behavior on failure.
 
 ---
 
-### F-02 — LOW: Plan file precondition failures have no specified behavior
+### F-02 — MEDIUM (Carried from Round 3 BE-F-01): `isForkJoinPhase` suppression not explicitly required when `useTechLead === true`
 
-**Affected requirements:** REQ-TL-01, REQ-PD-01
+**Affected requirements:** REQ-TL-01, REQ-NF-14-03
 
-REQ-TL-01's GIVEN clause assumes the plan is in "Approved — Ready for Implementation" status and that the plan file path is valid. REQ-PD-01's GIVEN assumes the plan file has a "Task Dependency Notes" section. Neither requirement specifies what the tech lead must do if:
+**Codebase context:** In `pdlc-dispatcher.ts`, `isForkJoinPhase` returns `true` when `config.discipline === "fullstack"` and the phase is `IMPLEMENTATION`, causing the dispatcher to split dispatch across `eng` and `fe` agents. REQ-NF-14-03 states that `FORK_JOIN_PHASES` classification "continues to apply when `useTechLead` is false," implying by contrast that it should NOT apply when `useTechLead === true`. However, this suppression is never stated explicitly.
 
-- The plan file path provided to the tech lead does not exist or is not readable.
-- The plan document is found but its status is not "Approved — Ready for Implementation" (e.g., it is still in Draft).
+A test author writing the integration test for a fullstack feature with `useTechLead: true` cannot write a deterministic assertion without this explicit statement: does the dispatcher issue one tech-lead dispatch, or does it simultaneously issue a fork-join pair alongside the tech-lead dispatch?
 
-Without specified behavior for these precondition failures, a test author cannot write test cases for them, and an implementation author may handle them inconsistently (silent crash, unformatted error, etc.).
+Without an explicit suppression requirement, a TSPEC author could plausibly leave `isForkJoinPhase` unchanged, producing a silent dual-dispatch bug for fullstack features that would not be caught until runtime.
 
-**Resolution needed:** Add a brief precondition error clause to REQ-TL-01 (or a new REQ-TL-XX) specifying that if the plan file is missing, unreadable, or not in Approved status, the tech lead must report the specific error and emit `ROUTE_TO_USER` without attempting batch computation.
-
----
-
-### F-03 — LOW: REQ-NF-14-01 sub-batch splitting order is unspecified
-
-**Affected requirement:** REQ-NF-14-01 (Agent concurrency limit)
-
-REQ-NF-14-01 specifies that a topological batch with more than 5 phases must be split into sub-batches of at most 5. The splitting algorithm and phase ordering within sub-batches are not defined. For a topological batch containing 7 phases (P1 through P7), it is not specified whether:
-
-- The split is [P1–P5], [P6–P7] or [P1–P4], [P5–P7] or another grouping.
-- Ordering within a sub-batch is by phase letter, by dependency depth, or arbitrary.
-
-This is not a correctness concern (all groupings that respect the 5-agent limit are valid), but it prevents a test author from writing a deterministic assertion on sub-batch grouping. Without a defined split strategy, tests can only assert the max-concurrency invariant, not the exact batches produced.
-
-**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should define a deterministic sub-batch splitting rule (e.g., "phases within a topological layer are grouped in document order, with each sub-batch containing at most 5 phases"). A REQ-level acknowledgment that the split order is implementation-defined would eliminate ambiguity for test authors.
+**Required resolution before approval:** Add one explicit sentence to REQ-NF-14-03 (or REQ-TL-01): "When `useTechLead === true`, the `FORK_JOIN_PHASES` fork-join behavior for IMPLEMENTATION is suppressed regardless of `discipline`, and a single tech-lead dispatch is issued instead."
 
 ---
 
-### F-04 — LOW: REQ-TL-02 has no termination condition for repeated modification cycles
+## New Finding (Round 4)
 
-**Affected requirement:** REQ-TL-02 (Present execution plan for confirmation)
+### F-03 — LOW: REQ-BD-05 does not specify the timeout for the test suite invocation itself
 
-REQ-TL-02 specifies that after a user requests a modification, the tech lead updates the plan and "re-presents for confirmation." There is no specified limit on the number of modification cycles. In theory, a user could repeatedly request modifications, and the confirmation loop would never terminate without the user approving or explicitly rejecting.
+**Affected requirement:** REQ-BD-05 (Test validation gate between batches)
 
-While this is unlikely to occur in practice, the absence of a termination condition makes it impossible to write a complete test case for the modification path: a test cannot assert "after N rounds of modification the system eventually exits" because N is unbounded.
+REQ-BD-05 specifies two distinct failure modes for test suite execution (assertion failure vs. invocation failure) and references `tech_lead_agent_timeout_ms` via REQ-BD-07 for agent-level timeouts. However, there is no specified timeout for the test suite run itself (`npx vitest run`). In pathological cases the test runner could hang (e.g., a test with a `while(true)` loop or a hung async fixture), blocking the batch pipeline indefinitely.
 
-**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should document that the modification loop is unbounded by design and that termination requires an explicit Approve or Reject from the user. A brief note in REQ-TL-02 to this effect (e.g., "Modification cycles may repeat until the user approves or rejects") would make this explicit at the REQ level.
+This is Low severity because the absence only affects edge-case infrastructure, not the core requirement behavior. A test author can still write all primary-path tests for REQ-BD-05. However, a TSPEC author would need to invent a timeout policy without REQ-level guidance.
+
+**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should define a maximum wall-clock timeout for the test suite step. A REQ-level acknowledgment that a configurable test suite timeout is out of scope (or that it defaults to some value) would eliminate the ambiguity.
 
 ---
 
@@ -100,23 +88,22 @@ While this is unlikely to occur in practice, the absence of a termination condit
 
 ### Q-01 (Carried from Round 2): Agent completion detection mechanism
 
-Deferred to TSPEC (unchanged from Round 2). The Agent tool's synchronous dispatch pattern is an implementation concern.
+Deferred to TSPEC (unchanged). The Agent tool's synchronous dispatch pattern is an implementation concern.
 
 ### Q-02 (Carried from Round 2): Progress reporting output target
 
-Deferred to TSPEC (unchanged from Round 2). "Coordination thread" is expected to resolve to the Discord coordination channel in the TSPEC.
+Deferred to TSPEC (unchanged). "Coordination thread" resolves to the Discord coordination channel in the TSPEC.
 
 ---
 
 ## Positive Observations
 
-All positive observations from Rounds 1 and 2 remain valid. Additional observations on v1.2:
+All positive observations from Rounds 1–3 remain valid. Additional observations on v1.2:
 
-- **Count correction (v1.2)** is clean and precise. Both the P0 row and the Phase 14 total now match the enumerated IDs. The change log entry is accurate and appropriately credits the TE cross-review as the source.
-- **REQ-BD-07's "no partial merges" invariant** remains the strongest testable property in the document. It yields a clean test case: given a batch with phases [B, C, D] where D fails, after the tech lead halts, the feature branch must be identical to its state before the batch began. This is assertable via `git diff`.
-- **REQ-PD-06 and REQ-PD-05 together** cover the two main DAG-parsing failure modes (cycle and malformed input) with consistent behavior (sequential fallback + warning). The combination produces a complete, testable defensive envelope for the dependency analysis component.
-- **REQ-BD-05's two-failure-mode distinction** (invocation failure vs. assertion failure) is well-suited to test case decomposition. Each mode maps to a distinct mock scenario: a mock that exits non-zero before running tests (invocation failure) and a mock that runs but produces failing test output (assertion failure). The requirement directly drives the test strategy without ambiguity.
-- **`useTechLead` feature flag** continues to be an excellent testability affordance for regression-testing the existing PDLC flow.
+- **The two-Medium blocking profile is narrow and well-contained.** Both F-01 (REQ-NF-14-02 text contradiction) and F-02 (REQ-NF-14-03 `isForkJoinPhase` suppression) require only single-sentence additions or rewrites. The overall REQ structure — particularly the coverage of fallback paths, retry semantics, and isolation guarantees — remains the strongest in the 014 document set.
+- **The Round 3 reviews (TE and BE) are complementary with no contradictions.** TE-F-01 and BE-F-01 address independent issues in different requirements. Resolving both in a single revision pass is straightforward.
+- **REQ-BD-07 "no partial merges" invariant** continues to be the highest-value testable property in the document. It maps directly to a `git diff` assertion against the pre-batch feature branch state. This property has survived three review rounds intact and is implementation-ready.
+- **REQ-PD-06 + REQ-PD-05 defensive envelope** for DAG parsing continues to be complete and testable. Both cycle detection (PD-06) and malformed input (PD-05) produce the same observable behavior (sequential fallback + warning), making them easy to cover with a shared test fixture that varies only the input.
 
 ---
 
@@ -124,13 +111,16 @@ All positive observations from Rounds 1 and 2 remain valid. Additional observati
 
 **Needs revision.**
 
-One Medium finding (F-01, REQ-NF-14-02 description contradicts acceptance criteria on failure-case worktree cleanup, with an undefined default for `retain_failed_worktrees`) requires correction before TSPEC authoring. Three Low findings are identified; two are deferred to TSPEC and one (F-02, plan file precondition failures) is recommended for a brief REQ-level clause.
+Two Medium findings (F-01 and F-02) remain open from Round 3 and are blocking. Both require only targeted, minimal edits to the v1.2 text. One new Low finding (F-03) is identified and recommended for deferral to TSPEC.
 
-| Finding | Severity | Status |
-|---------|----------|--------|
-| F-01 | MEDIUM | REQ-NF-14-02 description contradicts acceptance criteria; `retain_failed_worktrees` default unspecified |
-| F-02 | LOW | Plan file precondition failures (missing file, wrong status) have no specified behavior |
-| F-03 | LOW | Sub-batch splitting order unspecified (acceptable to defer to TSPEC) |
-| F-04 | LOW | REQ-TL-02 modification loop has no termination condition documented (acceptable to defer to TSPEC) |
+| Finding | Round | Severity | Status | Blocking? |
+|---------|-------|----------|--------|-----------|
+| F-01 (TE-F-01 carried) | 3→4 | MEDIUM | Open — REQ-NF-14-02 description/criteria contradiction; `retain_failed_worktrees` default unspecified | Yes |
+| F-02 (BE-F-01 carried) | 3→4 | MEDIUM | Open — `isForkJoinPhase` not explicitly suppressed for `useTechLead === true` | Yes |
+| F-03 (NEW) | 4 | LOW | Test suite invocation timeout unspecified (defer to TSPEC) | No |
+| TE-F-02 (carried) | 3→4 | LOW | Plan file precondition failures unspecified | No (defer to TSPEC acceptable) |
+| TE-F-03 (carried) | 3→4 | LOW | Sub-batch split order unspecified | No (defer to TSPEC) |
+| TE-F-04 (carried) | 3→4 | LOW | REQ-TL-02 modification loop termination undocumented | No (defer to TSPEC) |
+| BE-F-02 (carried) | 3→4 | LOW | `FeatureConfig` extension implied but not named | No (defer to TSPEC) |
 
-**Required before re-approval:** F-01 must be resolved. F-02 is recommended but the PM may choose to defer it to TSPEC with an explicit acknowledgment.
+**Required before re-approval:** F-01 and F-02 must be resolved in a v1.3 revision. All Low findings are acceptable to defer to TSPEC with explicit acknowledgment.
