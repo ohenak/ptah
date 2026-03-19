@@ -63,6 +63,7 @@ export interface PtahConfig {
     retry_base_delay_ms?: number;
     retry_max_delay_ms?: number;
     shutdown_timeout_ms?: number;
+    archive_on_resolution?: boolean;
   };
   git: {
     commit_prefix: string;

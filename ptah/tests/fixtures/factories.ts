@@ -47,6 +47,7 @@ import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-co
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
 import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
 import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
+import type { AgentRegistry } from "../../src/orchestrator/agent-registry.js";
 import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
 import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
 import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction } from "../../src/orchestrator/pdlc/phases.js";
@@ -1405,4 +1406,24 @@ export function makeRegisteredAgent(overrides: Partial<RegisteredAgent> = {}): R
     display_name: "Test Agent",
     ...overrides,
   };
+}
+
+export class FakeAgentRegistry implements AgentRegistry {
+  private agents: RegisteredAgent[];
+
+  constructor(agents: RegisteredAgent[] = []) {
+    this.agents = agents;
+  }
+
+  getAgentById(id: string): RegisteredAgent | null {
+    return this.agents.find((a) => a.id === id) ?? null;
+  }
+
+  getAgentByMentionId(mentionId: string): RegisteredAgent | null {
+    return this.agents.find((a) => a.mention_id === mentionId) ?? null;
+  }
+
+  getAllAgents(): RegisteredAgent[] {
+    return [...this.agents];
+  }
 }

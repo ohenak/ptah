@@ -19,6 +19,8 @@ import {
   FakeThreadStateManager,
   FakeWorktreeRegistry,
   FakePdlcDispatcher,
+  FakeAgentRegistry,
+  makeRegisteredAgent,
   defaultTestConfig,
   defaultCommitResult,
   createThreadMessage,
@@ -223,6 +225,9 @@ describe("StartCommand", () => {
         worktreeRegistry: new FakeWorktreeRegistry(),
         shutdownSignal: new AbortController().signal,
         pdlcDispatcher: new FakePdlcDispatcher(),
+        agentRegistry: new FakeAgentRegistry([
+          makeRegisteredAgent({ id: "dev-agent", mention_id: "111222333" }),
+        ]),
       });
 
       command = new StartCommand(configLoader, discord, logger, {
@@ -327,6 +332,7 @@ describe("StartCommand", () => {
         worktreeRegistry: new FakeWorktreeRegistry(),
         shutdownSignal: new AbortController().signal,
         pdlcDispatcher: new FakePdlcDispatcher(),
+        agentRegistry: new FakeAgentRegistry([]),
       });
 
       const cmdWithCheck = new StartCommand(configLoader, discord, logger, {

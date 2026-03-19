@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       const skillClient = new ClaudeCodeClient(claudeCodeInvokeFn);
 
       // Wire up orchestrator dependencies
-      const routingEngine = new DefaultRoutingEngine(logger);
+      const routingEngine = new DefaultRoutingEngine(agentRegistry, logger);
       const contextAssembler = new DefaultContextAssembler(fs, tokenCounter, logger);
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
       const responsePoster = new DefaultResponsePoster(discord, logger);
@@ -223,6 +223,8 @@ async function main(): Promise<void> {
         shutdownSignal: abortController.signal,
         // Phase 11: PDLC State Machine
         pdlcDispatcher,
+        // Phase 7: Agent registry
+        agentRegistry,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {

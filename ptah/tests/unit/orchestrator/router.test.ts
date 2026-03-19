@@ -4,7 +4,7 @@ import {
   RoutingParseError,
   RoutingError,
 } from "../../../src/orchestrator/router.js";
-import { FakeLogger, defaultTestConfig } from "../../fixtures/factories.js";
+import { FakeLogger, FakeAgentRegistry, makeRegisteredAgent, defaultTestConfig } from "../../fixtures/factories.js";
 import type { PtahConfig, ThreadMessage } from "../../../src/types.js";
 
 function makeThreadMessage(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
@@ -25,10 +25,16 @@ function makeThreadMessage(overrides: Partial<ThreadMessage> = {}): ThreadMessag
 describe("DefaultRoutingEngine", () => {
   let engine: DefaultRoutingEngine;
   let logger: FakeLogger;
+  let agentRegistry: FakeAgentRegistry;
 
   beforeEach(() => {
     logger = new FakeLogger();
-    engine = new DefaultRoutingEngine(logger);
+    agentRegistry = new FakeAgentRegistry([
+      makeRegisteredAgent({ id: "dev-agent", mention_id: "111222333", display_name: "Dev Agent" }),
+      makeRegisteredAgent({ id: "pm-agent", mention_id: "444555666", display_name: "PM Agent" }),
+      makeRegisteredAgent({ id: "test-agent", mention_id: "777888999", display_name: "Test Agent" }),
+    ]);
+    engine = new DefaultRoutingEngine(agentRegistry, logger);
   });
 
   describe("parseSignal", () => {
@@ -94,10 +100,8 @@ describe("DefaultRoutingEngine", () => {
 
       expect(signal.type).toBe("ROUTE_TO_AGENT");
       expect(signal.agentId).toBe("dev-agent");
-      expect(logger.messages).toContainEqual({
-        level: "warn",
-        message: expect.stringContaining("Multiple routing signals found (2)"),
-      });
+      const warnEntries = logger.entries.filter((e) => e.level === "WARN");
+      expect(warnEntries.some((e) => e.message.includes("Multiple routing signals found (2)"))).toBe(true);
     });
 
     // Task 43: Empty response
@@ -139,23 +143,10 @@ describe("DefaultRoutingEngine", () => {
   });
 
   describe("resolveHumanMessage", () => {
-    let config: PtahConfig;
-
-    beforeEach(() => {
-      config = {
-        ...defaultTestConfig(),
-        agents: {
-          ...defaultTestConfig().agents,
-          role_mentions: {
-            "111222333": "dev-agent",
-            "444555666": "pm-agent",
-          },
-        },
-      };
-    });
+    const config = defaultTestConfig();
 
     // Task 46: Detects Discord role @mention and maps to agent ID
-    it("detects Discord role mention and maps to agent ID", () => {
+    it("detects Discord role mention and maps to agent ID via registry", () => {
       const message = makeThreadMessage({
         content: "Hey <@&111222333> can you review this?",
       });
@@ -177,7 +168,7 @@ describe("DefaultRoutingEngine", () => {
     });
 
     // Task 48: Unknown role ID returns null
-    it("returns null when role ID is not in config", () => {
+    it("returns null when mention_id is not in registry", () => {
       const message = makeThreadMessage({
         content: "Hey <@&999999999> unknown role",
       });
@@ -187,14 +178,13 @@ describe("DefaultRoutingEngine", () => {
       expect(result).toBeNull();
     });
 
-    it("returns null when role_mentions is not configured", () => {
-      const configNoMentions = defaultTestConfig();
-
+    it("returns null when registry is empty", () => {
+      const emptyEngine = new DefaultRoutingEngine(new FakeAgentRegistry([]), logger);
       const message = makeThreadMessage({
         content: "Hey <@&111222333> can you help?",
       });
 
-      const result = engine.resolveHumanMessage(message, configNoMentions);
+      const result = emptyEngine.resolveHumanMessage(message, config);
 
       expect(result).toBeNull();
     });
@@ -261,6 +251,17 @@ describe("DefaultRoutingEngine", () => {
 
       expect(decision.isTerminal).toBe(true);
       expect(decision.targetAgentId).toBeNull();
+    });
+
+    // EVT-OB-09: ROUTE_TO_AGENT logs info event
+    it("logs ROUTE_TO_AGENT info event (EVT-OB-09)", () => {
+      engine.decide(
+        { type: "ROUTE_TO_AGENT", agentId: "dev-agent", threadAction: "reply" },
+        config,
+      );
+
+      const infoEntries = logger.entries.filter((e) => e.level === "INFO");
+      expect(infoEntries.some((e) => e.message.includes("ROUTE_TO_AGENT → dev-agent"))).toBe(true);
     });
 
     // Task 53: Unknown agent

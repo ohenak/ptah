@@ -22,6 +22,7 @@ import type { InvocationGuard } from "./invocation-guard.js";
 import type { ThreadStateManager } from "./thread-state-manager.js";
 import type { WorktreeRegistry } from "./worktree-registry.js";
 import type { PdlcDispatcher } from "./pdlc/pdlc-dispatcher.js";
+import type { AgentRegistry } from "./agent-registry.js";
 import { type DispatchAction, type AgentDispatch, type FeatureConfig, type Discipline, PdlcPhase } from "./pdlc/phases.js";
 import { computeReviewerManifest } from "./pdlc/review-tracker.js";
 import { extractFeatureName, featureNameToSlug, featureBranchName } from "./feature-branch.js";
@@ -71,6 +72,9 @@ export interface OrchestratorDeps {
 
   // --- Phase 11: PDLC State Machine (new) ---
   pdlcDispatcher: PdlcDispatcher;
+
+  // --- Phase 7: Agent registry ---
+  agentRegistry: AgentRegistry;
 }
 
 export class DefaultOrchestrator implements Orchestrator {
@@ -94,6 +98,7 @@ export class DefaultOrchestrator implements Orchestrator {
   private readonly worktreeRegistry: WorktreeRegistry;
   private readonly shutdownSignal: AbortSignal;
   private readonly pdlcDispatcher: PdlcDispatcher;
+  private readonly agentRegistry: AgentRegistry;
   private pausedThreadIds = new Set<string>();
   private openQuestionsChannelId: string | null = null;
   private debugChannelId: string | null = null;
@@ -112,7 +117,7 @@ export class DefaultOrchestrator implements Orchestrator {
     this.skillInvoker = deps.skillInvoker;
     this.responsePoster = deps.responsePoster;
     this.threadQueue = deps.threadQueue;
-    this.logger = deps.logger;
+    this.logger = deps.logger.forComponent('orchestrator');
     this.config = deps.config;
     this.gitClient = deps.gitClient;
     this.artifactCommitter = deps.artifactCommitter;
@@ -126,6 +131,7 @@ export class DefaultOrchestrator implements Orchestrator {
     this.worktreeRegistry = deps.worktreeRegistry;
     this.shutdownSignal = deps.shutdownSignal;
     this.pdlcDispatcher = deps.pdlcDispatcher;
+    this.agentRegistry = deps.agentRegistry;
   }
 
   async handleMessage(message: ThreadMessage): Promise<void> {
@@ -318,6 +324,12 @@ export class DefaultOrchestrator implements Orchestrator {
       }
     }
 
+    // EVT-OB-01: message received
+    const truncatedContent = message.content.length > 100
+      ? `${message.content.slice(0, 100)}…`
+      : message.content;
+    this.logger.info(`message received: "${truncatedContent}" (thread: ${message.threadId})`);
+
     // Step 3: Resolve agent from human message
     const agentId = this.routingEngine.resolveHumanMessage(message, this.config);
 
@@ -331,6 +343,8 @@ export class DefaultOrchestrator implements Orchestrator {
       return;
     }
 
+    // EVT-OB-02: agent matched
+    this.logger.info(`mention resolved: ${message.threadId} → ${agentId}`);
     this.logger.info(`Message received from ${message.authorName} in thread "${message.threadName}" → agent: ${agentId}`);
 
     // Step 5: Phase guard — block non-reviewers from being invoked during review phases
@@ -669,11 +683,7 @@ export class DefaultOrchestrator implements Orchestrator {
         // Handle decision
         this.logger.info(`Routing decision: ${decision.signal.type}${decision.targetAgentId ? ` → ${decision.targetAgentId}` : ""}`);
         if (decision.isTerminal) {
-          await this.responsePoster.postResolutionNotificationEmbed({
-            threadId: triggerMessage.threadId,
-            signalType: 'LGTM',
-            agentDisplayName: formatAgentName(currentAgentId),
-          });
+          await this.archiveThreadOnResolution(triggerMessage.threadId, signal.type as "LGTM" | "TASK_COMPLETE", currentAgentId);
           return;
         }
 
@@ -770,6 +780,12 @@ export class DefaultOrchestrator implements Orchestrator {
     triggerMessage: ThreadMessage,
     agentId: string,
   ): Promise<void> {
+    // EVT-OB-08: ROUTE_TO_USER escalation
+    const truncatedQuestion = questionText.length > 100
+      ? `${questionText.slice(0, 100)}…`
+      : questionText;
+    this.logger.info(`ROUTE_TO_USER: ${agentId} in thread ${triggerMessage.threadId} — question: "${truncatedQuestion}"`);
+
     // 1. Append question to store (atomically assigns ID)
     const partialQuestion = {
       agentId,
@@ -856,12 +872,7 @@ export class DefaultOrchestrator implements Orchestrator {
         return "stop";
       }
       case "done": {
-        // Post resolution notification embed
-        await this.responsePoster.postResolutionNotificationEmbed({
-          threadId: triggerMessage.threadId,
-          signalType: 'LGTM',
-          agentDisplayName: formatAgentName(currentAgentId),
-        });
+        await this.archiveThreadOnResolution(triggerMessage.threadId, 'LGTM', currentAgentId);
         return "stop";
       }
       case "wait": {
@@ -870,6 +881,53 @@ export class DefaultOrchestrator implements Orchestrator {
       }
       default:
         return "stop";
+    }
+  }
+
+  private async archiveThreadOnResolution(
+    threadId: string,
+    signalType: "LGTM" | "TASK_COMPLETE",
+    agentId: string,
+  ): Promise<void> {
+    // Default to true if not configured
+    if (this.config.orchestrator.archive_on_resolution === false) {
+      this.logger.debug(`archive_on_resolution disabled — skipping archiving for thread ${threadId}`);
+      return;
+    }
+
+    // Idempotency: skip if already closed
+    const status = this.threadStateManager.getStatus(threadId);
+    if (status === "closed") {
+      this.logger.debug(`thread ${threadId} already archived — skipping`);
+      return;
+    }
+
+    // Post resolution notification embed
+    const displayName = this.agentRegistry.getAgentById(agentId)?.display_name ?? agentId;
+    try {
+      await this.responsePoster.postResolutionNotificationEmbed({
+        threadId,
+        signalType,
+        agentDisplayName: displayName,
+      });
+    } catch (embedError) {
+      this.logger.warn(`Failed to post resolution embed for thread ${threadId}: ${embedError instanceof Error ? embedError.message : String(embedError)}`);
+      // Fall back to plain message
+      try {
+        await this.discord.postPlainMessage(threadId, `✅ ${displayName} completed: ${signalType}`);
+      } catch {
+        // ignore fallback failure
+      }
+    }
+
+    // Archive the thread
+    try {
+      await this.discord.archiveThread(threadId);
+      this.threadStateManager.closeThread(threadId);
+      // EVT-OB-07: thread archived
+      this.logger.info(`thread archived: ${threadId} (signal: ${signalType})`);
+    } catch (archiveError) {
+      this.logger.warn(`Failed to archive thread ${threadId}: ${archiveError instanceof Error ? archiveError.message : String(archiveError)}`);
     }
   }
 
