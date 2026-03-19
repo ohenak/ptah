@@ -414,7 +414,6 @@ export class FakeDiscordClient implements DiscordClient {
   // Phase 3 state
   postedEmbeds: EmbedOptions[] = [];
   createdThreads: Array<{ channelId: string; name: string; initialMessage: EmbedOptions }> = [];
-  systemMessages: Array<{ threadId: string; content: string }> = [];
   postEmbedError: Error | null = null;
   createThreadError: Error | null = null;
   postEmbedFailOnCall: number | null = null;
@@ -491,16 +490,6 @@ export class FakeDiscordClient implements DiscordClient {
     const threadId = `fake-thread-${this.nextThreadId++}`;
     await this.postEmbed({ ...initialMessage, threadId });
     return threadId;
-  }
-
-  async postSystemMessage(threadId: string, content: string): Promise<void> {
-    this.systemMessages.push({ threadId, content });
-    await this.postEmbed({
-      threadId,
-      title: "System",
-      description: content,
-      colour: 0x9E9E9E,
-    });
   }
 
   // --- Phase 5 additions ---

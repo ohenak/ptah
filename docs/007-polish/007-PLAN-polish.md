@@ -84,8 +84,8 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| G1 | Add `archiveThread(threadId: string): Promise<void>` to `DiscordClient` interface; implement in `DiscordJsClient` using `ThreadChannel.setArchived(true)` | _(FakeDiscordClient is the unit-test double; DiscordJsClient is an integration boundary)_ | `src/services/discord.ts` | ⬚ Not Started |
-| G2 | Add `postPlainMessage(threadId: string, content: string): Promise<void>` to `DiscordClient` interface; implement in `DiscordJsClient` using `thread.send({ content })`; remove `postSystemMessage()` from interface and implementation (grep for stale call sites before removal) | _(FakeDiscordClient is the unit-test double)_ | `src/services/discord.ts` | ⬚ Not Started |
+| G1 | Add `archiveThread(threadId: string): Promise<void>` to `DiscordClient` interface; implement in `DiscordJsClient` using `ThreadChannel.setArchived(true)` | _(FakeDiscordClient is the unit-test double; DiscordJsClient is an integration boundary)_ | `src/services/discord.ts` | ✅ Done |
+| G2 | Add `postPlainMessage(threadId: string, content: string): Promise<void>` to `DiscordClient` interface; implement in `DiscordJsClient` using `thread.send({ content })`; remove `postSystemMessage()` from interface and implementation (grep for stale call sites before removal) | _(FakeDiscordClient is the unit-test double)_ | `src/services/discord.ts` | ✅ Done |
 
 ---
 

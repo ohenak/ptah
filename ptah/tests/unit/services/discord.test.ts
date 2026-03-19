@@ -586,26 +586,34 @@ describe("DiscordJsClient", () => {
     });
   });
 
-  // Task 124: postSystemMessage()
-  describe("postSystemMessage", () => {
-    it("posts Gray embed to thread", async () => {
-      const mockMessage = { id: "sys-msg-1" };
-      const mockChannel = {
-        id: "thread-1",
+  // Phase 7 G1: archiveThread()
+  describe("archiveThread", () => {
+    it("fetches the thread channel and calls setArchived(true)", async () => {
+      const mockThread = {
+        setArchived: vi.fn().mockResolvedValue(undefined),
+      };
+      (stubClient as any).channels.fetch.mockResolvedValue(mockThread);
+
+      await discordClient.archiveThread("thread-1");
+
+      expect((stubClient as any).channels.fetch).toHaveBeenCalledWith("thread-1");
+      expect(mockThread.setArchived).toHaveBeenCalledWith(true);
+    });
+  });
+
+  // Phase 7 G2: postPlainMessage()
+  describe("postPlainMessage", () => {
+    it("fetches the thread channel and sends a plain content message", async () => {
+      const mockMessage = { id: "plain-msg-1" };
+      const mockThread = {
         send: vi.fn().mockResolvedValue(mockMessage),
       };
-      (stubClient as any).channels.fetch.mockResolvedValue(mockChannel);
+      (stubClient as any).channels.fetch.mockResolvedValue(mockThread);
 
-      await discordClient.postSystemMessage("thread-1", "System initialized");
+      await discordClient.postPlainMessage("thread-1", "Hello world");
 
-      expect(mockChannel.send).toHaveBeenCalledWith({
-        embeds: [{
-          title: "System",
-          description: "System initialized",
-          color: 0x9E9E9E,
-          footer: undefined,
-        }],
-      });
+      expect((stubClient as any).channels.fetch).toHaveBeenCalledWith("thread-1");
+      expect(mockThread.send).toHaveBeenCalledWith({ content: "Hello world" });
     });
   });
 

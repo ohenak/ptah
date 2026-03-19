@@ -324,7 +324,7 @@ export class DefaultOrchestrator implements Orchestrator {
     // Step 4: If no agent, post system message
     if (!agentId) {
       this.logger.info(`No role mention found in message ${message.id} from ${message.authorName}`);
-      await this.discord.postSystemMessage(
+      await this.discord.postPlainMessage(
         message.threadId,
         "Please @mention a role to direct your message to a specific agent.",
       );
@@ -349,7 +349,7 @@ export class DefaultOrchestrator implements Orchestrator {
           this.logger.warn(
             `Blocked @mention → "${agentId}" during ${featureState.phase}: not in reviewer manifest [${[...allowedAgentIds].join(", ")}]`,
           );
-          await this.discord.postSystemMessage(
+          await this.discord.postPlainMessage(
             message.threadId,
             `**${formatAgentName(agentId)}** is not an authorized reviewer for this phase. Authorized reviewers: ${[...allowedAgentIds].map(formatAgentName).join(", ")}.`,
           );
@@ -803,7 +803,7 @@ export class DefaultOrchestrator implements Orchestrator {
     }
 
     // 3. Post pause embed to originating thread
-    await this.discord.postSystemMessage(
+    await this.discord.postPlainMessage(
       triggerMessage.threadId,
       `\u23F8 Paused \u2014 waiting for user answer to ${question.id}`,
     );

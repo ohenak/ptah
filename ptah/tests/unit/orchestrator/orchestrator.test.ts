@@ -209,9 +209,10 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(discord.systemMessages).toHaveLength(1);
-      expect(discord.systemMessages[0].threadId).toBe("thread-1");
-      expect(discord.systemMessages[0].content).toContain(
+      const plainCalls = discord.calls.filter((c) => c.method === "postPlainMessage");
+      expect(plainCalls).toHaveLength(1);
+      expect(plainCalls[0].threadId).toBe("thread-1");
+      expect((plainCalls[0] as { method: "postPlainMessage"; threadId: string; content: string }).content).toContain(
         "Please @mention a role to direct your message to a specific agent."
       );
 
@@ -370,11 +371,12 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Pause embed posted to originating thread
-      expect(discord.systemMessages).toHaveLength(1);
-      expect(discord.systemMessages[0].threadId).toBe("thread-1");
-      // The pause embed contains the question ID
-      expect(discord.systemMessages[0].content).toContain("Paused");
+      // Pause plain message posted to originating thread
+      const pausePlainCalls = discord.calls.filter((c) => c.method === "postPlainMessage");
+      expect(pausePlainCalls).toHaveLength(1);
+      expect(pausePlainCalls[0].threadId).toBe("thread-1");
+      // The pause message contains "Paused"
+      expect((pausePlainCalls[0] as { method: "postPlainMessage"; threadId: string; content: string }).content).toContain("Paused");
 
       // Question written to store
       const pending = await questionStore.readPendingQuestions();
@@ -1374,8 +1376,8 @@ describe("DefaultOrchestrator", () => {
       const pending = await questionStore.readPendingQuestions();
       expect(pending[0].discordMessageId).toBe("discord-msg-001");
 
-      // Pause embed posted to originating thread
-      expect(discord.systemMessages.some((m) => m.threadId === threadId)).toBe(true);
+      // Pause plain message posted to originating thread
+      expect(discord.calls.some((c) => c.method === "postPlainMessage" && c.threadId === threadId)).toBe(true);
 
       // Poller registered
       expect(questionPoller.registeredQuestions).toHaveLength(1);
