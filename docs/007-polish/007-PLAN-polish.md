@@ -48,7 +48,7 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | Add `forComponent(component: Component): Logger` to `Logger` interface; implement `ConsoleLogger.forComponent()` returning a new `ComponentLogger`; implement `ComponentLogger` formatting every call as `[ptah:{component}] LEVEL: message` (ERROR/WARN → `console.error`, INFO/DEBUG → `console.log`) | `tests/unit/logger.test.ts` | `src/services/logger.ts` | ⬚ Not Started |
+| C1 | Add `forComponent(component: Component): Logger` to `Logger` interface; implement `ConsoleLogger.forComponent()` returning a new `ComponentLogger`; implement `ComponentLogger` formatting every call as `[ptah:{component}] LEVEL: message` (ERROR/WARN → `console.error`, INFO/DEBUG → `console.log`) | `tests/unit/services/logger.test.ts` | `src/services/logger.ts` | ✅ Done |
 
 **Rationale:** All eight Orchestrator modules call `deps.logger.forComponent(...)` in their constructors. The Logger protocol must be updated and tested before any module integration work begins.
 

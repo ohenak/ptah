@@ -34,6 +34,8 @@ import type {
   RegisteredQuestion,
   ChannelMessage,
   LogEntry,
+  Component,
+  LogLevel,
   AgentEntry,
   RegisteredAgent,
 } from "../../src/types.js";
@@ -621,32 +623,53 @@ export class FakeConfigLoader implements ConfigLoader {
   }
 }
 
+class FakeLogStore {
+  entries: LogEntry[] = [];
+}
+
 export class FakeLogger implements Logger {
   messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
-  entries: LogEntry[] = [];
+  private store: FakeLogStore;
+  private _component: Component;
+
+  constructor(component: Component = 'orchestrator', store?: FakeLogStore) {
+    this._component = component;
+    this.store = store ?? new FakeLogStore();
+  }
+
+  get entries(): LogEntry[] { return this.store.entries; }
 
   log(entry: LogEntry): void {
-    this.entries.push(entry);
+    this.store.entries.push(entry);
   }
 
   info(message: string): void {
     this.messages.push({ level: "info", message });
-    this.entries.push({ component: "orchestrator", level: "INFO", message });
+    this.store.entries.push({ component: this._component, level: "INFO", message });
   }
 
   warn(message: string): void {
     this.messages.push({ level: "warn", message });
-    this.entries.push({ component: "orchestrator", level: "WARN", message });
+    this.store.entries.push({ component: this._component, level: "WARN", message });
   }
 
   error(message: string): void {
     this.messages.push({ level: "error", message });
-    this.entries.push({ component: "orchestrator", level: "ERROR", message });
+    this.store.entries.push({ component: this._component, level: "ERROR", message });
   }
 
   debug(message: string): void {
     this.messages.push({ level: "debug", message });
-    this.entries.push({ component: "orchestrator", level: "DEBUG", message });
+    this.store.entries.push({ component: this._component, level: "DEBUG", message });
+  }
+
+  forComponent(component: Component): FakeLogger {
+    return new FakeLogger(component, this.store);
+  }
+
+  /** Convenience: get all entries at a given level */
+  entriesAt(level: LogLevel): LogEntry[] {
+    return this.store.entries.filter(e => e.level === level);
   }
 }
 
