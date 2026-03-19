@@ -122,6 +122,7 @@ export interface PtahConfig {
     retry_base_delay_ms?: number;
     retry_max_delay_ms?: number;
     shutdown_timeout_ms?: number;
+    /** If true (default), archive the Discord thread after LGTM/TASK_COMPLETE resolution signal. */
     archive_on_resolution?: boolean;
   };
   git: {
