@@ -33,7 +33,7 @@ export class DefaultSkillInvoker implements SkillInvoker {
   constructor(skillClient: SkillClient, gitClient: GitClient, logger: Logger) {
     this.skillClient = skillClient;
     this.gitClient = gitClient;
-    this.logger = logger;
+    this.logger = logger.forComponent('skill-invoker');
   }
 
   async invoke(
@@ -45,6 +45,9 @@ export class DefaultSkillInvoker implements SkillInvoker {
     const startTime = Date.now();
 
     try {
+      // EVT-OB-03: Skill invocation start
+      this.logger.info(`skill invocation started: ${bundle.agentId} (timeout ${timeoutMs}ms)`);
+
       // Invoke skill with timeout
       const response = await this.invokeWithTimeout(
         bundle,
@@ -57,6 +60,9 @@ export class DefaultSkillInvoker implements SkillInvoker {
       const artifactChanges = this.filterArtifactChanges(allChanges);
 
       const durationMs = Date.now() - startTime;
+
+      // EVT-OB-04: Skill invocation complete
+      this.logger.info(`skill invocation complete: ${bundle.agentId} (${durationMs}ms)`);
 
       return {
         textResponse: response.textContent,

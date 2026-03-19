@@ -190,6 +190,7 @@ async function main(): Promise<void> {
         artifactCommitter,
         git,
         discord,
+        responsePoster,
         logger,
       );
 

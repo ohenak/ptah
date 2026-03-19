@@ -84,6 +84,7 @@ describe("Orchestrator routing loop integration", () => {
       artifactCommitter,
       gitClient,
       discord,
+      responsePoster,
       logger,
     );
     const worktreeRegistry = new InMemoryWorktreeRegistry();

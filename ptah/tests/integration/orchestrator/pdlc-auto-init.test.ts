@@ -77,6 +77,7 @@ function buildOrchestratorWithFakeDispatcher(overrides: {
     artifactCommitter,
     overrides.gitClient,
     overrides.discord,
+    responsePoster,
     overrides.logger,
   );
 
@@ -127,6 +128,7 @@ function buildOrchestratorWithRealDispatcher(overrides: {
     artifactCommitter,
     overrides.gitClient,
     overrides.discord,
+    responsePoster,
     overrides.logger,
   );
   const pdlcDispatcher = new DefaultPdlcDispatcher(overrides.stateStore, overrides.fs, overrides.logger, "docs");

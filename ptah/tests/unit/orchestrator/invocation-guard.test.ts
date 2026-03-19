@@ -5,6 +5,7 @@ import {
   FakeArtifactCommitter,
   FakeGitClient,
   FakeDiscordClient,
+  FakeResponsePoster,
   FakeLogger,
   defaultTestConfig,
   defaultCommitResult,
@@ -19,9 +20,10 @@ function makeGuard(
   artifactCommitter: FakeArtifactCommitter,
   git: FakeGitClient,
   discord: FakeDiscordClient,
+  responsePoster: FakeResponsePoster,
   logger: FakeLogger,
 ) {
-  return new DefaultInvocationGuard(skillInvoker, artifactCommitter, git, discord, logger);
+  return new DefaultInvocationGuard(skillInvoker, artifactCommitter, git, discord, responsePoster, logger);
 }
 
 function makeParams(overrides: Partial<InvocationGuardParams> = {}): InvocationGuardParams {
@@ -78,8 +80,9 @@ describe("DefaultInvocationGuard", () => {
     committer.results = [defaultCommitResult()];
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const result = await guard.invokeWithRetry(makeParams());
 
@@ -112,8 +115,9 @@ describe("DefaultInvocationGuard", () => {
     committer.results = [defaultCommitResult()];
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams());
     // Advance timers past the first backoff (100ms base * 2^0 = 100ms)
@@ -133,8 +137,9 @@ describe("DefaultInvocationGuard", () => {
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
     discord.channels.set("agent-debug", "debug-ch");
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams({
       config: {
@@ -154,8 +159,8 @@ describe("DefaultInvocationGuard", () => {
     const result = await resultPromise;
 
     expect(result.status).toBe("exhausted");
-    expect(discord.postedEmbeds).toHaveLength(1);
-    expect(discord.postedEmbeds[0].title).toBe("\u26D4 Agent Error");
+    expect(responsePoster.errorReportCalls).toHaveLength(1);
+    expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-01");
     expect(discord.debugChannelMessages.some(m => m.includes("retries exhausted"))).toBe(true);
   });
 
@@ -165,15 +170,16 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const result = await guard.invokeWithRetry(makeParams());
 
     expect(result.status).toBe("unrecoverable");
     expect(invoker.invokeCalls).toHaveLength(1); // no retries
-    expect(discord.postedEmbeds).toHaveLength(1);
-    expect(discord.postedEmbeds[0].colour).toBe(0xFF0000);
+    expect(responsePoster.errorReportCalls).toHaveLength(1);
+    expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-01");
   });
 
   it("403 error → unrecoverable immediately", async () => {
@@ -182,8 +188,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const result = await guard.invokeWithRetry(makeParams());
     expect(result.status).toBe("unrecoverable");
@@ -202,8 +209,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams({
       config: {
@@ -237,8 +245,9 @@ describe("DefaultInvocationGuard", () => {
     committer.results = [badCommit, goodCommit];
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams());
     await vi.advanceTimersByTimeAsync(200);
@@ -255,8 +264,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const params = makeParams({ shutdownSignal: controller.signal });
     const resultPromise = guard.invokeWithRetry(params);
@@ -289,13 +299,14 @@ describe("DefaultInvocationGuard", () => {
     committer.results = [conflictResult];
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const result = await guard.invokeWithRetry(makeParams());
 
     expect(result.status).toBe("unrecoverable");
-    expect(discord.postedEmbeds).toHaveLength(1);
+    expect(responsePoster.errorReportCalls).toHaveLength(1);
   });
 
   it("lock-timeout triggers retry", async () => {
@@ -312,8 +323,9 @@ describe("DefaultInvocationGuard", () => {
     committer.results = [lockTimeout, goodCommit];
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams());
     await vi.advanceTimersByTimeAsync(200);
@@ -339,8 +351,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     committer.results = [defaultCommitResult()];
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, logger);
+    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, responsePoster, logger);
 
     const resultPromise = guard.invokeWithRetry(makeParams());
     await vi.advanceTimersByTimeAsync(200);
@@ -374,8 +387,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     committer.results = [defaultCommitResult(), defaultCommitResult()];
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, logger);
+    const guard = makeGuard(invoker, committer, new FakeGitClient(), discord, responsePoster, logger);
 
     // First call: invoke #1 → no tag (malformedSignalCount=1), retry → invoke #2 → valid → success
     const firstPromise = guard.invokeWithRetry(makeParams());
@@ -398,8 +412,9 @@ describe("DefaultInvocationGuard", () => {
     const committer = new FakeArtifactCommitter();
     const git = new FakeGitClient();
     const discord = new FakeDiscordClient();
+    const responsePoster = new FakeResponsePoster();
     const logger = new FakeLogger();
-    const guard = makeGuard(invoker, committer, git, discord, logger);
+    const guard = makeGuard(invoker, committer, git, discord, responsePoster, logger);
 
     const params = makeParams({
       debugChannelId: null,
