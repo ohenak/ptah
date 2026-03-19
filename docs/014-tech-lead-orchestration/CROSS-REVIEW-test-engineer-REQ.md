@@ -4,15 +4,15 @@
 |-------|--------|
 | **Reviewer** | test-engineer |
 | **Document Reviewed** | [014-REQ-tech-lead-orchestration](014-REQ-tech-lead-orchestration.md) |
-| **Review Round** | 2 (re-review of v1.1) |
+| **Review Round** | 3 (re-review of v1.2) |
 | **Date** | 2026-03-19 |
-| **Recommendation** | **Approved with minor changes** |
+| **Recommendation** | **Needs revision** |
 
 ---
 
 ## Re-Review Summary
 
-This is a re-review of v1.1, which was revised in response to the Round 1 findings from both this reviewer and the backend engineer. All High and Medium findings from Round 1 have been resolved. One Low finding remains (requirements count discrepancy). Clarification questions Q-02 and Q-03 from Round 1 are deferred to TSPEC as implementation-level concerns.
+This is a re-review of v1.2, which was revised to correct the requirements summary counts (P0: 17, Phase 14 total: 27). The Round 2 Low finding (TE-F-01, count discrepancy) is confirmed resolved. A fresh review of v1.2 against testability criteria identifies one new Medium finding and three new Low findings.
 
 ---
 
@@ -20,70 +20,117 @@ This is a re-review of v1.1, which was revised in response to the Round 1 findin
 
 | Finding | Severity | Description | Status |
 |---------|----------|-------------|--------|
-| TE-F-01 | HIGH | Cycle detection missing | ✅ Resolved — REQ-PD-06 added with precise cycle reporting and sequential fallback |
-| TE-F-02 | HIGH | Batch formula imprecise ("maximum parallelism") | ✅ Resolved — REQ-PD-02 now states exact formula: `N = (longest path length from any root) + 1`; root phases → Batch 1 |
-| TE-F-03 | MEDIUM | Mixed-path phases had undefined skill assignment | ✅ Resolved — REQ-PD-03 now specifies backend-engineer default with warning and user override via REQ-TL-02 |
-| TE-F-04 | MEDIUM | REQ-TL-02 modification path was untestable | ✅ Resolved — allowed modifications narrowed to skill assignment change and batch grouping override; dependency violation handling specified; reject path emits `ROUTE_TO_USER` |
-| TE-F-05 | MEDIUM | Sub-batch test gate semantics undefined | ✅ Resolved — REQ-NF-14-01 specifies test gate fires once per topological batch (after all sub-batches in that layer are merged), not between sub-batches |
-| TE-F-06 | LOW | All-phases-done edge case unhandled | ✅ Resolved — REQ-PD-04 now specifies "nothing to do" notification and clean exit |
-| TE-F-07 | LOW | Agent timeout threshold and test failure classification unspecified | ✅ Resolved — REQ-BD-07 references `tech_lead_agent_timeout_ms` with 600,000 ms default; REQ-BD-05 now distinguishes test invocation failure from test assertion failure |
-| BE-F-01 | HIGH | Plan template format couldn't express fan-out | ✅ Resolved — REQ-NF-14-04 now specifies fan-out syntax support (`A → [B, C]`) and template update as in-scope deliverable |
-| BE-F-02 | HIGH | Partial-batch failure merge semantics undefined | ✅ Resolved — REQ-BD-07 now says no worktree branches are merged (neither failed nor successful sibling phases) when any phase in a batch fails |
-| BE-F-03 | HIGH | Worktree mechanism unspecified for SKILL.md agent | ✅ Resolved — A-03, C-03, and REQ-BD-03 now specify the Agent tool's `isolation: "worktree"` parameter as the sole mechanism; no direct TypeScript API calls required |
-| BE-F-04 | MEDIUM | pdlc-dispatcher integration path unspecified | ✅ Resolved — REQ-TL-01 now specifies `useTechLead: true` in `FeatureConfig` as the routing condition; REQ-NF-14-03 specifies backward-compatible fallback |
+| TE-F-01 (Round 2) | LOW | Requirements summary count off-by-one (P0: 18 listed, 17 IDs; total 28 listed, sum = 27) | ✅ Resolved — v1.2 corrects P0 count to 17 and Phase 14 total to 27 |
+
+All High and Medium findings from Rounds 1 and 2 (TE and BE) remain resolved. No regressions introduced in v1.2.
 
 ---
 
 ## New Findings
 
-### F-01 — LOW: Requirements summary count is off-by-one
+### F-01 — MEDIUM: REQ-NF-14-02 description contradicts acceptance criteria on failure-case worktree cleanup
 
-**Affected section:** Section 8 — Requirements Summary
+**Affected requirement:** REQ-NF-14-02 (Worktree cleanup)
 
-The P0 row in the priority table states a count of **18** but lists **17 requirement IDs**:
+The requirement description states:
 
-> REQ-PD-01, REQ-PD-02, REQ-PD-03, REQ-PD-04, REQ-PD-06, REQ-BD-01, REQ-BD-02, REQ-BD-03, REQ-BD-04, REQ-BD-05, REQ-BD-07, REQ-TL-01, REQ-TL-02, REQ-TL-03, REQ-TL-05, REQ-NF-14-03, REQ-NF-14-04 *(17 IDs)*
+> "After each agent completes (success or failure), its worktree must be cleaned up."
 
-The Phase 14 total count also states **28** but the sum across priority tiers is 17 + 9 + 1 = **27**.
+The second sentence then says:
 
-This is likely an artifact of REQ-PD-06 being added in v1.1 without updating the summary count. No requirement is actually missing — this is a cosmetic discrepancy.
+> "Worktrees from failed agents must be retained for debugging if the `retain_failed_worktrees` config flag is set."
 
-**Resolution needed:** Correct the P0 count from 18 to 17 and the total count from 28 to 27, OR verify that exactly one P0 requirement was omitted from the ID list and add it.
+These two sentences contradict each other: the first mandates cleanup on both success and failure, while the second mandates retention on failure (when configured). The acceptance criteria clarifies the intent correctly:
+
+> "Worktrees are removed after successful completion; retained on failure if configured."
+
+However, the contradictory description creates an ambiguity: when `retain_failed_worktrees` is **false** (or absent), should failed-agent worktrees be cleaned up or not? The description implies yes (cleanup on failure), the acceptance criteria implies yes (only "retained on failure if configured" — implying cleanup otherwise). But a test author reading only the description would need to reconcile the contradiction.
+
+Additionally, there is no specified behavior for the default value of `retain_failed_worktrees` when the config key is absent — the requirement should state whether absence means retain or clean up.
+
+**Resolution needed:**
+1. Fix the description to read: "After each agent completes successfully, its worktree must be cleaned up. After a failed agent completes, its worktree must be cleaned up unless `retain_failed_worktrees` is set to `true` in the Ptah configuration."
+2. Specify that `retain_failed_worktrees` defaults to `false` when absent (so cleanup is the default behavior on failure).
+
+---
+
+### F-02 — LOW: Plan file precondition failures have no specified behavior
+
+**Affected requirements:** REQ-TL-01, REQ-PD-01
+
+REQ-TL-01's GIVEN clause assumes the plan is in "Approved — Ready for Implementation" status and that the plan file path is valid. REQ-PD-01's GIVEN assumes the plan file has a "Task Dependency Notes" section. Neither requirement specifies what the tech lead must do if:
+
+- The plan file path provided to the tech lead does not exist or is not readable.
+- The plan document is found but its status is not "Approved — Ready for Implementation" (e.g., it is still in Draft).
+
+Without specified behavior for these precondition failures, a test author cannot write test cases for them, and an implementation author may handle them inconsistently (silent crash, unformatted error, etc.).
+
+**Resolution needed:** Add a brief precondition error clause to REQ-TL-01 (or a new REQ-TL-XX) specifying that if the plan file is missing, unreadable, or not in Approved status, the tech lead must report the specific error and emit `ROUTE_TO_USER` without attempting batch computation.
+
+---
+
+### F-03 — LOW: REQ-NF-14-01 sub-batch splitting order is unspecified
+
+**Affected requirement:** REQ-NF-14-01 (Agent concurrency limit)
+
+REQ-NF-14-01 specifies that a topological batch with more than 5 phases must be split into sub-batches of at most 5. The splitting algorithm and phase ordering within sub-batches are not defined. For a topological batch containing 7 phases (P1 through P7), it is not specified whether:
+
+- The split is [P1–P5], [P6–P7] or [P1–P4], [P5–P7] or another grouping.
+- Ordering within a sub-batch is by phase letter, by dependency depth, or arbitrary.
+
+This is not a correctness concern (all groupings that respect the 5-agent limit are valid), but it prevents a test author from writing a deterministic assertion on sub-batch grouping. Without a defined split strategy, tests can only assert the max-concurrency invariant, not the exact batches produced.
+
+**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should define a deterministic sub-batch splitting rule (e.g., "phases within a topological layer are grouped in document order, with each sub-batch containing at most 5 phases"). A REQ-level acknowledgment that the split order is implementation-defined would eliminate ambiguity for test authors.
+
+---
+
+### F-04 — LOW: REQ-TL-02 has no termination condition for repeated modification cycles
+
+**Affected requirement:** REQ-TL-02 (Present execution plan for confirmation)
+
+REQ-TL-02 specifies that after a user requests a modification, the tech lead updates the plan and "re-presents for confirmation." There is no specified limit on the number of modification cycles. In theory, a user could repeatedly request modifications, and the confirmation loop would never terminate without the user approving or explicitly rejecting.
+
+While this is unlikely to occur in practice, the absence of a termination condition makes it impossible to write a complete test case for the modification path: a test cannot assert "after N rounds of modification the system eventually exits" because N is unbounded.
+
+**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should document that the modification loop is unbounded by design and that termination requires an explicit Approve or Reject from the user. A brief note in REQ-TL-02 to this effect (e.g., "Modification cycles may repeat until the user approves or rejects") would make this explicit at the REQ level.
 
 ---
 
 ## Clarification Questions
 
-### Q-01 (Deferred from Round 1): Agent completion detection mechanism
+### Q-01 (Carried from Round 2): Agent completion detection mechanism
 
-Round 1 Q-02 asked how the tech lead detects that a dispatched agent has completed. This does not need to be specified at REQ level — the Agent tool is synchronous (a single tool call awaits the subagent's completion), so parallel dispatch is achieved by issuing multiple Agent tool calls in a single message turn. This is an implementation detail appropriate for the TSPEC author to confirm.
+Deferred to TSPEC (unchanged from Round 2). The Agent tool's synchronous dispatch pattern is an implementation concern.
 
-**No REQ change needed.** The TSPEC should document the fork/join dispatch pattern explicitly.
+### Q-02 (Carried from Round 2): Progress reporting output target
 
-### Q-02 (Deferred from Round 1): Progress reporting output target
-
-Round 1 Q-03 asked whether "coordination thread" in REQ-PR-01 through REQ-PR-04 means a Discord thread, a log file, or stdout. Given Ptah's architecture, this almost certainly means the Discord coordination channel where the orchestrator operates. This is acceptable to leave implicit at REQ level — the TSPEC should resolve which messaging abstraction the tech-lead skill uses for progress output.
-
-**No REQ change needed.** TSPEC should specify the output interface.
+Deferred to TSPEC (unchanged from Round 2). "Coordination thread" is expected to resolve to the Discord coordination channel in the TSPEC.
 
 ---
 
 ## Positive Observations
 
-All prior positive observations from Round 1 remain valid. Additional observations on v1.1 improvements:
+All positive observations from Rounds 1 and 2 remain valid. Additional observations on v1.2:
 
-- **REQ-PD-06** is well-formed: concrete trigger condition (cycle detected via topological sort deadlock), defined output (error-level warning naming involved phases), defined behavior (sequential fallback). It follows the same pattern as the well-praised REQ-PD-05 from Round 1.
-- **REQ-BD-07's** "no partial merges" rule is the correct design choice for test isolation: a failed batch leaves the feature branch in a clean state, making the expected test outcome deterministic (batch must be re-run in its entirety). This produces a clear, testable invariant.
-- **REQ-NF-14-01's** clarification on test gate timing (once per topological batch, not per sub-batch) correctly preserves the topological correctness guarantee. The trade-off between regression detection speed and test run count is explicitly acknowledged, which is the right level of detail for a REQ.
-- **The `useTechLead` feature flag** (REQ-TL-01, REQ-NF-14-03) is an excellent testability affordance: the flag cleanly separates the new code path from the existing dispatcher logic, making regression testing of the existing PDLC flow straightforward without any mocking of the tech-lead infrastructure.
-- **REQ-BD-05's** two-failure-mode distinction (invocation failure vs. assertion failure) directly enables separate test cases with different expected outputs and recovery steps.
+- **Count correction (v1.2)** is clean and precise. Both the P0 row and the Phase 14 total now match the enumerated IDs. The change log entry is accurate and appropriately credits the TE cross-review as the source.
+- **REQ-BD-07's "no partial merges" invariant** remains the strongest testable property in the document. It yields a clean test case: given a batch with phases [B, C, D] where D fails, after the tech lead halts, the feature branch must be identical to its state before the batch began. This is assertable via `git diff`.
+- **REQ-PD-06 and REQ-PD-05 together** cover the two main DAG-parsing failure modes (cycle and malformed input) with consistent behavior (sequential fallback + warning). The combination produces a complete, testable defensive envelope for the dependency analysis component.
+- **REQ-BD-05's two-failure-mode distinction** (invocation failure vs. assertion failure) is well-suited to test case decomposition. Each mode maps to a distinct mock scenario: a mock that exits non-zero before running tests (invocation failure) and a mock that runs but produces failing test output (assertion failure). The requirement directly drives the test strategy without ambiguity.
+- **`useTechLead` feature flag** continues to be an excellent testability affordance for regression-testing the existing PDLC flow.
 
 ---
 
 ## Recommendation
 
-**Approved with minor changes.**
+**Needs revision.**
 
-All High and Medium findings from Round 1 (both test-engineer and backend-engineer reviews) have been addressed. The single remaining Low finding (F-01, requirements count off-by-one) is cosmetic and non-blocking for TSPEC authoring. The PM may correct the count in a follow-up edit without re-review.
+One Medium finding (F-01, REQ-NF-14-02 description contradicts acceptance criteria on failure-case worktree cleanup, with an undefined default for `retain_failed_worktrees`) requires correction before TSPEC authoring. Three Low findings are identified; two are deferred to TSPEC and one (F-02, plan file precondition failures) is recommended for a brief REQ-level clause.
 
-This REQ is ready to proceed to TSPEC authoring.
+| Finding | Severity | Status |
+|---------|----------|--------|
+| F-01 | MEDIUM | REQ-NF-14-02 description contradicts acceptance criteria; `retain_failed_worktrees` default unspecified |
+| F-02 | LOW | Plan file precondition failures (missing file, wrong status) have no specified behavior |
+| F-03 | LOW | Sub-batch splitting order unspecified (acceptable to defer to TSPEC) |
+| F-04 | LOW | REQ-TL-02 modification loop has no termination condition documented (acceptable to defer to TSPEC) |
+
+**Required before re-approval:** F-01 must be resolved. F-02 is recommended but the PM may choose to defer it to TSPEC with an explicit acknowledgment.
