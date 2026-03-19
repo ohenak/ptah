@@ -84,6 +84,7 @@ describe("NodeConfigLoader integration", () => {
         ...expected.agents,
         role_mentions: {},
       },
+      agentEntries: [],
       orchestrator: {
         ...expected.orchestrator,
         token_budget: {

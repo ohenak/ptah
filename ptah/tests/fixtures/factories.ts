@@ -575,6 +575,7 @@ export function defaultTestConfig(): PtahConfig {
       },
       role_mentions: {},
     },
+    agentEntries: [],
     discord: {
       bot_token_env: "DISCORD_BOT_TOKEN",
       server_id: "test-server-123",

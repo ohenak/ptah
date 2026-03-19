@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { NodeConfigLoader, isNodeError } from "../../../src/config/loader.js";
-import { FakeFileSystem, defaultTestConfig } from "../../fixtures/factories.js";
+import { FakeFileSystem, defaultTestConfig, makeAgentEntry } from "../../fixtures/factories.js";
 
 describe("NodeConfigLoader", () => {
   let fs: FakeFileSystem;
@@ -353,6 +353,88 @@ describe("NodeConfigLoader", () => {
       expect(result.git.auto_commit).toBe(true);
       expect(result.docs.root).toBe("docs");
       expect(result.docs.templates).toBe("./ptah/templates");
+    });
+  });
+
+  // Phase H1: agentEntries field — optional AgentEntry[] with default []
+  describe("agentEntries field", () => {
+    it("defaults agentEntries to [] when not present in config", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agentEntries;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toEqual([]);
+    });
+
+    it("parses a valid agentEntries array when present", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        {
+          id: "pm-agent",
+          skill_path: "./ptah/skills/pm-agent.md",
+          log_file: "./ptah/logs/pm-agent.log",
+          mention_id: "123456789012345678",
+          display_name: "PM Agent",
+        },
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(1);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+      expect(result.agentEntries[0].skill_path).toBe("./ptah/skills/pm-agent.md");
+      expect(result.agentEntries[0].log_file).toBe("./ptah/logs/pm-agent.log");
+      expect(result.agentEntries[0].mention_id).toBe("123456789012345678");
+      expect(result.agentEntries[0].display_name).toBe("PM Agent");
+    });
+
+    it("parses multiple agent entries", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+        makeAgentEntry({ id: "dev-agent", mention_id: "222222222222222222" }),
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(2);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+      expect(result.agentEntries[1].id).toBe("dev-agent");
+    });
+
+    it("preserves optional display_name when provided", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        makeAgentEntry({ id: "pm-agent", display_name: "Product Manager" }),
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries[0].display_name).toBe("Product Manager");
+    });
+
+    it("accepts agentEntries as empty array explicitly", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toEqual([]);
+    });
+
+    it("parsed config always has agentEntries field even when not in JSON", async () => {
+      const config = defaultTestConfig();
+      fs.addExisting("ptah.config.json", JSON.stringify(config));
+
+      const result = await loader.load();
+      expect("agentEntries" in result).toBe(true);
+      expect(Array.isArray(result.agentEntries)).toBe(true);
     });
   });
 });

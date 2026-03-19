@@ -51,6 +51,7 @@ export interface PtahConfig {
     version: string;
   };
   agents: AgentConfig;
+  agentEntries: AgentEntry[];
   discord: DiscordConfig;
   orchestrator: {
     max_turns_per_thread: number;

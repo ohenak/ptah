@@ -132,6 +132,11 @@ export class NodeConfigLoader implements ConfigLoader {
       agents.role_mentions = {};
     }
 
+    // Default agentEntries to empty array (optional in config file, always present in parsed result)
+    if (!Array.isArray(config.agentEntries)) {
+      config.agentEntries = [];
+    }
+
     // Default orchestrator.token_budget
     const orchestrator = config.orchestrator as Record<string, unknown> | undefined;
     if (orchestrator && orchestrator.token_budget === undefined) {
