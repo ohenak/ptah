@@ -67,7 +67,7 @@ The plan is structured in twelve phases following strict TDD order: test infrast
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E1 | Implement `buildErrorMessage(type, context): ErrorMessage` as a pure function covering all five error types (ERR-RP-01..05) with correct `title`, `whatHappened`, `whatToDo` templates; assert no `Error` objects, stack traces, or raw exception text are accepted or emitted | `tests/unit/error-messages.test.ts` | `src/orchestrator/error-messages.ts` | ⬚ Not Started |
+| E1 | Implement `buildErrorMessage(type, context): ErrorMessage` as a pure function covering all five error types (ERR-RP-01..05) with correct `title`, `whatHappened`, `whatToDo` templates; assert no `Error` objects, stack traces, or raw exception text are accepted or emitted | `tests/unit/error-messages.test.ts` | `src/orchestrator/error-messages.ts` | ✅ Done |
 
 ---
 
