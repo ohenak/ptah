@@ -169,4 +169,56 @@ describe("FakeDiscordClient", () => {
       await expect(fake.replyToMessage("ch-001", "msg-abc", "Hi")).rejects.toThrow("reply failed");
     });
   });
+
+  describe("Phase 7 methods", () => {
+    describe("archiveThread", () => {
+      it("records call to calls array as { method, threadId }", async () => {
+        const fake = new FakeDiscordClient();
+        await fake.archiveThread("thread-xyz");
+        expect(fake.calls).toContainEqual({ method: "archiveThread", threadId: "thread-xyz" });
+      });
+
+      it("throws archiveThreadError when set", async () => {
+        const fake = new FakeDiscordClient();
+        fake.archiveThreadError = new Error("archive failed");
+        await expect(fake.archiveThread("thread-xyz")).rejects.toThrow("archive failed");
+      });
+
+      it("records multiple archiveThread calls in order", async () => {
+        const fake = new FakeDiscordClient();
+        await fake.archiveThread("thread-1");
+        await fake.archiveThread("thread-2");
+        expect(fake.calls).toEqual([
+          { method: "archiveThread", threadId: "thread-1" },
+          { method: "archiveThread", threadId: "thread-2" },
+        ]);
+      });
+    });
+
+    describe("postPlainMessage", () => {
+      it("records call to calls array as { method, threadId, content }", async () => {
+        const fake = new FakeDiscordClient();
+        await fake.postPlainMessage("thread-abc", "Hello plain");
+        expect(fake.calls).toContainEqual({
+          method: "postPlainMessage",
+          threadId: "thread-abc",
+          content: "Hello plain",
+        });
+      });
+
+      it("throws postPlainMessageError when set", async () => {
+        const fake = new FakeDiscordClient();
+        fake.postPlainMessageError = new Error("post failed");
+        await expect(fake.postPlainMessage("thread-abc", "Hi")).rejects.toThrow("post failed");
+      });
+
+      it("records mixed archiveThread and postPlainMessage calls in order", async () => {
+        const fake = new FakeDiscordClient();
+        await fake.postPlainMessage("t-1", "msg");
+        await fake.archiveThread("t-1");
+        expect(fake.calls[0]).toEqual({ method: "postPlainMessage", threadId: "t-1", content: "msg" });
+        expect(fake.calls[1]).toEqual({ method: "archiveThread", threadId: "t-1" });
+      });
+    });
+  });
 });

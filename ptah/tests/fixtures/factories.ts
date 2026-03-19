@@ -33,6 +33,9 @@ import type {
   PendingQuestion,
   RegisteredQuestion,
   ChannelMessage,
+  LogEntry,
+  AgentEntry,
+  RegisteredAgent,
 } from "../../src/types.js";
 import type { QuestionStore } from "../../src/orchestrator/question-store.js";
 import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
@@ -510,6 +513,24 @@ export class FakeDiscordClient implements DiscordClient {
   replyToMessageError: Error | null = null;
   private channelMessageHandlers = new Map<string, (msg: ChannelMessage) => Promise<void>>();
 
+  // --- Phase 7 additions ---
+  calls: Array<
+    | { method: "archiveThread"; threadId: string }
+    | { method: "postPlainMessage"; threadId: string; content: string }
+  > = [];
+  archiveThreadError: Error | null = null;
+  postPlainMessageError: Error | null = null;
+
+  async archiveThread(threadId: string): Promise<void> {
+    this.calls.push({ method: "archiveThread", threadId });
+    if (this.archiveThreadError) throw this.archiveThreadError;
+  }
+
+  async postPlainMessage(threadId: string, content: string): Promise<void> {
+    this.calls.push({ method: "postPlainMessage", threadId, content });
+    if (this.postPlainMessageError) throw this.postPlainMessageError;
+  }
+
   // --- Phase 6 additions ---
   debugChannelMessages: string[] = [];
 
@@ -613,21 +634,30 @@ export class FakeConfigLoader implements ConfigLoader {
 
 export class FakeLogger implements Logger {
   messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
+  entries: LogEntry[] = [];
+
+  log(entry: LogEntry): void {
+    this.entries.push(entry);
+  }
 
   info(message: string): void {
     this.messages.push({ level: "info", message });
+    this.entries.push({ component: "orchestrator", level: "INFO", message });
   }
 
   warn(message: string): void {
     this.messages.push({ level: "warn", message });
+    this.entries.push({ component: "orchestrator", level: "WARN", message });
   }
 
   error(message: string): void {
     this.messages.push({ level: "error", message });
+    this.entries.push({ component: "orchestrator", level: "ERROR", message });
   }
 
   debug(message: string): void {
     this.messages.push({ level: "debug", message });
+    this.entries.push({ component: "orchestrator", level: "DEBUG", message });
   }
 }
 
@@ -1296,4 +1326,28 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
   async processResumeFromBound(_featureSlug: string): Promise<DispatchAction> {
     return this.resumeResult;
   }
+}
+
+// --- Phase 7: Agent factory functions ---
+
+export function makeAgentEntry(overrides: Partial<AgentEntry> = {}): AgentEntry {
+  return {
+    id: "test-agent",
+    skill_path: "./ptah/skills/test-agent.md",
+    log_file: "./ptah/logs/test-agent.log",
+    mention_id: "111111111111111111",
+    display_name: "Test Agent",
+    ...overrides,
+  };
+}
+
+export function makeRegisteredAgent(overrides: Partial<RegisteredAgent> = {}): RegisteredAgent {
+  return {
+    id: "test-agent",
+    skill_path: "./ptah/skills/test-agent.md",
+    log_file: "./ptah/logs/test-agent.log",
+    mention_id: "111111111111111111",
+    display_name: "Test Agent",
+    ...overrides,
+  };
 }
