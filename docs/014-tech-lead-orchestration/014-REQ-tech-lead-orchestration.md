@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | 014-REQ-tech-lead-orchestration |
 | **Parent Document** | [001-REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.3 |
+| **Version** | 1.4 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -148,6 +148,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 | REQ-NF-14-02 | Worktree cleanup | After each agent completes successfully, its worktree must be cleaned up. After a failed agent completes, its worktree must be cleaned up unless `retain_failed_worktrees` is set to `true` in the Ptah configuration. The `retain_failed_worktrees` flag defaults to `false` when absent — cleanup is the default behavior on failure. | Worktrees are removed after successful completion; worktrees are removed after failure unless `retain_failed_worktrees: true` is set in configuration (default: `false`); when retention is enabled, failed worktrees are preserved for debugging | P1 | 14 |
 | REQ-NF-14-03 | Backward compatibility | The existing sequential implementation path (direct dispatch to backend-engineer or frontend-engineer) must remain functional. Tech-lead orchestration is engaged only when the feature's `FeatureConfig` has `useTechLead: true`. When this field is absent or false, the orchestrator dispatches to `eng` or `fe` per the existing `discipline`-based logic in `pdlc-dispatcher.ts` without modification. The `FORK_JOIN_PHASES` classification for fullstack IMPLEMENTATION continues to apply when `useTechLead` is false. When `useTechLead === true`, the `FORK_JOIN_PHASES` fork-join behavior for IMPLEMENTATION is suppressed regardless of `discipline`, and a single tech-lead dispatch is issued instead. | Existing PDLC flow works unchanged when `useTechLead` is absent or false; when `useTechLead === true`, a single tech-lead dispatch is issued for fullstack features and fork-join is not triggered | P0 | 14 |
 | REQ-NF-14-04 | Plan format compatibility | The tech lead must work with execution plans following the existing template format (`docs/templates/backend-plans-template.md`). The "Task Dependency Notes" section is extended to support fan-out syntax (`A → [B, C]`) in addition to the existing linear chain syntax (`A → B → C`). The plan template will be updated as part of this feature to document the extended fan-out syntax. Plans that use only linear-chain syntax continue to work and will produce single-phase batches (effective sequential execution), which is valid behavior. | The tech lead successfully parses plans using both linear-chain and fan-out dependency syntax; linear-chain plans produce single-phase batches; the updated template documents both syntax forms | P0 | 14 |
+| REQ-NF-14-05 | Pre-flight infrastructure check before parallel dispatch | Before dispatching any parallel batch, the tech lead must verify that two infrastructure prerequisites are in place: (1) the persistent feature branch (`feat-{feature-name}`) exists on the remote repository (not just locally), as this is the base from which agent worktrees are created; (2) the `ArtifactCommitter` service (Phase 010) supports the two-tier branch merge operation needed to merge worktree branches into the feature branch. If either check fails, the tech lead must post a notification in the coordination thread explaining the failure, fall back to sequential execution (one phase per batch, in document order), and proceed without re-presenting the plan for approval. This check runs only when the batch plan includes at least one batch with more than one phase; it is skipped entirely in sequential fallback mode. | WHO: As the Ptah orchestrator GIVEN: The batch plan includes at least one batch with more than one phase AND the user has approved the execution plan WHEN: The tech lead runs pre-flight checks THEN: (a) if both checks pass, parallel execution proceeds as planned; (b) if the feature branch is absent from the remote, the tech lead posts a notification identifying the failed check and falls back to sequential execution without re-prompting; (c) if ArtifactCommitter two-tier merge support is unavailable, the tech lead posts a notification and falls back to sequential execution without re-prompting | P1 | 14 |
 
 ---
 
@@ -170,14 +171,14 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 | Priority | Count | IDs |
 |----------|-------|-----|
 | P0 | 17 | REQ-PD-01, REQ-PD-02, REQ-PD-03, REQ-PD-04, REQ-PD-06, REQ-BD-01, REQ-BD-02, REQ-BD-03, REQ-BD-04, REQ-BD-05, REQ-BD-07, REQ-TL-01, REQ-TL-02, REQ-TL-03, REQ-TL-05, REQ-NF-14-03, REQ-NF-14-04 |
-| P1 | 9 | REQ-PD-05, REQ-BD-06, REQ-BD-08, REQ-TL-04, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-NF-14-01, REQ-NF-14-02 |
+| P1 | 10 | REQ-PD-05, REQ-BD-06, REQ-BD-08, REQ-TL-04, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-NF-14-01, REQ-NF-14-02, REQ-NF-14-05 |
 | P2 | 1 | REQ-PR-04 |
 
 ### By Phase
 
 | Phase | Count | IDs |
 |-------|-------|-----|
-| Phase 14 | 27 | All requirements in this document |
+| Phase 14 | 28 | All requirements in this document |
 
 ---
 
@@ -196,6 +197,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 - Merge conflict detection and reporting
 - Integration with existing PDLC state machine (IMPLEMENTATION phase via `useTechLead` config flag)
 - Backward-compatible fallback when `useTechLead` is absent or false
+- Pre-flight infrastructure check (feature branch on remote, ArtifactCommitter two-tier merge support) with sequential fallback on failure
 - Cycle detection in dependency graphs with fallback to sequential execution
 - Serialized plan status updates to prevent concurrent write corruption
 
@@ -230,6 +232,7 @@ This document defines the requirements for Phase 14 — Tech Lead Orchestration.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-18 | Product Manager | Initial requirements document |
+| 1.4 | 2026-03-19 | Product Manager | Added REQ-NF-14-05 (Pre-flight infrastructure check) to back the FSPEC-TL-02 linked requirement reference that was present in the FSPEC but had no corresponding REQ entry. Updated requirements summary: P1 count 9→10, Phase 14 total 27→28. Updated scope boundary to include pre-flight infrastructure check. |
 | 1.3 | 2026-03-19 | Product Manager | Addressed blocking Medium findings from BE Round 3 / TE Round 4: (1) REQ-NF-14-02 — rewrote description to remove contradiction with acceptance criteria; added explicit default value for `retain_failed_worktrees` (defaults to `false`); updated acceptance criteria for consistency. (2) REQ-NF-14-03 — added explicit sentence suppressing `FORK_JOIN_PHASES` fork-join behavior when `useTechLead === true`. Also addressed Low findings: added plan file precondition (missing/unreadable plan) to REQ-PD-01; deferred test suite invocation timeout to TSPEC via note in REQ-BD-05. |
 | 1.2 | 2026-03-19 | Product Manager | Corrected requirements summary counts: P0 count 18 → 17, Phase 14 total 28 → 27 (cosmetic fix per TE cross-review F-01) |
 | 1.1 | 2026-03-19 | Product Manager | Addressed cross-review feedback: clarified plan dependency format (fan-out syntax support + template update); specified partial batch failure merge semantics (no partial merges); clarified worktree mechanism (Agent tool `isolation: "worktree"`); added `useTechLead` config field for dispatcher routing; added REQ-PD-06 for cycle detection; made REQ-PD-02 batch formula precise; added mixed-path skill conflict resolution to REQ-PD-03; narrowed REQ-TL-02 modification/rejection protocol; specified sub-batch test gate semantics in REQ-NF-14-01; added all-phases-done edge case to REQ-PD-04; added serialization note to REQ-BD-08; distinguished test invocation vs. assertion failure in REQ-BD-05; added agent timeout config reference to REQ-BD-07; updated R-05 to Low likelihood |
