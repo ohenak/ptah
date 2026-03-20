@@ -1,43 +1,14 @@
-import type { Component } from "../types.js";
+import type { Component } from '../types.js';
+
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 export interface Logger {
   info(message: string): void;
   warn(message: string): void;
   error(message: string): void;
   debug(message: string): void;
+  /** Returns a new Logger that prefixes every line with [ptah:{component}] {LEVEL}: */
   forComponent(component: Component): Logger;
-}
-
-/**
- * ComponentLogger delegates writes to a root ConsoleLogger, prefixing
- * each message with `[ptah:{component}] {LEVEL}: `. Used internally
- * by ConsoleLogger.forComponent().
- */
-export class ComponentLogger implements Logger {
-  constructor(
-    private readonly component: Component,
-    private readonly root: ConsoleLogger,
-  ) {}
-
-  info(message: string): void {
-    this.root.info(`[ptah:${this.component}] INFO: ${message}`);
-  }
-
-  warn(message: string): void {
-    this.root.warn(`[ptah:${this.component}] WARN: ${message}`);
-  }
-
-  error(message: string): void {
-    this.root.error(`[ptah:${this.component}] ERROR: ${message}`);
-  }
-
-  debug(message: string): void {
-    this.root.debug(`[ptah:${this.component}] DEBUG: ${message}`);
-  }
-
-  forComponent(component: Component): Logger {
-    return new ComponentLogger(component, this.root);
-  }
 }
 
 export class ConsoleLogger implements Logger {
@@ -58,6 +29,28 @@ export class ConsoleLogger implements Logger {
   }
 
   forComponent(component: Component): Logger {
-    return new ComponentLogger(component, this);
+    return new ComponentLogger(component);
+  }
+}
+
+class ComponentLogger implements Logger {
+  constructor(private readonly component: Component) {}
+
+  private emit(level: LogLevel, message: string): void {
+    const line = `[ptah:${this.component}] ${level}: ${message}`;
+    if (level === 'ERROR' || level === 'WARN') {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+  }
+
+  info(message: string): void  { this.emit('INFO', message); }
+  warn(message: string): void  { this.emit('WARN', message); }
+  error(message: string): void { this.emit('ERROR', message); }
+  debug(message: string): void { this.emit('DEBUG', message); }
+
+  forComponent(component: Component): Logger {
+    return new ComponentLogger(component);
   }
 }

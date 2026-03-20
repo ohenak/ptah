@@ -18,6 +18,8 @@ import {
   FakeThreadStateManager,
   FakeWorktreeRegistry,
   FakePdlcDispatcher,
+  FakeAgentRegistry,
+  makeRegisteredAgent,
   createThreadMessage,
   defaultTestConfig,
   defaultCommitResult,
@@ -90,6 +92,10 @@ describe("Orchestrator dispatch — Issue #30", () => {
       worktreeRegistry: new FakeWorktreeRegistry(),
       pdlcDispatcher,
       shutdownSignal: new AbortController().signal,
+      agentRegistry: new FakeAgentRegistry([
+        makeRegisteredAgent({ id: "pm", mention_id: "111222333", display_name: "PM" }),
+        makeRegisteredAgent({ id: "eng", mention_id: "444555666", display_name: "Engineer" }),
+      ]),
     });
   });
 
@@ -136,9 +142,9 @@ describe("Orchestrator dispatch — Issue #30", () => {
     const origGetFeatureState = pdlcDispatcher.getFeatureState.bind(pdlcDispatcher);
     pdlcDispatcher.getFeatureState = async (slug: string) => {
       featureStateCallCount++;
-      // First call: PLAN_REVIEW (triggers processReviewCompletion)
+      // Calls 1-2: PLAN_REVIEW (phase guard in handleMessage + LGTM handler)
       // Subsequent calls: PLAN_CREATION (triggers processAgentCompletion → done)
-      if (featureStateCallCount <= 1) {
+      if (featureStateCallCount <= 2) {
         return reviewState;
       }
       return creationState;

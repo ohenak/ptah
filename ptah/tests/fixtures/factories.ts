@@ -29,15 +29,15 @@ import type {
   MergeResult,
   CommitParams,
   CommitResult,
-  LogEntry,
+  ArtifactLogEntry,
   PendingQuestion,
   RegisteredQuestion,
   ChannelMessage,
-  AgentEntry,
-  RegisteredAgent,
+  LogEntry,
   Component,
   LogLevel,
-  ObsLogEntry,
+  AgentEntry,
+  RegisteredAgent,
   UserFacingErrorType,
   UserFacingErrorContext,
 } from "../../src/types.js";
@@ -47,6 +47,7 @@ import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-co
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
 import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
 import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
+import type { AgentRegistry } from "../../src/orchestrator/agent-registry.js";
 import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
 import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
 import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction, ContextDocumentSet, TaskType } from "../../src/orchestrator/pdlc/phases.js";
@@ -424,7 +425,6 @@ export class FakeDiscordClient implements DiscordClient {
   // Phase 3 state
   postedEmbeds: EmbedOptions[] = [];
   createdThreads: Array<{ channelId: string; name: string; initialMessage: EmbedOptions }> = [];
-  systemMessages: Array<{ threadId: string; content: string }> = [];
   postEmbedError: Error | null = null;
   createThreadError: Error | null = null;
   postEmbedFailOnCall: number | null = null;
@@ -503,16 +503,6 @@ export class FakeDiscordClient implements DiscordClient {
     return threadId;
   }
 
-  async postSystemMessage(threadId: string, content: string): Promise<void> {
-    this.systemMessages.push({ threadId, content });
-    await this.postEmbed({
-      threadId,
-      title: "System",
-      description: content,
-      colour: 0x9E9E9E,
-    });
-  }
-
   // --- Phase 5 additions ---
   postChannelMessageCalls: { channelId: string; content: string }[] = [];
   postChannelMessageResponse = "msg-001";
@@ -527,6 +517,10 @@ export class FakeDiscordClient implements DiscordClient {
   debugChannelMessages: string[] = [];
 
   // --- Phase 7 additions ---
+  calls: Array<
+    | { method: "archiveThread"; threadId: string }
+    | { method: "postPlainMessage"; threadId: string; content: string }
+  > = [];
   archiveThreadCalls: string[] = [];
   archiveThreadError: Error | null = null;
   postPlainMessageCalls: Array<{ threadId: string; content: string }> = [];
@@ -559,11 +553,13 @@ export class FakeDiscordClient implements DiscordClient {
   }
 
   async archiveThread(threadId: string): Promise<void> {
+    this.calls.push({ method: "archiveThread", threadId });
     if (this.archiveThreadError) throw this.archiveThreadError;
     this.archiveThreadCalls.push(threadId);
   }
 
   async postPlainMessage(threadId: string, content: string): Promise<void> {
+    this.calls.push({ method: "postPlainMessage", threadId, content });
     if (this.postPlainMessageError) throw this.postPlainMessageError;
     this.postPlainMessageCalls.push({ threadId, content });
   }
@@ -592,6 +588,7 @@ export function defaultTestConfig(): PtahConfig {
       },
       role_mentions: {},
     },
+    agentEntries: [],
     discord: {
       bot_token_env: "DISCORD_BOT_TOKEN",
       server_id: "test-server-123",
@@ -641,68 +638,50 @@ export class FakeConfigLoader implements ConfigLoader {
 }
 
 class FakeLogStore {
-  entries: ObsLogEntry[] = [];
-}
-
-class FakeComponentLogger implements Logger {
-  constructor(
-    private readonly component: Component,
-    private readonly store: FakeLogStore,
-  ) {}
-
-  info(message: string): void {
-    this.store.entries.push({ component: this.component, level: 'INFO', message });
-  }
-  warn(message: string): void {
-    this.store.entries.push({ component: this.component, level: 'WARN', message });
-  }
-  error(message: string): void {
-    this.store.entries.push({ component: this.component, level: 'ERROR', message });
-  }
-  debug(message: string): void {
-    this.store.entries.push({ component: this.component, level: 'DEBUG', message });
-  }
-  forComponent(component: Component): Logger {
-    return new FakeComponentLogger(component, this.store);
-  }
+  entries: LogEntry[] = [];
 }
 
 export class FakeLogger implements Logger {
-  private _store: FakeLogStore;
+  private store: FakeLogStore;
   private _component: Component;
 
   constructor(component: Component = 'orchestrator', store?: FakeLogStore) {
     this._component = component;
-    this._store = store ?? new FakeLogStore();
+    this.store = store ?? new FakeLogStore();
   }
 
-  get entries(): ObsLogEntry[] { return this._store.entries; }
+  get entries(): LogEntry[] { return this.store.entries; }
   get messages(): Array<{ level: string; message: string }> {
-    return this._store.entries.map(e => ({
+    return this.store.entries.map(e => ({
       level: e.level.toLowerCase(),
       message: e.message,
     }));
   }
 
+  log(entry: LogEntry): void {
+    this.store.entries.push(entry);
+  }
+
   info(message: string): void {
-    this._store.entries.push({ component: this._component, level: 'INFO', message });
+    this.store.entries.push({ component: this._component, level: "INFO", message });
   }
   warn(message: string): void {
-    this._store.entries.push({ component: this._component, level: 'WARN', message });
+    this.store.entries.push({ component: this._component, level: "WARN", message });
   }
   error(message: string): void {
-    this._store.entries.push({ component: this._component, level: 'ERROR', message });
+    this.store.entries.push({ component: this._component, level: "ERROR", message });
   }
   debug(message: string): void {
-    this._store.entries.push({ component: this._component, level: 'DEBUG', message });
+    this.store.entries.push({ component: this._component, level: "DEBUG", message });
   }
 
   forComponent(component: Component): FakeLogger {
-    return new FakeLogger(component, this._store);
+    return new FakeLogger(component, this.store);
   }
 
-  entriesAt(level: LogLevel): ObsLogEntry[] {
-    return this._store.entries.filter(e => e.level === level);
+  /** Convenience: get all entries at a given level */
+  entriesAt(level: LogLevel): LogEntry[] {
+    return this.store.entries.filter(e => e.level === level);
   }
 }
 
@@ -870,15 +849,30 @@ export class FakeSkillInvoker implements SkillInvoker {
 
 // Task 22: FakeResponsePoster
 export class FakeResponsePoster implements ResponsePoster {
-  postedEmbeds: Array<{
+  // postAgentResponse tracking
+  agentResponseCalls: Array<{
     threadId: string;
     agentId: string;
     text: string;
     config: PtahConfig;
     footer?: string;
   }> = [];
-  postedErrors: Array<{ threadId: string; errorMessage: string }> = [];
-  completionEmbeds: Array<{ threadId: string; agentId: string; config: PtahConfig }> = [];
+  agentResponseResult: PostResult = { messageId: "msg1", threadId: "t1", newThreadCreated: false };
+  agentResponseError: Error | null = null;
+
+  // New typed embed tracking (D4)
+  routingNotificationCalls: Array<{ threadId: string; fromAgentDisplayName: string; toAgentDisplayName: string }> = [];
+  resolutionNotificationCalls: Array<{ threadId: string; signalType: 'LGTM' | 'TASK_COMPLETE'; agentDisplayName: string }> = [];
+  errorReportCalls: Array<{ threadId: string; errorType: UserFacingErrorType; context: UserFacingErrorContext }> = [];
+  userEscalationCalls: Array<{ threadId: string; agentDisplayName: string; question: string }> = [];
+
+  // Error injection for typed embeds
+  routingNotificationError: Error | null = null;
+  resolutionNotificationError: Error | null = null;
+  errorReportError: Error | null = null;
+  userEscalationError: Error | null = null;
+
+  // createCoordinationThread tracking
   createdThreads: Array<{
     channelId: string;
     featureName: string;
@@ -896,7 +890,8 @@ export class FakeResponsePoster implements ResponsePoster {
     config: PtahConfig;
     footer?: string;
   }): Promise<PostResult> {
-    this.postedEmbeds.push(params);
+    this.agentResponseCalls.push(params);
+    if (this.agentResponseError) throw this.agentResponseError;
     return {
       messageId: `resp-msg-${this.nextMessageId++}`,
       threadId: params.threadId,
@@ -904,16 +899,40 @@ export class FakeResponsePoster implements ResponsePoster {
     };
   }
 
-  async postCompletionEmbed(threadId: string, agentId: string, config: PtahConfig): Promise<void> {
-    this.completionEmbeds.push({ threadId, agentId, config });
+  async postRoutingNotificationEmbed(params: {
+    threadId: string;
+    fromAgentDisplayName: string;
+    toAgentDisplayName: string;
+  }): Promise<void> {
+    this.routingNotificationCalls.push(params);
+    if (this.routingNotificationError) throw this.routingNotificationError;
   }
 
-  async postErrorEmbed(threadId: string, errorMessage: string): Promise<void> {
-    this.postedErrors.push({ threadId, errorMessage });
+  async postResolutionNotificationEmbed(params: {
+    threadId: string;
+    signalType: 'LGTM' | 'TASK_COMPLETE';
+    agentDisplayName: string;
+  }): Promise<void> {
+    this.resolutionNotificationCalls.push(params);
+    if (this.resolutionNotificationError) throw this.resolutionNotificationError;
   }
 
-  async postProgressEmbed(_threadId: string, _message: string): Promise<void> {
-    // no-op in tests
+  async postErrorReportEmbed(params: {
+    threadId: string;
+    errorType: UserFacingErrorType;
+    context: UserFacingErrorContext;
+  }): Promise<void> {
+    this.errorReportCalls.push(params);
+    if (this.errorReportError) throw this.errorReportError;
+  }
+
+  async postUserEscalationEmbed(params: {
+    threadId: string;
+    agentDisplayName: string;
+    question: string;
+  }): Promise<void> {
+    this.userEscalationCalls.push(params);
+    if (this.userEscalationError) throw this.userEscalationError;
   }
 
   async createCoordinationThread(params: {
@@ -1094,10 +1113,10 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
 
 // Task 13: FakeAgentLogWriter
 export class FakeAgentLogWriter implements AgentLogWriter {
-  entries: LogEntry[] = [];
+  entries: ArtifactLogEntry[] = [];
   appendError: Error | null = null;
 
-  async append(entry: LogEntry): Promise<void> {
+  async append(entry: ArtifactLogEntry): Promise<void> {
     if (this.appendError) throw this.appendError;
     this.entries.push(entry);
   }
@@ -1374,5 +1393,49 @@ export class FakePdlcDispatcher implements PdlcDispatcher {
 
   async processResumeFromBound(_featureSlug: string): Promise<DispatchAction> {
     return this.resumeResult;
+  }
+}
+
+// --- Phase 7: Agent factory functions ---
+
+export function makeAgentEntry(overrides: Partial<AgentEntry> = {}): AgentEntry {
+  return {
+    id: "test-agent",
+    skill_path: "./ptah/skills/test-agent.md",
+    log_file: "./ptah/logs/test-agent.log",
+    mention_id: "111111111111111111",
+    display_name: "Test Agent",
+    ...overrides,
+  };
+}
+
+export function makeRegisteredAgent(overrides: Partial<RegisteredAgent> = {}): RegisteredAgent {
+  return {
+    id: "test-agent",
+    skill_path: "./ptah/skills/test-agent.md",
+    log_file: "./ptah/logs/test-agent.log",
+    mention_id: "111111111111111111",
+    display_name: "Test Agent",
+    ...overrides,
+  };
+}
+
+export class FakeAgentRegistry implements AgentRegistry {
+  private agents: RegisteredAgent[];
+
+  constructor(agents: RegisteredAgent[] = []) {
+    this.agents = agents;
+  }
+
+  getAgentById(id: string): RegisteredAgent | null {
+    return this.agents.find((a) => a.id === id) ?? null;
+  }
+
+  getAgentByMentionId(mentionId: string): RegisteredAgent | null {
+    return this.agents.find((a) => a.mention_id === mentionId) ?? null;
+  }
+
+  getAllAgents(): RegisteredAgent[] {
+    return [...this.agents];
   }
 }

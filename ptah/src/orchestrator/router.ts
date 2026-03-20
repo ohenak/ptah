@@ -5,6 +5,7 @@ import type {
   PtahConfig,
 } from "../types.js";
 import type { Logger } from "../services/logger.js";
+import type { AgentRegistry } from "./agent-registry.js";
 
 export interface RoutingEngine {
   parseSignal(skillResponseText: string): RoutingSignal;
@@ -33,8 +34,11 @@ const ROUTING_TAG_REGEX = /<routing>\s*(\{[\s\S]*?\})\s*<\/routing>/g;
 export class DefaultRoutingEngine implements RoutingEngine {
   private readonly logger: Logger;
 
-  constructor(logger: Logger) {
-    this.logger = logger;
+  constructor(
+    private readonly agentRegistry: AgentRegistry,
+    logger: Logger,
+  ) {
+    this.logger = logger.forComponent('router');
   }
 
   parseSignal(skillResponseText: string): RoutingSignal {
@@ -99,13 +103,8 @@ export class DefaultRoutingEngine implements RoutingEngine {
 
   resolveHumanMessage(
     message: ThreadMessage,
-    config: PtahConfig,
+    _config: PtahConfig,
   ): string | null {
-    const roleMentions = config.agents.role_mentions;
-    if (!roleMentions) {
-      return null;
-    }
-
     const mentionPattern = /<@&(\d+)>/;
     const match = message.content.match(mentionPattern);
     if (!match) {
@@ -113,15 +112,10 @@ export class DefaultRoutingEngine implements RoutingEngine {
     }
 
     const roleId = match[1];
-    const agentId = roleMentions[roleId];
-    if (!agentId) {
-      return null;
-    }
-
-    return agentId;
+    return this.agentRegistry.getAgentByMentionId(roleId)?.id ?? null;
   }
 
-  decide(signal: RoutingSignal, config: PtahConfig): RoutingDecision {
+  decide(signal: RoutingSignal, _config: PtahConfig): RoutingDecision {
     if (signal.type === "LGTM" || signal.type === "TASK_COMPLETE") {
       return {
         signal,
@@ -144,9 +138,11 @@ export class DefaultRoutingEngine implements RoutingEngine {
 
     // ROUTE_TO_AGENT
     const targetAgentId = signal.agentId!;
-    if (!config.agents.active.includes(targetAgentId)) {
+    if (!this.agentRegistry.getAgentById(targetAgentId)) {
       throw new RoutingError(`unknown agent '${targetAgentId}'`);
     }
+
+    this.logger.info(`ROUTE_TO_AGENT → ${targetAgentId}`); // EVT-OB-09
 
     return {
       signal,

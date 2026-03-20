@@ -7,7 +7,7 @@ import {
   FakeFileSystem,
   FakeLogger,
 } from "../../fixtures/factories.js";
-import type { CommitParams, LogEntry } from "../../../src/types.js";
+import type { CommitParams, ArtifactLogEntry } from "../../../src/types.js";
 
 // Task 76: Integration — artifact pipeline
 describe("Artifact pipeline integration", () => {
@@ -81,7 +81,7 @@ describe("Artifact pipeline integration", () => {
       );
 
       // Step 2: Write log entry
-      const logEntry: LogEntry = {
+      const logEntry: ArtifactLogEntry = {
         timestamp: new Date("2026-03-10T12:00:00.000Z"),
         agentId: "dev-agent",
         threadId: "thread-1",
@@ -181,7 +181,7 @@ describe("Concurrent log serialization", () => {
     const mergeLock = new AsyncMutex();
     const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
 
-    const entry1: LogEntry = {
+    const entry1: ArtifactLogEntry = {
       timestamp: new Date("2026-03-10T12:00:00.000Z"),
       agentId: "dev-agent",
       threadId: "thread-1",
@@ -191,7 +191,7 @@ describe("Concurrent log serialization", () => {
       summary: "first entry",
     };
 
-    const entry2: LogEntry = {
+    const entry2: ArtifactLogEntry = {
       timestamp: new Date("2026-03-10T12:01:00.000Z"),
       agentId: "dev-agent",
       threadId: "thread-2",
@@ -243,7 +243,7 @@ describe("Concurrent log serialization", () => {
     const mergeLock = new AsyncMutex();
     const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
 
-    const entries: LogEntry[] = [
+    const entries: ArtifactLogEntry[] = [
       {
         timestamp: new Date("2026-03-10T12:00:00.000Z"),
         agentId: "dev-agent",

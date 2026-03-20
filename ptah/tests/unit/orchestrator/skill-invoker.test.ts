@@ -242,7 +242,7 @@ describe("DefaultSkillInvoker", () => {
       ]);
 
       // Warning logged for non-docs changes
-      const warnings = logger.messages.filter((m) => m.level === "warn");
+      const warnings = logger.entries.filter((e) => e.level === "WARN");
       expect(warnings.some((w) => w.message.includes("non-docs"))).toBe(true);
     });
   });
@@ -260,7 +260,7 @@ describe("DefaultSkillInvoker", () => {
 
       expect(result.artifactChanges).toContain("docs/overview.md");
 
-      const warnings = logger.messages.filter((m) => m.level === "warn");
+      const warnings = logger.entries.filter((e) => e.level === "WARN");
       expect(
         warnings.some((w) => w.message.includes("overview.md")),
       ).toBe(true);
@@ -271,6 +271,90 @@ describe("DefaultSkillInvoker", () => {
     it("calls gitClient.pruneWorktrees with ptah/ prefix", async () => {
       await invoker.pruneOrphanedWorktrees();
       expect(gitClient.prunedPrefixes).toEqual(["ptah/"]);
+    });
+  });
+
+  // ─── EVT-OB-03 / EVT-OB-04: Observability log events ─────────────
+  describe("EVT-OB-03 and EVT-OB-04: skill invocation observability events", () => {
+    it("emits EVT-OB-03 (skill invocation started) before invoking the skill", async () => {
+      skillClient.responses = [{ textContent: "done" }];
+      gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+      const bundle = createBundle({ agentId: "dev-agent" });
+      await invoker.invoke(bundle, config, worktreePath);
+
+      const infos = logger.entries.filter((e) => e.level === "INFO");
+      const startEvent = infos.find((e) =>
+        e.message.includes("skill invocation started: dev-agent") &&
+        e.message.includes(`(timeout ${config.orchestrator.invocation_timeout_ms}ms)`)
+      );
+      expect(startEvent).toBeDefined();
+      expect(startEvent?.component).toBe("skill-invoker");
+    });
+
+    it("emits EVT-OB-04 (skill invocation complete) after invoking the skill successfully", async () => {
+      skillClient.responses = [{ textContent: "done" }];
+      gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+      const bundle = createBundle({ agentId: "dev-agent" });
+      const result = await invoker.invoke(bundle, config, worktreePath);
+
+      const infos = logger.entries.filter((e) => e.level === "INFO");
+      const completeEvent = infos.find((e) =>
+        e.message.includes("skill invocation complete: dev-agent") &&
+        e.message.includes(`${result.durationMs}ms`)
+      );
+      expect(completeEvent).toBeDefined();
+      expect(completeEvent?.component).toBe("skill-invoker");
+    });
+
+    it("emits EVT-OB-03 with correct agentId and timeoutMs from config", async () => {
+      config.orchestrator.invocation_timeout_ms = 30_000;
+      skillClient.responses = [{ textContent: "done" }];
+      gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+      const bundle = createBundle({ agentId: "test-agent" });
+      await invoker.invoke(bundle, config, worktreePath);
+
+      const infos = logger.entries.filter((e) => e.level === "INFO");
+      const startEvent = infos.find((e) =>
+        e.message === "skill invocation started: test-agent (timeout 30000ms)"
+      );
+      expect(startEvent).toBeDefined();
+      expect(startEvent?.component).toBe("skill-invoker");
+    });
+
+    it("does not emit EVT-OB-04 when invocation times out", async () => {
+      config.orchestrator.invocation_timeout_ms = 50;
+      skillClient.invokeDelay = 200;
+
+      const bundle = createBundle({ agentId: "dev-agent" });
+      try {
+        await invoker.invoke(bundle, config, worktreePath);
+      } catch {
+        // expected timeout error
+      }
+
+      const completeEvents = logger.entries.filter(
+        (e) => e.level === "INFO" && e.message.includes("skill invocation complete")
+      );
+      expect(completeEvents).toHaveLength(0);
+    });
+
+    it("does not emit EVT-OB-04 when invocation throws an error", async () => {
+      skillClient.invokeError = new Error("boom");
+
+      const bundle = createBundle({ agentId: "dev-agent" });
+      try {
+        await invoker.invoke(bundle, config, worktreePath);
+      } catch {
+        // expected error
+      }
+
+      const completeEvents = logger.entries.filter(
+        (e) => e.level === "INFO" && e.message.includes("skill invocation complete")
+      );
+      expect(completeEvents).toHaveLength(0);
     });
   });
 });

@@ -157,7 +157,7 @@ describe("DefaultArtifactCommitter", () => {
       ]);
 
       // Warning logged for non-docs files
-      const warnings = logger.messages.filter((m) => m.level === "warn");
+      const warnings = logger.entries.filter((e) => e.level === "WARN");
       expect(warnings.length).toBeGreaterThan(0);
       const warningText = warnings.map((w) => w.message).join(" ");
       expect(warningText).toContain("src/index.ts");
@@ -302,6 +302,64 @@ describe("DefaultArtifactCommitter", () => {
     });
   });
 
+  // EVT-OB-06: Artifact commit complete
+  describe("EVT-OB-06: artifact commit complete event", () => {
+    it("emits INFO log with agentId, commitSha, and branch after successful merge", async () => {
+      const params = createParams();
+      gitClient.commitInWorktreeResult = "abc1234def5678";
+      gitClient.getShortShaResult = "abc1234";
+
+      await committer.commitAndMerge(params);
+
+      const infoEntries = logger.entriesAt("INFO");
+      const evt = infoEntries.find((e) =>
+        e.message.includes("artifact commit complete"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.component).toBe("artifact-committer");
+      expect(evt!.level).toBe("INFO");
+      expect(evt!.message).toBe(
+        `artifact commit complete: ${params.agentId} → abc1234 (branch: ${params.branch})`,
+      );
+    });
+
+    it("emits INFO no-changes log when artifactChanges is empty", async () => {
+      const params = createParams({ artifactChanges: [] });
+
+      await committer.commitAndMerge(params);
+
+      const infoEntries = logger.entriesAt("INFO");
+      const evt = infoEntries.find((e) =>
+        e.message.includes("artifact commit: no changes"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.component).toBe("artifact-committer");
+      expect(evt!.level).toBe("INFO");
+      expect(evt!.message).toBe(
+        `artifact commit: no changes for ${params.agentId}`,
+      );
+    });
+
+    it("emits INFO no-changes log when all changes are non-docs", async () => {
+      const params = createParams({
+        artifactChanges: ["src/index.ts", "package.json"],
+      });
+
+      await committer.commitAndMerge(params);
+
+      const infoEntries = logger.entriesAt("INFO");
+      const evt = infoEntries.find((e) =>
+        e.message.includes("artifact commit: no changes"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.component).toBe("artifact-committer");
+      expect(evt!.level).toBe("INFO");
+      expect(evt!.message).toBe(
+        `artifact commit: no changes for ${params.agentId}`,
+      );
+    });
+  });
+
   // Task 36: Cleanup failures — warnings logged, no rethrow
   describe("cleanup failures", () => {
     it("logs warnings when removeWorktree throws", async () => {
@@ -314,7 +372,7 @@ describe("DefaultArtifactCommitter", () => {
       expect(result.mergeStatus).toBe("merged");
 
       // Warning logged
-      const warnings = logger.messages.filter((m) => m.level === "warn");
+      const warnings = logger.entries.filter((e) => e.level === "WARN");
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.some((w) => w.message.includes("worktree"))).toBe(true);
     });
@@ -329,7 +387,7 @@ describe("DefaultArtifactCommitter", () => {
       expect(result.mergeStatus).toBe("merged");
 
       // Warning logged
-      const warnings = logger.messages.filter((m) => m.level === "warn");
+      const warnings = logger.entries.filter((e) => e.level === "WARN");
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.some((w) => w.message.includes("branch"))).toBe(true);
     });

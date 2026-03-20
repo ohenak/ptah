@@ -4,8 +4,10 @@ import type { ArtifactCommitter } from "./artifact-committer.js";
 import type { GitClient } from "../services/git.js";
 import type { DiscordClient } from "../services/discord.js";
 import type { Logger } from "../services/logger.js";
-import type { ContextBundle, PtahConfig, InvocationResult, CommitResult } from "../types.js";
+import type { ContextBundle, PtahConfig, InvocationResult, CommitResult, UserFacingErrorContext } from "../types.js";
 import { RoutingParseError } from "./router.js";
+import type { ResponsePoster } from "./response-poster.js";
+import { buildErrorMessage } from "./error-messages.js";
 
 export type FailureCategory = "transient" | "unrecoverable";
 
@@ -33,13 +35,20 @@ export interface InvocationGuard {
 }
 
 export class DefaultInvocationGuard implements InvocationGuard {
+  private readonly logger: Logger;
+  private readonly responsePoster: ResponsePoster;
+
   constructor(
     private readonly skillInvoker: SkillInvoker,
     private readonly artifactCommitter: ArtifactCommitter,
     private readonly gitClient: GitClient,
     private readonly discordClient: DiscordClient,
-    private readonly logger: Logger,
-  ) {}
+    responsePoster: ResponsePoster,
+    logger: Logger,
+  ) {
+    this.responsePoster = responsePoster;
+    this.logger = logger.forComponent('invocation-guard');
+  }
 
   async invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult> {
     const {
@@ -277,13 +286,11 @@ export class DefaultInvocationGuard implements InvocationGuard {
     await this.cleanupWorktree(worktreePath, branch);
   }
 
-  private async postErrorEmbed(threadId: string, agentId: string, errorMessage: string): Promise<void> {
-    await this.discordClient.postEmbed({
-      threadId,
-      title: "\u26D4 Agent Error",
-      description: `${agentId} encountered an unrecoverable error and could not complete its task. A developer should investigate. Error: ${errorMessage} See #agent-debug for details.`,
-      colour: 0xFF0000,
-    });
+  private async postErrorEmbed(threadId: string, agentId: string, _errorMessage: string): Promise<void> {
+    const context: UserFacingErrorContext = { agentDisplayName: agentId, agentId };
+    const msg = buildErrorMessage('ERR-RP-01', context);
+    this.logger.error(msg.whatHappened);
+    await this.responsePoster.postErrorReportEmbed({ threadId, errorType: 'ERR-RP-01', context });
   }
 
   private async postToDebugChannel(debugChannelId: string | null, message: string): Promise<void> {

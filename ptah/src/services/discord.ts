@@ -22,13 +22,16 @@ export interface DiscordClient {
   // --- Phase 3 ---
   postEmbed(options: EmbedOptions): Promise<string>;
   createThread(channelId: string, name: string, initialMessage: EmbedOptions): Promise<string>;
-  postSystemMessage(threadId: string, content: string): Promise<void>;
 
   // --- Phase 5 ---
   postChannelMessage(channelId: string, content: string): Promise<string>;
   onChannelMessage(channelId: string, handler: (msg: ChannelMessage) => Promise<void>): void;
   addReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
   replyToMessage(channelId: string, messageId: string, content: string): Promise<void>;
+
+  // --- Phase 7 ---
+  archiveThread(threadId: string): Promise<void>;
+  postPlainMessage(threadId: string, content: string): Promise<void>;
 }
 
 function toThreadMessage(message: Message): ThreadMessage {
@@ -206,15 +209,6 @@ export class DiscordJsClient implements DiscordClient {
     return thread.id;
   }
 
-  async postSystemMessage(threadId: string, content: string): Promise<void> {
-    await this.postEmbed({
-      threadId,
-      title: "System",
-      description: content,
-      colour: 0x9E9E9E,
-    });
-  }
-
   // --- Phase 5 stubs (full implementations in Batch 3d) ---
 
   async postChannelMessage(channelId: string, content: string): Promise<string> {
@@ -262,5 +256,17 @@ export class DiscordJsClient implements DiscordClient {
     const channel = await this.client.channels.fetch(channelId) as unknown as FetchableChannel;
     const message = await channel.messages.fetch(messageId);
     await message.reply({ content });
+  }
+
+  // --- Phase 7 ---
+
+  async archiveThread(threadId: string): Promise<void> {
+    const thread = await this.client.channels.fetch(threadId) as ThreadChannel;
+    await thread.setArchived(true);
+  }
+
+  async postPlainMessage(threadId: string, content: string): Promise<void> {
+    const thread = await this.client.channels.fetch(threadId) as ThreadChannel;
+    await thread.send({ content });
   }
 }

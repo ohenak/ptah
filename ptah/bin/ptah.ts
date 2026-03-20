@@ -29,6 +29,7 @@ import { InMemoryThreadStateManager } from "../src/orchestrator/thread-state-man
 import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js";
 import { FileStateStore } from "../src/orchestrator/pdlc/state-store.js";
 import { DefaultPdlcDispatcher } from "../src/orchestrator/pdlc/pdlc-dispatcher.js";
+import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -100,6 +101,15 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Phase 7 (Phase I): Build agent registry from config.agentEntries.
+      // buildAgentRegistry logs each validation error and the final registration summary.
+      const configLogger = logger.forComponent('config');
+      const { registry: agentRegistry } = await buildAgentRegistry(
+        config.agentEntries,
+        fs,
+        configLogger,
+      );
+
       // Build Claude Code client
       const claudeCodeInvokeFn: ClaudeCodeInvokeFn = async (options) => {
         const { query } = await import("@anthropic-ai/claude-agent-sdk");
@@ -139,7 +149,7 @@ async function main(): Promise<void> {
       const skillClient = new ClaudeCodeClient(claudeCodeInvokeFn);
 
       // Wire up orchestrator dependencies
-      const routingEngine = new DefaultRoutingEngine(logger);
+      const routingEngine = new DefaultRoutingEngine(agentRegistry, logger);
       const contextAssembler = new DefaultContextAssembler(fs, tokenCounter, logger);
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
       const responsePoster = new DefaultResponsePoster(discord, logger);
@@ -180,6 +190,7 @@ async function main(): Promise<void> {
         artifactCommitter,
         git,
         discord,
+        responsePoster,
         logger,
       );
 
@@ -212,6 +223,8 @@ async function main(): Promise<void> {
         shutdownSignal: abortController.signal,
         // Phase 11: PDLC State Machine
         pdlcDispatcher,
+        // Phase 7: Agent registry
+        agentRegistry,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {

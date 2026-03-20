@@ -34,6 +34,8 @@ import {
   FakePatternBContextBuilder,
   FakePdlcDispatcher,
   FakeStateStore,
+  FakeAgentRegistry,
+  makeRegisteredAgent,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -67,7 +69,12 @@ function buildOrchestratorWithFakeDispatcher(overrides: {
   abortController: AbortController;
 }): DefaultOrchestrator {
   const tokenCounter = new CharTokenCounter();
-  const routingEngine = new DefaultRoutingEngine(overrides.logger);
+  const agentRegistry = new FakeAgentRegistry([
+    makeRegisteredAgent({ id: "pm-agent", mention_id: "111222333", display_name: "PM Agent", skill_path: "./ptah/skills/pm-agent.md", log_file: "./ptah/logs/pm-agent.log" }),
+    makeRegisteredAgent({ id: "dev-agent", mention_id: "444555666", display_name: "Dev Agent", skill_path: "./ptah/skills/dev-agent.md", log_file: "./ptah/logs/dev-agent.log" }),
+    makeRegisteredAgent({ id: "test-agent", mention_id: "777888999", display_name: "Test Agent", skill_path: "./ptah/skills/test-agent.md", log_file: "./ptah/logs/test-agent.log" }),
+  ]);
+  const routingEngine = new DefaultRoutingEngine(agentRegistry, overrides.logger);
   const contextAssembler = new DefaultContextAssembler(overrides.fs, tokenCounter, overrides.logger);
   const skillInvoker = new DefaultSkillInvoker(overrides.skillClient, overrides.gitClient, overrides.logger);
   const responsePoster = new DefaultResponsePoster(overrides.discord, overrides.logger);
@@ -77,6 +84,7 @@ function buildOrchestratorWithFakeDispatcher(overrides: {
     artifactCommitter,
     overrides.gitClient,
     overrides.discord,
+    responsePoster,
     overrides.logger,
   );
 
@@ -101,6 +109,7 @@ function buildOrchestratorWithFakeDispatcher(overrides: {
     worktreeRegistry: new InMemoryWorktreeRegistry(),
     shutdownSignal: overrides.abortController.signal,
     pdlcDispatcher: overrides.pdlcDispatcher,
+    agentRegistry,
   });
 }
 
@@ -117,7 +126,12 @@ function buildOrchestratorWithRealDispatcher(overrides: {
   abortController: AbortController;
 }): { orchestrator: DefaultOrchestrator; pdlcDispatcher: DefaultPdlcDispatcher } {
   const tokenCounter = new CharTokenCounter();
-  const routingEngine = new DefaultRoutingEngine(overrides.logger);
+  const agentRegistry = new FakeAgentRegistry([
+    makeRegisteredAgent({ id: "pm-agent", mention_id: "111222333", display_name: "PM Agent", skill_path: "./ptah/skills/pm-agent.md", log_file: "./ptah/logs/pm-agent.log" }),
+    makeRegisteredAgent({ id: "dev-agent", mention_id: "444555666", display_name: "Dev Agent", skill_path: "./ptah/skills/dev-agent.md", log_file: "./ptah/logs/dev-agent.log" }),
+    makeRegisteredAgent({ id: "test-agent", mention_id: "777888999", display_name: "Test Agent", skill_path: "./ptah/skills/test-agent.md", log_file: "./ptah/logs/test-agent.log" }),
+  ]);
+  const routingEngine = new DefaultRoutingEngine(agentRegistry, overrides.logger);
   const contextAssembler = new DefaultContextAssembler(overrides.fs, tokenCounter, overrides.logger);
   const skillInvoker = new DefaultSkillInvoker(overrides.skillClient, overrides.gitClient, overrides.logger);
   const responsePoster = new DefaultResponsePoster(overrides.discord, overrides.logger);
@@ -127,6 +141,7 @@ function buildOrchestratorWithRealDispatcher(overrides: {
     artifactCommitter,
     overrides.gitClient,
     overrides.discord,
+    responsePoster,
     overrides.logger,
   );
   const pdlcDispatcher = new DefaultPdlcDispatcher(overrides.stateStore, overrides.fs, overrides.logger, "docs");
@@ -152,6 +167,7 @@ function buildOrchestratorWithRealDispatcher(overrides: {
     worktreeRegistry: new InMemoryWorktreeRegistry(),
     shutdownSignal: overrides.abortController.signal,
     pdlcDispatcher,
+    agentRegistry,
   });
 
   return { orchestrator, pdlcDispatcher };
@@ -242,7 +258,7 @@ describe("PDLC auto-init integration", () => {
 
       // Info log was emitted
       expect(
-        logger.messages.some(m => m.level === "info" && m.message.includes("Auto-initialized PDLC state")),
+        logger.entries.some(e => e.level === "INFO" && e.message.includes("Auto-initialized PDLC state")),
       ).toBe(true);
 
       // Debug channel post was made
@@ -291,7 +307,7 @@ describe("PDLC auto-init integration", () => {
 
       // Debug skip log was emitted
       expect(
-        logger.messages.some(m => m.level === "debug" && m.message.includes("Skipping PDLC auto-init")),
+        logger.entries.some(e => e.level === "DEBUG" && e.message.includes("Skipping PDLC auto-init")),
       ).toBe(true);
     });
   });
@@ -375,7 +391,7 @@ describe("PDLC auto-init integration", () => {
 
       // Error was logged, no managed or legacy path invoked
       expect(
-        logger.messages.some(m => m.level === "error" && m.message.includes("Failed to auto-initialize")),
+        logger.entries.some(e => e.level === "ERROR" && e.message.includes("Failed to auto-initialize")),
       ).toBe(true);
       expect(pdlcDispatcher.processAgentCompletionCalls).toHaveLength(0);
 

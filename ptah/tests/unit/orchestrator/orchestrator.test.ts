@@ -18,6 +18,8 @@ import {
   FakeThreadStateManager,
   FakeWorktreeRegistry,
   FakePdlcDispatcher,
+  FakeAgentRegistry,
+  makeRegisteredAgent,
   createThreadMessage,
   createPendingQuestion,
   createChannelMessage,
@@ -56,6 +58,7 @@ describe("DefaultOrchestrator", () => {
   let threadStateManager: FakeThreadStateManager;
   let worktreeRegistry: FakeWorktreeRegistry;
   let pdlcDispatcher: FakePdlcDispatcher;
+  let agentRegistry: FakeAgentRegistry;
   let abortController: AbortController;
   let orchestrator: DefaultOrchestrator;
 
@@ -80,6 +83,11 @@ describe("DefaultOrchestrator", () => {
     threadStateManager = new FakeThreadStateManager();
     worktreeRegistry = new FakeWorktreeRegistry();
     pdlcDispatcher = new FakePdlcDispatcher();
+    agentRegistry = new FakeAgentRegistry([
+      makeRegisteredAgent({ id: "dev-agent", mention_id: "111222333", display_name: "Dev Agent" }),
+      makeRegisteredAgent({ id: "pm-agent", mention_id: "444555666", display_name: "PM Agent" }),
+      makeRegisteredAgent({ id: "test-agent", mention_id: "777888999", display_name: "Test Agent" }),
+    ]);
     abortController = new AbortController();
 
     orchestrator = new DefaultOrchestrator({
@@ -103,6 +111,7 @@ describe("DefaultOrchestrator", () => {
       worktreeRegistry,
       shutdownSignal: abortController.signal,
       pdlcDispatcher,
+      agentRegistry,
     });
   });
 
@@ -187,12 +196,12 @@ describe("DefaultOrchestrator", () => {
       expect(invocationGuard.callCount).toBe(1);
 
       // Verify response poster was called
-      expect(responsePoster.postedEmbeds).toHaveLength(1);
-      expect(responsePoster.postedEmbeds[0].agentId).toBe("dev-agent");
-      expect(responsePoster.postedEmbeds[0].text).toBe("I implemented the feature");
+      expect(responsePoster.agentResponseCalls).toHaveLength(1);
+      expect(responsePoster.agentResponseCalls[0].agentId).toBe("dev-agent");
+      expect(responsePoster.agentResponseCalls[0].text).toBe("I implemented the feature");
 
-      // Verify completion embed was posted (terminal signal)
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
+      // Verify resolution notification embed was posted (terminal signal)
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
     });
   });
 
@@ -209,9 +218,10 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(discord.systemMessages).toHaveLength(1);
-      expect(discord.systemMessages[0].threadId).toBe("thread-1");
-      expect(discord.systemMessages[0].content).toContain(
+      const plainCalls = discord.calls.filter((c) => c.method === "postPlainMessage");
+      expect(plainCalls).toHaveLength(1);
+      expect(plainCalls[0].threadId).toBe("thread-1");
+      expect((plainCalls[0] as { method: "postPlainMessage"; threadId: string; content: string }).content).toContain(
         "Please @mention a role to direct your message to a specific agent."
       );
 
@@ -370,11 +380,12 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      // Pause embed posted to originating thread
-      expect(discord.systemMessages).toHaveLength(1);
-      expect(discord.systemMessages[0].threadId).toBe("thread-1");
-      // The pause embed contains the question ID
-      expect(discord.systemMessages[0].content).toContain("Paused");
+      // Pause plain message posted to originating thread
+      const pausePlainCalls = discord.calls.filter((c) => c.method === "postPlainMessage");
+      expect(pausePlainCalls).toHaveLength(1);
+      expect(pausePlainCalls[0].threadId).toBe("thread-1");
+      // The pause message contains "Paused"
+      expect((pausePlainCalls[0] as { method: "postPlainMessage"; threadId: string; content: string }).content).toContain("Paused");
 
       // Question written to store
       const pending = await questionStore.readPendingQuestions();
@@ -417,9 +428,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
-      expect(responsePoster.completionEmbeds[0].threadId).toBe("thread-1");
-      expect(responsePoster.completionEmbeds[0].agentId).toBe("dev-agent");
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
+      expect(responsePoster.resolutionNotificationCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.resolutionNotificationCalls[0].agentDisplayName).toBe("Dev Agent");
     });
   });
 
@@ -457,9 +468,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.completionEmbeds).toHaveLength(1);
-      expect(responsePoster.completionEmbeds[0].threadId).toBe("thread-1");
-      expect(responsePoster.completionEmbeds[0].agentId).toBe("dev-agent");
+      expect(responsePoster.resolutionNotificationCalls).toHaveLength(1);
+      expect(responsePoster.resolutionNotificationCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.resolutionNotificationCalls[0].agentDisplayName).toBe("Dev Agent");
     });
   });
 
@@ -517,10 +528,9 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, "thread-1");
 
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].threadId).toBe("thread-1");
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Routing error:");
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("missing routing signal");
+      expect(responsePoster.errorReportCalls).toHaveLength(1);
+      expect(responsePoster.errorReportCalls[0].threadId).toBe("thread-1");
+      expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-04");
     });
   });
 
@@ -658,9 +668,9 @@ describe("DefaultOrchestrator", () => {
 
       // Verify it tried to find the debug channel
       // The FakeDiscordClient.findChannelByName checks the channels map
-      expect(logger.messages).toContainEqual(
+      expect(logger.entries).toContainEqual(
         expect.objectContaining({
-          level: "info",
+          level: "INFO",
           message: expect.stringContaining("debug"),
         }),
       );
@@ -678,8 +688,8 @@ describe("DefaultOrchestrator", () => {
       await orchestrator.startup();
 
       // Should log a warning
-      const warnLog = logger.messages.find(
-        (m) => m.level === "warn" && m.message.includes("prune"),
+      const warnLog = logger.entries.find(
+        (e) => e.level === "WARN" && e.message.includes("prune"),
       );
       expect(warnLog).toBeDefined();
     });
@@ -710,8 +720,8 @@ describe("DefaultOrchestrator", () => {
       expect(skillInvoker.invokeCalls).toHaveLength(0);
 
       // Warning logged
-      const warnLog = logger.messages.find(
-        (m) => m.level === "warn" && m.message.includes("duplicate"),
+      const warnLog = logger.entries.find(
+        (e) => e.level === "WARN" && e.message.includes("duplicate"),
       );
       expect(warnLog).toBeDefined();
     });
@@ -732,8 +742,8 @@ describe("DefaultOrchestrator", () => {
       expect(routingEngine.resolveHumanCalls).toHaveLength(0);
       expect(invocationGuard.callCount).toBe(0);
 
-      const warnLog = logger.messages.find(
-        (m) => m.level === "warn" && m.message.includes("no ID"),
+      const warnLog = logger.entries.find(
+        (e) => e.level === "WARN" && e.message.includes("no ID"),
       );
       expect(warnLog).toBeDefined();
     });
@@ -950,7 +960,7 @@ describe("DefaultOrchestrator", () => {
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
       // No response was posted (guard handled that)
-      expect(responsePoster.postedEmbeds).toHaveLength(0);
+      expect(responsePoster.agentResponseCalls).toHaveLength(0);
     });
   });
 
@@ -974,7 +984,7 @@ describe("DefaultOrchestrator", () => {
       expect(invocationGuard.callCount).toBe(1);
       expect(agentLogWriter.entries).toHaveLength(1);
       expect(agentLogWriter.entries[0].status).toBe("error");
-      expect(responsePoster.postedEmbeds).toHaveLength(0);
+      expect(responsePoster.agentResponseCalls).toHaveLength(0);
     });
   });
 
@@ -1192,8 +1202,8 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, "thread-1");
 
       // Error embed posted
-      expect(responsePoster.postedErrors).toHaveLength(1);
-      expect(responsePoster.postedErrors[0].errorMessage).toContain("Worktree creation failed");
+      expect(responsePoster.errorReportCalls).toHaveLength(1);
+      expect(responsePoster.errorReportCalls[0].errorType).toBe("ERR-RP-03");
 
       // No skill invocation
       expect(skillInvoker.invokeCalls).toHaveLength(0);
@@ -1374,8 +1384,8 @@ describe("DefaultOrchestrator", () => {
       const pending = await questionStore.readPendingQuestions();
       expect(pending[0].discordMessageId).toBe("discord-msg-001");
 
-      // Pause embed posted to originating thread
-      expect(discord.systemMessages.some((m) => m.threadId === threadId)).toBe(true);
+      // Pause plain message posted to originating thread
+      expect(discord.calls.some((c) => c.method === "postPlainMessage" && c.threadId === threadId)).toBe(true);
 
       // Poller registered
       expect(questionPoller.registeredQuestions).toHaveLength(1);
@@ -1424,7 +1434,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, threadId);
 
       // Warning logged
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.toLowerCase().includes("discord") || m.message.toLowerCase().includes("notification"))).toBe(true);
 
       // Question still in store
@@ -1482,7 +1492,7 @@ describe("DefaultOrchestrator", () => {
       expect(pending).toHaveLength(1);
 
       // Warning logged about channel not found
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.toLowerCase().includes("open-questions") || m.message.toLowerCase().includes("channel") || m.message.toLowerCase().includes("notification"))).toBe(true);
     });
   });
@@ -1500,7 +1510,7 @@ describe("DefaultOrchestrator", () => {
       // We can indirectly test this by simulating a channel message
       // The handler should have been registered for "oq-channel-999"
       // We'll verify by checking logger for info messages
-      const infoMessages = logger.messages.filter((m) => m.level === "info");
+      const infoMessages = logger.entries.filter((e) => e.level === "INFO");
       expect(infoMessages.some((m) => m.message.includes("oq-channel-999") || m.message.includes("open-questions"))).toBe(true);
     });
 
@@ -1510,7 +1520,7 @@ describe("DefaultOrchestrator", () => {
 
       await orchestrator.startup();
 
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.includes("open-questions"))).toBe(true);
     });
   });
@@ -1547,7 +1557,7 @@ describe("DefaultOrchestrator", () => {
       expect(questionPoller.registeredQuestions[0].questionId).toBe("Q-0001");
 
       // Logger should report restoration
-      const infoMessages = logger.messages.filter((m) => m.level === "info");
+      const infoMessages = logger.entries.filter((e) => e.level === "INFO");
       expect(infoMessages.some((m) => m.message.includes("1") && (m.message.includes("pending") || m.message.includes("Restored")))).toBe(true);
     });
 
@@ -1592,6 +1602,8 @@ describe("DefaultOrchestrator", () => {
         threadStateManager,
         worktreeRegistry,
         shutdownSignal: abortController.signal,
+        pdlcDispatcher,
+        agentRegistry,
       });
 
       const q = createPendingQuestion({
@@ -1650,6 +1662,7 @@ describe("DefaultOrchestrator", () => {
         worktreeRegistry,
         shutdownSignal: abortController.signal,
         pdlcDispatcher,
+        agentRegistry,
       });
     });
 
@@ -1731,7 +1744,7 @@ describe("DefaultOrchestrator", () => {
       expect(skillInvoker.invokeCalls.length).toBeGreaterThanOrEqual(1);
 
       // Response posted to originating thread
-      expect(responsePoster.postedEmbeds.some((e) => e.threadId === threadId)).toBe(true);
+      expect(responsePoster.agentResponseCalls.some((e) => e.threadId === threadId)).toBe(true);
 
       // Question archived (moved from pending to archived)
       const pending = await questionStore.readPendingQuestions();
@@ -1811,7 +1824,7 @@ describe("DefaultOrchestrator", () => {
       await waitForQueue(threadQueue, threadId);
 
       // Warning logged
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.toLowerCase().includes("discord") || m.message.toLowerCase().includes("post") || m.message.toLowerCase().includes("response"))).toBe(true);
 
       // Question still archived despite post failure
@@ -1873,7 +1886,7 @@ describe("DefaultOrchestrator", () => {
       expect(pending.find((p) => p.id === qId)).toBeDefined();
 
       // Error embed posted
-      expect(responsePoster.postedErrors.some((e) => e.threadId === threadId)).toBe(true);
+      expect(responsePoster.errorReportCalls.some((e) => e.threadId === threadId)).toBe(true);
     });
   });
 
@@ -1905,6 +1918,7 @@ describe("DefaultOrchestrator", () => {
         worktreeRegistry,
         shutdownSignal: abortController.signal,
         pdlcDispatcher,
+        agentRegistry,
       });
 
       // Set up open-questions channel and startup
@@ -2087,7 +2101,7 @@ describe("DefaultOrchestrator", () => {
       expect(pending[0].answer).toBe("Use Google");
 
       // Warning logged
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.toLowerCase().includes("reaction") || m.message.toLowerCase().includes("✅"))).toBe(true);
     });
 
@@ -2111,7 +2125,7 @@ describe("DefaultOrchestrator", () => {
       await discord.simulateChannelMessage("oq-channel-555", replyMsg);
 
       // Warning logged
-      const warnMessages = logger.messages.filter((m) => m.level === "warn");
+      const warnMessages = logger.entries.filter((e) => e.level === "WARN");
       expect(warnMessages.some((m) => m.message.toLowerCase().includes("reply") || m.message.toLowerCase().includes("message"))).toBe(true);
 
       // Answer unchanged
@@ -2192,8 +2206,8 @@ describe("DefaultOrchestrator", () => {
       expect(pdlcDispatcher.processAgentCompletionCalls).toHaveLength(1);
 
       // Info log emitted
-      const infoLog = logger.messages.find(
-        m => m.level === "info" && m.message.includes("Auto-initialized PDLC state"),
+      const infoLog = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.includes("Auto-initialized PDLC state"),
       );
       expect(infoLog).toBeDefined();
 
@@ -2202,8 +2216,8 @@ describe("DefaultOrchestrator", () => {
       // the async postToDebugChannel call. We verify ordering by checking that
       // the info log was recorded before any postChannelMessage call containing
       // the auto-init message was made.
-      const infoLogIndex = logger.messages.findIndex(
-        m => m.level === "info" && m.message.includes("Auto-initialized PDLC state"),
+      const infoLogIndex = logger.entries.findIndex(
+        (e) => e.level === "INFO" && e.message.includes("Auto-initialized PDLC state"),
       );
       expect(infoLogIndex).toBeGreaterThanOrEqual(0);
 
@@ -2218,9 +2232,9 @@ describe("DefaultOrchestrator", () => {
       // and info log was found, the info log necessarily preceded the debug post.
       // Additionally verify no warn/error was logged between them (which would
       // indicate the info log failed and was retried).
-      const messagesAfterInfo = logger.messages.slice(infoLogIndex + 1);
+      const messagesAfterInfo = logger.entries.slice(infoLogIndex + 1);
       const errorBeforeDebug = messagesAfterInfo.find(
-        m => (m.level === "error" || m.level === "warn") && m.message.includes("auto-init"),
+        (e) => (e.level === "ERROR" || e.level === "WARN") && e.message.includes("auto-init"),
       );
       expect(errorBeforeDebug).toBeUndefined();
     });
@@ -2369,7 +2383,7 @@ describe("DefaultOrchestrator", () => {
 
       // Error logged
       expect(
-        logger.messages.some(m => m.level === "error" && m.message.includes("Failed to auto-initialize")),
+        logger.entries.some(e => e.level === "ERROR" && e.message.includes("Failed to auto-initialize")),
       ).toBe(true);
 
       // Legacy path NOT invoked
@@ -2410,20 +2424,28 @@ describe("DefaultOrchestrator", () => {
       pdlcDispatcher.autoRegisterOnInit = true;
       pdlcDispatcher.agentCompletionResult = { action: "done" };
 
-      // Make logger.info throw for the auto-init success message only
-      const originalInfo = logger.info.bind(logger);
+      // Make the shared log store's push throw for the auto-init success message.
+      // After forComponent(), the orchestrator uses a child logger that writes to
+      // the shared store — so we intercept Array.push on entries.
+      const entries = logger.entries;
+      const originalPush = entries.push.bind(entries);
       let infoCallCount = 0;
-      logger.info = (msg: string) => {
-        infoCallCount++;
-        if (msg.includes("Auto-initialized PDLC state")) {
-          throw new Error("logger broken");
+      entries.push = (...args: any[]) => {
+        for (const entry of args) {
+          if (entry.level === "INFO") infoCallCount++;
+          if (entry.level === "INFO" && typeof entry.message === "string" && entry.message.includes("Auto-initialized PDLC state")) {
+            throw new Error("logger broken");
+          }
         }
-        return originalInfo(msg);
+        return originalPush(...args);
       };
 
       await orchestrator.startup();
       await orchestrator.handleMessage(message);
       await waitForQueue(threadQueue, threadId);
+
+      // Restore original push
+      entries.push = originalPush;
 
       // (1) No exception propagated — managed path was still invoked
       expect(pdlcDispatcher.processAgentCompletionCalls).toHaveLength(1);
@@ -2455,7 +2477,7 @@ describe("DefaultOrchestrator", () => {
 
       // Warn was logged for the debug channel failure
       expect(
-        logger.messages.some(m => m.level === "warn" && m.message.includes("agent-debug")),
+        logger.entries.some(e => e.level === "WARN" && e.message.includes("agent-debug")),
       ).toBe(true);
 
       // Routing continued — managed path invoked despite debug channel failure
@@ -2529,7 +2551,7 @@ describe("DefaultOrchestrator", () => {
 
       // Debug skip log
       expect(
-        logger.messages.some(m => m.level === "debug" && m.message.includes("Skipping PDLC auto-init")),
+        logger.entries.some(e => e.level === "DEBUG" && e.message.includes("Skipping PDLC auto-init")),
       ).toBe(true);
 
       // Legacy path invoked
@@ -2699,6 +2721,164 @@ describe("DefaultOrchestrator", () => {
   // ("unnamed" for empty input), so we cannot produce a falsy slug from normal input.
   // The try/catch in the implementation handles thrown exceptions.
   // This behavior is implicitly covered by the backward-compat tests (BC-01).
+
+  // J3: EVT-OB observability events
+  describe("EVT-OB observability events (J3)", () => {
+    const setupHappyPath = () => {
+      discord.threadHistory.set("thread-1", DEFAULT_OLD_HISTORY);
+      routingEngine.resolveHumanResult = "dev-agent";
+      contextAssembler.result = {
+        systemPrompt: "system prompt",
+        userMessage: "user message",
+        agentId: "dev-agent",
+        threadId: "thread-1",
+        featureName: "test-feature",
+        resumePattern: "fresh",
+        turnNumber: 1,
+        tokenCounts: { layer1: 100, layer2: 200, layer3: 50, total: 350 },
+      };
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "done",
+          routingSignalRaw: '<routing>{"type":"TASK_COMPLETE"}</routing>',
+          artifactChanges: [],
+          durationMs: 100,
+        },
+        commitResult: defaultCommitResult(),
+      }];
+      routingEngine.parseResult = { type: "TASK_COMPLETE" };
+      routingEngine.decideResult = {
+        signal: { type: "TASK_COMPLETE" },
+        targetAgentId: null,
+        isTerminal: true,
+        isPaused: false,
+        createNewThread: false,
+      };
+    };
+
+    it("EVT-OB-01: logs message received with content truncated to 100 chars", async () => {
+      setupHappyPath();
+      const longContent = "<@&111222333> " + "x".repeat(200);
+      const message = createThreadMessage({ content: longContent, threadId: "thread-1", threadName: "test-feature" });
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      const infoEntries = logger.entries.filter((e) => e.level === "INFO");
+      const evt = infoEntries.find((e) => e.message.startsWith("message received:"));
+      expect(evt).toBeDefined();
+      // truncated: total visible content is ≤100 chars + trailing ellipsis
+      expect(evt!.message).toContain("…");
+      const quoted = evt!.message.match(/"([^"]+)"/)?.[1] ?? "";
+      expect(quoted.length).toBeLessThanOrEqual(101); // 100 chars + "…"
+    });
+
+    it("EVT-OB-01: does not truncate short content", async () => {
+      setupHappyPath();
+      const message = createThreadMessage({
+        content: "<@&111222333> short",
+        threadId: "thread-1",
+        threadName: "test-feature",
+      });
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      const evt = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.startsWith("message received:"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.message).not.toContain("…");
+    });
+
+    it("EVT-OB-02: logs mention resolved after agent match", async () => {
+      setupHappyPath();
+      const message = createThreadMessage({
+        content: "<@&111222333> do the thing",
+        threadId: "thread-1",
+        threadName: "test-feature",
+      });
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      const evt = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.includes("mention resolved:"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.message).toContain("thread-1");
+      expect(evt!.message).toContain("dev-agent");
+    });
+
+    it("EVT-OB-07: logs thread archived after terminal signal", async () => {
+      setupHappyPath();
+      const message = createThreadMessage({
+        content: "<@&111222333> do the thing",
+        threadId: "thread-1",
+        threadName: "test-feature",
+      });
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-1");
+
+      const evt = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.includes("thread archived:"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.message).toContain("thread-1");
+      expect(evt!.message).toContain("TASK_COMPLETE");
+    });
+
+    it("EVT-OB-08: logs ROUTE_TO_USER with question truncated to 100 chars", async () => {
+      discord.threadHistory.set("thread-2", DEFAULT_OLD_HISTORY);
+      routingEngine.resolveHumanResult = "dev-agent";
+      contextAssembler.result = {
+        systemPrompt: "sp",
+        userMessage: "um",
+        agentId: "dev-agent",
+        threadId: "thread-2",
+        featureName: "test-feature",
+        resumePattern: "fresh",
+        turnNumber: 1,
+        tokenCounts: { layer1: 10, layer2: 20, layer3: 5, total: 35 },
+      };
+      const longQuestion = "q".repeat(200);
+      invocationGuard.results = [{
+        status: "success",
+        invocationResult: {
+          textResponse: "need answer",
+          routingSignalRaw: `<routing>{"type":"ROUTE_TO_USER","question":"${longQuestion}"}</routing>`,
+          artifactChanges: [],
+          durationMs: 100,
+        },
+        commitResult: defaultCommitResult(),
+      }];
+      routingEngine.parseResult = { type: "ROUTE_TO_USER", question: longQuestion };
+      routingEngine.decideResult = {
+        signal: { type: "ROUTE_TO_USER", question: longQuestion },
+        targetAgentId: null,
+        isTerminal: false,
+        isPaused: true,
+        createNewThread: false,
+      };
+
+      const message = createThreadMessage({
+        content: "<@&111222333> do the thing",
+        threadId: "thread-2",
+        threadName: "test-feature",
+      });
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-2");
+
+      const evt = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.startsWith("ROUTE_TO_USER:"),
+      );
+      expect(evt).toBeDefined();
+      expect(evt!.message).toContain("…");
+    });
+  });
 
   // Issue #30 tests moved to orchestrator-dispatch.test.ts to avoid OOM
 });

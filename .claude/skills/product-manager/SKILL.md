@@ -405,7 +405,7 @@ docs/
 │   ├── {NNN}-FSPEC-{feature-name}.md      # Functional specifications (PM-owned)
 │   ├── ANALYSIS-{feature-name}.md         # Analysis documents (engineer-owned)
 │   ├── {NNN}-TSPEC-{feature-name}.md      # Technical specifications (engineer-owned)
-│   ├── {NNN}-PLAN-TSPEC-{feature}.md      # Execution plans (engineer-owned)
+│   ├── {NNN}-PLAN-{feature}.md             # Execution plans (engineer-owned)
 │   ├── {NNN}-PROPERTIES-{feature}.md      # Test properties (TE-owned)
 │   ├── REVIEW-{document-type}-{feature}.md # Review documents (TE-owned)
 │   └── CROSS-REVIEW-{skill}-{doc-type}.md # Cross-skill review feedback

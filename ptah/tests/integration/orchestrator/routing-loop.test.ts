@@ -22,6 +22,8 @@ import {
   FakeQuestionPoller,
   FakePatternBContextBuilder,
   FakePdlcDispatcher,
+  FakeAgentRegistry,
+  makeRegisteredAgent,
   createThreadMessage,
   defaultTestConfig,
 } from "../../fixtures/factories.js";
@@ -56,12 +58,12 @@ describe("Orchestrator routing loop integration", () => {
     threadQueue = new InMemoryThreadQueue();
     abortController = new AbortController();
 
-    // Set up role mentions so routing can resolve agent from @mention
-    config.agents.role_mentions = {
-      "111222333": "dev-agent",
-      "444555666": "pm-agent",
-      "777888999": "test-agent",
-    };
+    // Set up agent registry with mention_id mappings
+    const agentRegistry = new FakeAgentRegistry([
+      makeRegisteredAgent({ id: "dev-agent", mention_id: "111222333", display_name: "Dev Agent", skill_path: "./ptah/skills/dev-agent.md", log_file: "./ptah/logs/dev-agent.log" }),
+      makeRegisteredAgent({ id: "pm-agent", mention_id: "444555666", display_name: "PM Agent", skill_path: "./ptah/skills/pm-agent.md", log_file: "./ptah/logs/pm-agent.log" }),
+      makeRegisteredAgent({ id: "test-agent", mention_id: "777888999", display_name: "Test Agent", skill_path: "./ptah/skills/test-agent.md", log_file: "./ptah/logs/test-agent.log" }),
+    ]);
 
     // Set up skill files that context assembler will read
     fs.addExisting("./ptah/skills/pm-agent.md", "# PM Agent\nYou are the PM agent.");
@@ -72,7 +74,7 @@ describe("Orchestrator routing loop integration", () => {
     gitClient.diffResult = [];
 
     const tokenCounter = new CharTokenCounter();
-    const routingEngine = new DefaultRoutingEngine(logger);
+    const routingEngine = new DefaultRoutingEngine(agentRegistry, logger);
     const contextAssembler = new DefaultContextAssembler(fs, tokenCounter, logger);
     const skillInvoker = new DefaultSkillInvoker(skillClient, gitClient, logger);
     const responsePoster = new DefaultResponsePoster(discord, logger);
@@ -84,6 +86,7 @@ describe("Orchestrator routing loop integration", () => {
       artifactCommitter,
       gitClient,
       discord,
+      responsePoster,
       logger,
     );
     const worktreeRegistry = new InMemoryWorktreeRegistry();
@@ -112,6 +115,7 @@ describe("Orchestrator routing loop integration", () => {
       worktreeRegistry,
       shutdownSignal: abortController.signal,
       pdlcDispatcher: new FakePdlcDispatcher(),
+      agentRegistry,
     });
   });
 
@@ -151,7 +155,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Verify completion embed was posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -201,7 +205,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // LGTM completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -284,7 +288,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -368,7 +372,7 @@ describe("Orchestrator routing loop integration", () => {
 
       // Completion embed posted
       const completionEmbed = discord.postedEmbeds.find(
-        (e) => e.title === "Task Complete",
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete",
       );
       expect(completionEmbed).toBeDefined();
     });
@@ -432,6 +436,68 @@ describe("Orchestrator routing loop integration", () => {
 
       // No Discord IDs should appear in /docs content (AT-DI-03)
       expect(skillClient.invocations[0].systemPrompt).not.toMatch(/<@&\d+>/);
+    });
+  });
+  // K1: Full routing lifecycle — message received → agent invoked → LGTM → archiveThread called
+  // Verifies EVT-OB observability events are present in logger.entries
+  describe("K1: full lifecycle with archiving and EVT-OB events", () => {
+    it("archives thread on LGTM and emits EVT-OB-01, EVT-OB-02, EVT-OB-07 events", async () => {
+      const message = createThreadMessage({
+        content: "<@&111222333> finish the feature",
+        threadId: "thread-k1",
+        threadName: "k1-feature",
+        parentChannelId: "parent-1",
+      });
+
+      discord.threadHistory.set("thread-k1", DEFAULT_OLD_HISTORY);
+
+      skillClient.responses = [
+        {
+          textContent:
+            "Feature complete.\n\n<routing>{\"type\":\"LGTM\"}</routing>",
+        },
+      ];
+
+      await orchestrator.handleMessage(message);
+      await waitForQueue(threadQueue, "thread-k1");
+
+      // Skill was invoked
+      expect(skillClient.invocations).toHaveLength(1);
+
+      // EVT-OB-01: message received
+      const evtOb01 = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.startsWith("message received:"),
+      );
+      expect(evtOb01).toBeDefined();
+      expect(evtOb01!.message).toContain("thread-k1");
+
+      // EVT-OB-02: mention resolved
+      const evtOb02 = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.includes("mention resolved:"),
+      );
+      expect(evtOb02).toBeDefined();
+      expect(evtOb02!.message).toContain("dev-agent");
+
+      // EVT-OB-07: thread archived
+      const evtOb07 = logger.entries.find(
+        (e) => e.level === "INFO" && e.message.includes("thread archived:"),
+      );
+      expect(evtOb07).toBeDefined();
+      expect(evtOb07!.message).toContain("thread-k1");
+      expect(evtOb07!.message).toContain("LGTM");
+
+      // archiveThread was called on the discord client
+      const archiveCalls = discord.calls.filter(
+        (c) => c.method === "archiveThread",
+      );
+      expect(archiveCalls).toHaveLength(1);
+      expect((archiveCalls[0] as { method: "archiveThread"; threadId: string }).threadId).toBe("thread-k1");
+
+      // Resolution embed was posted
+      const completionEmbed = discord.postedEmbeds.find(
+        (e) => e.title === "✅ LGTM" || e.title === "✅ Task Complete" || e.title?.includes("LGTM"),
+      );
+      expect(completionEmbed).toBeDefined();
     });
   });
 });

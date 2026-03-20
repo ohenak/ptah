@@ -141,7 +141,7 @@ The orchestrator tells you which task to perform via an explicit `ACTION:` direc
 
 1. **Follow the git workflow** — create or sync the feature branch.
 2. **Read the REQ, FSPEC, and TSPEC.** Understand the full scope of what needs to be built and the approved technical design.
-3. **Create the execution plan.** Produce a Markdown file at `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` with:
+3. **Create the execution plan.** Produce a Markdown file at `docs/{NNN}-{feature-name}/{NNN}-PLAN-{feature-name}.md` with:
 
 ```markdown
 # Execution Plan: {Capability Title}
@@ -530,7 +530,7 @@ This skill operates downstream of the Product Manager skill. The key documents t
 | Functional Specs | `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
 | Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (produced by this skill) |
-| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-TSPEC-{feature-name}.md` | Task breakdown (produced by this skill) |
+| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-{feature-name}.md` | Task breakdown (produced by this skill) |
 | Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
 
 ### ID Conventions
@@ -546,7 +546,7 @@ This skill operates downstream of the Product Manager skill. The key documents t
 Documents are prefixed with a sequential number (`{NNN}-`) to establish ordering:
 - `001-TSPEC-ptah-init.md`
 - `002-TSPEC-ptah-discord-bot.md`
-- `002-PLAN-TSPEC-ptah-discord-bot.md`
+- `002-PLAN-ptah-discord-bot.md`
 
 The number groups related documents (TSPEC, PLAN, PROPERTIES) for the same feature.
 

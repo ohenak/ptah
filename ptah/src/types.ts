@@ -59,7 +59,7 @@ export type Component =
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
-export interface ObsLogEntry {
+export interface LogEntry {
   component: Component;
   level: LogLevel;
   message: string;
@@ -110,6 +110,8 @@ export interface PtahConfig {
     version: string;
   };
   agents: AgentsConfig;
+  agentEntries: AgentEntry[];
+  llm?: LlmConfig;
   discord: DiscordConfig;
   orchestrator: {
     max_turns_per_thread: number;
@@ -313,7 +315,7 @@ export interface CommitResult {
 
 export type LogStatus = "completed" | "completed (no changes)" | "conflict" | "error";
 
-export interface LogEntry {
+export interface ArtifactLogEntry {
   agentId: string;
   threadId: string;
   threadName: string;
@@ -321,4 +323,41 @@ export interface LogEntry {
   commitSha: string | null;
   summary: string;
   timestamp: Date;
+}
+
+// --- Phase 7: Polish types ---
+
+/** LLM model configuration — extracted from AgentConfig in Phase 7 migration. */
+export interface LlmConfig {
+  model: string;
+  max_tokens: number;
+}
+
+/** One entry in the ptah.config.json agents[] array. */
+export interface AgentEntry {
+  id: string;           // unique, /^[a-z0-9-]+$/
+  skill_path: string;   // relative path from project root
+  log_file: string;     // relative path from project root
+  mention_id: string;   // Discord snowflake — /^\d+$/
+  display_name?: string; // defaults to id if absent
+}
+
+/** A fully validated, registered agent in the live Orchestrator registry. */
+export interface RegisteredAgent {
+  id: string;
+  skill_path: string;
+  log_file: string;
+  mention_id: string;
+  display_name: string; // always set (id used as fallback)
+}
+
+/**
+ * Represents a single validation failure returned by buildAgentRegistry().
+ * One error is pushed per invalid or duplicate AgentEntry.
+ */
+export interface AgentValidationError {
+  index: number;          // position in the agents[] config array (0-based)
+  agentId?: string;       // set if id was parseable; undefined if id itself was missing/invalid
+  field: string;          // which field failed (e.g. 'id', 'skill_path', 'mention_id', 'log_file')
+  reason: string;         // human-readable description
 }

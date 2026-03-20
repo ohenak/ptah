@@ -1,11 +1,11 @@
 import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
-import type { LogEntry } from "../types.js";
+import type { ArtifactLogEntry } from "../types.js";
 import type { MergeLock } from "./merge-lock.js";
 import { MergeLockTimeoutError } from "./merge-lock.js";
 
 export interface AgentLogWriter {
-  append(entry: LogEntry): Promise<void>;
+  append(entry: ArtifactLogEntry): Promise<void>;
 }
 
 export function formatAgentName(agentId: string): string {
@@ -29,7 +29,7 @@ export class DefaultAgentLogWriter implements AgentLogWriter {
     private readonly logger: Logger,
   ) {}
 
-  async append(entry: LogEntry): Promise<void> {
+  async append(entry: ArtifactLogEntry): Promise<void> {
     let release: (() => void) | undefined;
     try {
       release = await this.mergeLock.acquire(10_000);

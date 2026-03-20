@@ -57,7 +57,7 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
   constructor(gitClient: GitClient, mergeLock: MergeLock, logger: Logger) {
     this.gitClient = gitClient;
     this.mergeLock = mergeLock;
-    this.logger = logger;
+    this.logger = logger.forComponent('artifact-committer');
   }
 
   async commitAndMerge(params: CommitParams): Promise<CommitResult> {
@@ -66,6 +66,7 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
 
     // 1. VALIDATE — return no-changes if empty
     if (artifactChanges.length === 0) {
+      this.logger.info(`artifact commit: no changes for ${agentId}`);
       return { commitSha: null, mergeStatus: "no-changes", branch };
     }
 
@@ -75,6 +76,7 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
     // 3. FILTER to docs/ only
     const docsChanges = filterDocsChanges(artifactChanges, this.logger);
     if (docsChanges.length === 0) {
+      this.logger.info(`artifact commit: no changes for ${agentId}`);
       return { commitSha: null, mergeStatus: "no-changes", branch };
     }
 
@@ -137,6 +139,9 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
       if (mergeResult === "merged") {
         const shortSha = await this.gitClient.getShortSha(commitSha);
         await this.cleanupWorktree(worktreePath, branch);
+        this.logger.info(
+          `artifact commit complete: ${agentId} → ${shortSha} (branch: ${branch})`,
+        );
         return {
           commitSha: shortSha,
           mergeStatus: "merged",

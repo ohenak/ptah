@@ -1,8 +1,9 @@
-import type { EmbedOptions, PostResult, PtahConfig } from "../types.js";
+import type { EmbedOptions, PostResult, PtahConfig, UserFacingErrorType, UserFacingErrorContext } from "../types.js";
 import type { DiscordClient } from "../services/discord.js";
 import type { Logger } from "../services/logger.js";
 
 export interface ResponsePoster {
+  /** Posts agent-authored response text as plain Discord messages (not embeds). */
   postAgentResponse(params: {
     threadId: string;
     agentId: string;
@@ -11,10 +12,35 @@ export interface ResponsePoster {
     footer?: string;
   }): Promise<PostResult>;
 
-  postCompletionEmbed(threadId: string, agentId: string, config: PtahConfig): Promise<void>;
-  postErrorEmbed(threadId: string, errorMessage: string): Promise<void>;
-  postProgressEmbed(threadId: string, message: string): Promise<void>;
+  /** Routing Notification embed — color 0x5865F2 (Discord blurple). */
+  postRoutingNotificationEmbed(params: {
+    threadId: string;
+    fromAgentDisplayName: string;
+    toAgentDisplayName: string;
+  }): Promise<void>;
 
+  /** Resolution Notification embed — color 0x57F287 (green). */
+  postResolutionNotificationEmbed(params: {
+    threadId: string;
+    signalType: 'LGTM' | 'TASK_COMPLETE';
+    agentDisplayName: string;
+  }): Promise<void>;
+
+  /** Error Report embed — color 0xED4245 (red). */
+  postErrorReportEmbed(params: {
+    threadId: string;
+    errorType: UserFacingErrorType;
+    context: UserFacingErrorContext;
+  }): Promise<void>;
+
+  /** User Escalation embed — color 0xFEE75C (yellow). */
+  postUserEscalationEmbed(params: {
+    threadId: string;
+    agentDisplayName: string;
+    question: string;
+  }): Promise<void>;
+
+  /** Creates a new coordination thread using Routing Notification embed. */
   createCoordinationThread(params: {
     channelId: string;
     featureName: string;
@@ -25,15 +51,12 @@ export interface ResponsePoster {
   }): Promise<string>;
 }
 
-const DEFAULT_COLOUR = 0x757575;
-const ERROR_COLOUR = 0x9E9E9E;
-const COMPLETION_COLOUR = 0x1B5E20;
-const PROGRESS_COLOUR = 0x424242;
-const MAX_EMBED_LENGTH = 4096;
-
-function parseHexColour(hex: string): number {
-  return parseInt(hex.replace("#", ""), 16);
-}
+const ROUTING_NOTIFICATION_COLOUR    = 0x5865F2; // Discord blurple
+const RESOLUTION_NOTIFICATION_COLOUR = 0x57F287; // green
+const ERROR_REPORT_COLOUR            = 0xED4245; // red
+const USER_ESCALATION_COLOUR         = 0xFEE75C; // yellow
+const EMBED_FOOTER                   = 'Ptah Orchestrator';
+const MAX_PLAIN_MESSAGE_LENGTH       = 2000;
 
 function agentNameFromId(agentId: string): string {
   return agentId
@@ -73,15 +96,6 @@ export class DefaultResponsePoster implements ResponsePoster {
     this.logger = logger;
   }
 
-  private resolveColour(agentId: string, config: PtahConfig): number {
-    const hex = config.agents.colours?.[agentId];
-    if (!hex) {
-      this.logger.warn(`Unknown agent colour for "${agentId}", using default gray`);
-      return DEFAULT_COLOUR;
-    }
-    return parseHexColour(hex);
-  }
-
   async postAgentResponse(params: {
     threadId: string;
     agentId: string;
@@ -89,79 +103,138 @@ export class DefaultResponsePoster implements ResponsePoster {
     config: PtahConfig;
     footer?: string;
   }): Promise<PostResult> {
-    const { threadId, agentId, text, config, footer } = params;
-    const colour = this.resolveColour(agentId, config);
-    const agentName = agentNameFromId(agentId);
-    const description = text === "" ? "No response text" : text;
+    const { threadId, agentId, text } = params;
+    const content = text === "" ? "No response text" : text;
 
-    if (description.length <= MAX_EMBED_LENGTH) {
-      const embedOptions: EmbedOptions = {
-        threadId,
-        title: agentName,
-        description,
-        colour,
-        footer,
-      };
-
-      const messageId = await this.postEmbedWithRetry(embedOptions);
-      return { messageId, threadId, newThreadCreated: false };
-    }
-
-    // Split into chunks
-    const chunks = splitText(description, MAX_EMBED_LENGTH);
+    const chunks = splitText(content, MAX_PLAIN_MESSAGE_LENGTH);
     let lastMessageId = "";
 
-    for (let i = 0; i < chunks.length; i++) {
-      const embedOptions: EmbedOptions = {
-        threadId,
-        title: `${agentName} (${i + 1}/${chunks.length})`,
-        description: chunks[i],
-        colour,
-        footer: i === chunks.length - 1 ? footer : undefined,
-      };
-
-      lastMessageId = await this.postEmbedWithRetry(embedOptions);
+    for (const chunk of chunks) {
+      try {
+        await this.discord.postPlainMessage(threadId, chunk);
+        lastMessageId = `plain-msg-${Date.now()}`;
+      } catch (error) {
+        this.logger.warn(
+          `Plain message post failed for ${agentId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     return { messageId: lastMessageId, threadId, newThreadCreated: false };
   }
 
-  async postErrorEmbed(threadId: string, errorMessage: string): Promise<void> {
+  async postRoutingNotificationEmbed(params: {
+    threadId: string;
+    fromAgentDisplayName: string;
+    toAgentDisplayName: string;
+  }): Promise<void> {
+    const { threadId, fromAgentDisplayName, toAgentDisplayName } = params;
     const embedOptions: EmbedOptions = {
       threadId,
-      title: "Error",
-      description: errorMessage,
-      colour: ERROR_COLOUR,
+      title: `↗ Routing to ${toAgentDisplayName}`,
+      description: `From **${fromAgentDisplayName}** → **${toAgentDisplayName}**`,
+      colour: ROUTING_NOTIFICATION_COLOUR,
+      footer: EMBED_FOOTER,
     };
 
-    await this.postEmbedWithRetry(embedOptions);
-  }
-
-  async postCompletionEmbed(threadId: string, agentId: string, config: PtahConfig): Promise<void> {
-    const agentName = agentNameFromId(agentId);
-    const embedOptions: EmbedOptions = {
-      threadId,
-      title: "Task Complete",
-      description: `${agentName} has completed the task.`,
-      colour: COMPLETION_COLOUR,
-    };
-
-    await this.postEmbedWithRetry(embedOptions);
-  }
-
-  async postProgressEmbed(threadId: string, message: string): Promise<void> {
     try {
-      await this.discord.postEmbed({
-        threadId,
-        title: "Progress",
-        description: message,
-        colour: PROGRESS_COLOUR,
-      });
+      await this.discord.postEmbed(embedOptions);
     } catch (error) {
-      // Best-effort — don't block the pipeline if progress posting fails
       this.logger.warn(
-        `Progress embed failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Routing notification embed failed, falling back to plain message: ${error instanceof Error ? error.message : String(error)}`,
       );
+      await this.discord.postPlainMessage(
+        threadId,
+        `↗ Routing to ${toAgentDisplayName} (from ${fromAgentDisplayName})`,
+      ).catch(() => {});
+    }
+  }
+
+  async postResolutionNotificationEmbed(params: {
+    threadId: string;
+    signalType: 'LGTM' | 'TASK_COMPLETE';
+    agentDisplayName: string;
+  }): Promise<void> {
+    const { threadId, signalType, agentDisplayName } = params;
+    const title = signalType === 'LGTM' ? '✅ LGTM' : '✅ Task Complete';
+    const description = signalType === 'LGTM'
+      ? `**${agentDisplayName}** has approved this work.`
+      : `**${agentDisplayName}** has completed the task.`;
+
+    const embedOptions: EmbedOptions = {
+      threadId,
+      title,
+      description,
+      colour: RESOLUTION_NOTIFICATION_COLOUR,
+      footer: EMBED_FOOTER,
+    };
+
+    try {
+      await this.discord.postEmbed(embedOptions);
+    } catch (error) {
+      this.logger.warn(
+        `Resolution notification embed failed, falling back to plain message: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.discord.postPlainMessage(
+        threadId,
+        `${title}: ${agentDisplayName}`,
+      ).catch(() => {});
+    }
+  }
+
+  async postErrorReportEmbed(params: {
+    threadId: string;
+    errorType: UserFacingErrorType;
+    context: UserFacingErrorContext;
+  }): Promise<void> {
+    const { threadId, errorType, context } = params;
+    const description = `Error type: ${errorType}${context.agentDisplayName ? ` — ${context.agentDisplayName}` : ''}`;
+
+    const embedOptions: EmbedOptions = {
+      threadId,
+      title: `⚠ Error — ${errorType}`,
+      description,
+      colour: ERROR_REPORT_COLOUR,
+      footer: EMBED_FOOTER,
+    };
+
+    try {
+      await this.discord.postEmbed(embedOptions);
+    } catch (error) {
+      this.logger.warn(
+        `Error report embed failed, falling back to plain message: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.discord.postPlainMessage(
+        threadId,
+        `⚠ Error: ${errorType}`,
+      ).catch(() => {});
+    }
+  }
+
+  async postUserEscalationEmbed(params: {
+    threadId: string;
+    agentDisplayName: string;
+    question: string;
+  }): Promise<void> {
+    const { threadId, agentDisplayName, question } = params;
+    const embedOptions: EmbedOptions = {
+      threadId,
+      title: `❓ Question from ${agentDisplayName}`,
+      description: question,
+      colour: USER_ESCALATION_COLOUR,
+      footer: EMBED_FOOTER,
+    };
+
+    try {
+      await this.discord.postEmbed(embedOptions);
+    } catch (error) {
+      this.logger.warn(
+        `User escalation embed failed, falling back to plain message: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.discord.postPlainMessage(
+        threadId,
+        `❓ Question from ${agentDisplayName}: ${question}`,
+      ).catch(() => {});
     }
   }
 
@@ -173,16 +246,15 @@ export class DefaultResponsePoster implements ResponsePoster {
     initialText: string;
     config: PtahConfig;
   }): Promise<string> {
-    const { channelId, featureName, description, agentId, initialText, config } = params;
-    const colour = this.resolveColour(agentId, config);
+    const { channelId, featureName, description, agentId, initialText } = params;
     const agentName = agentNameFromId(agentId);
     const threadName = `${featureName} — ${description}`;
 
     const initialEmbed: EmbedOptions = {
       threadId: "", // will be set by createThread
-      title: agentName,
+      title: `↗ Routing to ${agentName}`,
       description: initialText,
-      colour,
+      colour: ROUTING_NOTIFICATION_COLOUR,
     };
 
     try {
@@ -204,9 +276,9 @@ export class DefaultResponsePoster implements ResponsePoster {
         // Fallback: post in parent channel
         const fallbackEmbed: EmbedOptions = {
           threadId: channelId,
-          title: `${agentName} (${threadName})`,
+          title: `↗ Routing to ${agentName} (${threadName})`,
           description: initialText,
-          colour,
+          colour: ROUTING_NOTIFICATION_COLOUR,
         };
 
         await this.discord.postEmbed(fallbackEmbed);

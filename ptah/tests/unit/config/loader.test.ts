@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { NodeConfigLoader, isNodeError } from "../../../src/config/loader.js";
-import { FakeFileSystem, defaultTestConfig } from "../../fixtures/factories.js";
+import { FakeFileSystem, defaultTestConfig, makeAgentEntry } from "../../fixtures/factories.js";
 
 describe("NodeConfigLoader", () => {
   let fs: FakeFileSystem;
@@ -353,6 +353,394 @@ describe("NodeConfigLoader", () => {
       expect(result.git.auto_commit).toBe(true);
       expect(result.docs.root).toBe("docs");
       expect(result.docs.templates).toBe("./ptah/templates");
+    });
+  });
+
+  // Phase B3: new-format agents array in config file
+  describe("new-format agents array (B3)", () => {
+    it("detects new format when agents is an array and populates agentEntries", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(1);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+    });
+
+    it("parses multiple agent entries from new-format agents array", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+          makeAgentEntry({ id: "eng-agent", mention_id: "222222222222222222" }),
+          makeAgentEntry({ id: "test-agent", mention_id: "333333333333333333" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(3);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+      expect(result.agentEntries[1].id).toBe("eng-agent");
+      expect(result.agentEntries[2].id).toBe("test-agent");
+    });
+
+    it("throws when agents array is empty", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        'ptah.config.json "agents" array must be non-empty when using array format.'
+      );
+    });
+
+    it("throws when an AgentEntry id has invalid format", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "INVALID_ID", mention_id: "111111111111111111" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.id/
+      );
+    });
+
+    it("throws when an AgentEntry id contains uppercase letters", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "MyAgent", mention_id: "111111111111111111" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.id/
+      );
+    });
+
+    it("throws when an AgentEntry mention_id has invalid format", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "not-a-snowflake" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.mention_id/
+      );
+    });
+
+    it("throws when an AgentEntry is missing required skill_path field", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          { id: "pm-agent", log_file: "logs/pm.md", mention_id: "111111111111111111" },
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.skill_path/
+      );
+    });
+
+    it("throws when an AgentEntry is missing required log_file field", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          { id: "pm-agent", skill_path: "skills/pm.md", mention_id: "111111111111111111" },
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.log_file/
+      );
+    });
+
+    it("throws when an AgentEntry is missing required mention_id field", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          { id: "pm-agent", skill_path: "skills/pm.md", log_file: "logs/pm.md" },
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[0\]\.mention_id/
+      );
+    });
+
+    it("validates all entries and reports error for entry at index 1", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+          makeAgentEntry({ id: "INVALID", mention_id: "222222222222222222" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      await expect(loader.load()).rejects.toThrow(
+        /agents\[1\]\.id/
+      );
+    });
+
+    it("preserves optional display_name when provided in array format", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111", display_name: "Product Manager" }),
+        ],
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries[0].display_name).toBe("Product Manager");
+    });
+  });
+
+  // Phase B3: llm section parsing
+  describe("llm section (B3)", () => {
+    it("parses llm section when present and stores it in config.llm", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.llm = { model: "claude-opus-4", max_tokens: 200000 };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.llm).toBeDefined();
+      expect(result.llm?.model).toBe("claude-opus-4");
+      expect(result.llm?.max_tokens).toBe(200000);
+    });
+
+    it("config.llm is undefined when llm section is absent", async () => {
+      const config = defaultTestConfig();
+      fs.addExisting("ptah.config.json", JSON.stringify(config));
+
+      const result = await loader.load();
+      expect(result.llm).toBeUndefined();
+    });
+
+    it("parses llm section alongside new-format agents array", async () => {
+      const raw = {
+        project: { name: "test", version: "1.0.0" },
+        agents: [
+          makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+        ],
+        llm: { model: "claude-sonnet-4-6", max_tokens: 8192 },
+        discord: {
+          server_id: "test-server-123",
+          bot_token_env: "DISCORD_BOT_TOKEN",
+          channels: { updates: "updates", questions: "questions", debug: "debug" },
+          mention_user_id: "test-user-456",
+        },
+        orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+        git: { commit_prefix: "[ptah]", auto_commit: true },
+        docs: { root: "docs", templates: "./ptah/templates" },
+      };
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.llm?.model).toBe("claude-sonnet-4-6");
+      expect(result.llm?.max_tokens).toBe(8192);
+      expect(result.agentEntries).toHaveLength(1);
+    });
+  });
+
+  // Phase H1: agentEntries field — optional AgentEntry[] with default []
+  describe("agentEntries field", () => {
+    it("defaults agentEntries to [] when not present in config", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      delete raw.agentEntries;
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toEqual([]);
+    });
+
+    it("parses a valid agentEntries array when present", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        {
+          id: "pm-agent",
+          skill_path: "./ptah/skills/pm-agent.md",
+          log_file: "./ptah/logs/pm-agent.log",
+          mention_id: "123456789012345678",
+          display_name: "PM Agent",
+        },
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(1);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+      expect(result.agentEntries[0].skill_path).toBe("./ptah/skills/pm-agent.md");
+      expect(result.agentEntries[0].log_file).toBe("./ptah/logs/pm-agent.log");
+      expect(result.agentEntries[0].mention_id).toBe("123456789012345678");
+      expect(result.agentEntries[0].display_name).toBe("PM Agent");
+    });
+
+    it("parses multiple agent entries", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        makeAgentEntry({ id: "pm-agent", mention_id: "111111111111111111" }),
+        makeAgentEntry({ id: "dev-agent", mention_id: "222222222222222222" }),
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toHaveLength(2);
+      expect(result.agentEntries[0].id).toBe("pm-agent");
+      expect(result.agentEntries[1].id).toBe("dev-agent");
+    });
+
+    it("preserves optional display_name when provided", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [
+        makeAgentEntry({ id: "pm-agent", display_name: "Product Manager" }),
+      ];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries[0].display_name).toBe("Product Manager");
+    });
+
+    it("accepts agentEntries as empty array explicitly", async () => {
+      const config = defaultTestConfig();
+      const raw = JSON.parse(JSON.stringify(config));
+      raw.agentEntries = [];
+      fs.addExisting("ptah.config.json", JSON.stringify(raw));
+
+      const result = await loader.load();
+      expect(result.agentEntries).toEqual([]);
+    });
+
+    it("parsed config always has agentEntries field even when not in JSON", async () => {
+      const config = defaultTestConfig();
+      fs.addExisting("ptah.config.json", JSON.stringify(config));
+
+      const result = await loader.load();
+      expect("agentEntries" in result).toBe(true);
+      expect(Array.isArray(result.agentEntries)).toBe(true);
     });
   });
 });
