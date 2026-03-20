@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | 014-FSPEC-tech-lead-orchestration |
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -28,7 +28,7 @@ This document specifies the behavioral logic for the tech-lead orchestration lay
 
 | Field | Detail |
 |-------|--------|
-| **Linked Requirements** | [REQ-PD-01], [REQ-PD-05] |
+| **Linked Requirements** | [REQ-PD-01], [REQ-PD-05], [REQ-PD-06] |
 | **Description** | Defines how the tech lead reads a PLAN document and constructs a directed acyclic graph (DAG) of phase dependencies. |
 
 #### 2.1.1 Input
@@ -50,12 +50,20 @@ This document specifies the behavioral logic for the tech-lead orchestration lay
    → If the section is absent or empty: enter SEQUENTIAL FALLBACK MODE (see §2.1.5).
 
 4. Parse dependency declarations from the "Task Dependency Notes" section.
-   Expected format: one or more lines of the form:
-     "Phase X depends on: Phase A, Phase B"
-   or the equivalent shorthand used in the plan template (e.g., "X → A, B").
-   Any recognizable form stating phase relationships is acceptable.
-   → If no dependency lines can be parsed (section exists but all lines are
-     unrecognizable): enter SEQUENTIAL FALLBACK MODE (see §2.1.5).
+   Two canonical syntax forms are required (from REQ-PD-01):
+     Form 1 — Linear chain:  "A → B → C"
+       (B depends on A; C depends on B)
+     Form 2 — Fan-out:       "A → [B, C]"
+       (B and C each depend on A; brackets required around multiple targets)
+   The natural-language form is also accepted:
+     Form 3 — Natural language: "Phase X depends on: Phase A, Phase B"
+       (Phase X depends on Phase A and Phase B)
+   Phase names in all forms are matched case-insensitively and with leading/
+   trailing whitespace trimmed. Lines in the dependency section that do not
+   match any of the three supported forms are ignored (not parsed as dependency
+   declarations) and a debug log entry is emitted for each skipped line.
+   → If no dependency lines can be parsed (section exists but all lines match
+     none of the three supported forms): enter SEQUENTIAL FALLBACK MODE (see §2.1.5).
 
 5. Construct a directed acyclic graph (DAG):
    - Nodes: one per phase identified in step 2a.
@@ -102,10 +110,14 @@ When sequential fallback is triggered:
 
 #### 2.1.6 Acceptance Tests
 
-**AT-PD-01-01: Valid plan with dependency section**
+**AT-PD-01-01: Valid plan with dependency section (fan-out syntax)**
 ```
 WHO:   As the Ptah orchestrator
-GIVEN: A plan with phases A–F and a "Task Dependency Notes" section declaring B→A, C→A, D→B,D→C, E→D, F→D
+GIVEN: A plan with phases A–F and a "Task Dependency Notes" section using fan-out syntax:
+         "A → [B, C]"   (B and C depend on A)
+         "B → [D]"      (D depends on B)
+         "C → [D]"      (D also depends on C)
+         "D → [E, F]"   (E and F depend on D)
 WHEN:  The tech lead parses the plan
 THEN:  A 6-node DAG is constructed: A(0 deps), B(dep A), C(dep A), D(dep B,C), E(dep D), F(dep D)
        No warnings are emitted
@@ -137,6 +149,30 @@ WHEN:  The tech lead attempts to read the plan
 THEN:  An error is reported: "Plan file not found: {path}"
        No agents are dispatched
        Execution halts
+```
+
+**AT-PD-01-05: Dangling reference in dependency section**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: A plan with phases A, B, C and a dependency section containing "A → [B, Z]"
+       (Phase Z does not exist in the plan's phase list)
+WHEN:  The tech lead validates the DAG
+THEN:  A warning is logged: "Unknown phase 'Z' referenced in dependency declaration — ignoring this reference"
+       The dependency A → B is still parsed and applied
+       The reference to Z is ignored; parse continues
+       Sequential fallback is NOT triggered (a dangling reference alone does not cause fallback)
+```
+
+**AT-PD-01-06: Plan with phase headers but no task tables**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: A plan with phase headers "Phase A — Foundation" and "Phase B — Services"
+       but no task table rows under either phase
+WHEN:  The tech lead parses the plan
+THEN:  A warning is logged: "No task tables found; phase list derived from phase headers only."
+       Batch computation proceeds using only the phase headers
+       Both phases are treated as not completed (absence of tasks ≠ completion)
+       Parse continues without error
 ```
 
 ---
@@ -267,6 +303,7 @@ Skill assignment is determined solely by the **Source File** column of the phase
 | `hooks/` | frontend-engineer |
 | `docs/` (only) | backend-engineer (default) |
 | `—` or empty | backend-engineer (default) |
+| Any unrecognized prefix (e.g., `lib/`, `utils/`, `scripts/`) | backend-engineer (silent default, no warning) |
 
 **Mixed-layer rule:** If a phase's task table contains Source File entries mapping to both backend-engineer prefixes (e.g., `src/`) and frontend-engineer prefixes (e.g., `app/`), the phase is assigned **backend-engineer** and a warning is logged:
 
@@ -280,6 +317,7 @@ This warning is surfaced in the pre-execution confirmation (FSPEC-TL-01) so the 
 2. If all Source File entries are frontend-only prefixes → **frontend-engineer**.
 3. If Source File entries span both prefix groups → **backend-engineer** with warning.
 4. If all Source File entries are `docs/` or empty → **backend-engineer** (silent default, no warning).
+5. If a Source File entry's path prefix is not in any recognized category (not backend, not frontend, not `docs/`, and not empty) → treat as a **backend path** (silent default, no warning). Unrecognized prefixes do not trigger the mixed-layer warning unless they co-exist with explicit frontend prefixes (in which case rule 3 applies because the mixed-layer check treats unrecognized paths as backend).
 
 #### 2.3.3 Acceptance Tests
 
@@ -357,8 +395,10 @@ If the user responds **modify**, the tech lead enters a modification loop:
    Valid modification types:
    a. Change skill assignment for a phase (override the auto-inferred assignment).
    b. Move a phase to a different batch (must not violate the phase's dependency constraints).
-      → If the requested move would place a phase before one of its dependencies,
-        reject the move with an explanation and re-prompt.
+      → If the requested move would place a phase into the same batch as any of its
+        dependencies, OR into a batch numbered before any of its dependencies, reject
+        the move with an explanation and re-prompt. Phases within a batch execute in
+        parallel; a phase may only be in a batch strictly after all phases it depends on.
    c. Split a batch into two consecutive batches (user specifies which phases stay
       in the current batch and which move to the new batch).
 
@@ -424,6 +464,28 @@ THEN:  "Maximum modification iterations reached. Please approve or cancel to pro
        The tech lead waits for approve or cancel; no automatic execution occurs
 ```
 
+**AT-TL-01-06: Same-batch dependency violation rejected**
+```
+WHO:   As the developer
+GIVEN: Phase E depends on Phase D; Phase D is currently in Batch 3, Phase E is in Batch 4
+WHEN:  The developer requests "move Phase E to Batch 3"
+THEN:  The tech lead rejects the move:
+         "Phase E depends on Phase D (also in Batch 3). Phases in the same batch run in
+          parallel — Phase E cannot share a batch with its dependency Phase D.
+          Please choose a batch strictly after Batch 3."
+       The original plan is retained (Phase E remains in Batch 4); the developer is re-prompted
+```
+
+**AT-TL-01-07: Confirmation timeout cancels execution**
+```
+WHO:   As the developer
+GIVEN: A batch plan has been presented in the coordination thread
+WHEN:  The developer provides no response for 10 minutes
+THEN:  "Confirmation timeout — execution cancelled." is posted in the coordination thread
+       No agents are dispatched; no worktrees are created
+       Execution does not begin
+```
+
 ---
 
 ### FSPEC-TL-02 — Pre-flight Infrastructure Check
@@ -436,6 +498,8 @@ THEN:  "Maximum modification iterations reached. Please approve or cancel to pro
 #### 2.5.1 When Pre-flight Runs
 
 Pre-flight runs **after** the user approves the batch execution plan (FSPEC-TL-01) and **before** any agents are dispatched. In sequential fallback mode (all batches have one phase), pre-flight is skipped entirely.
+
+**Ordering with parse-time fallback:** When sequential fallback is triggered during dependency parsing (FSPEC-PD-01 §2.1.5), the flow is: parse → fallback triggered → pre-execution confirmation shown to user (with "Sequential execution" label) → user approves → pre-flight is not invoked → sequential execution begins. The user always sees the confirmation step; pre-flight is simply never reached in sequential mode.
 
 #### 2.5.2 Infrastructure Checks
 
@@ -450,8 +514,8 @@ Verify that the persistent `feat-{feature-name}` branch exists on the remote rep
 **Check 2 — ArtifactCommitter two-tier merge capability:**
 Verify that the `ArtifactCommitter` service (introduced in Phase 010) supports the two-tier branch merge operation needed to merge agent worktree branches into the feature branch.
 
-- Pass: the capability is confirmed available.
-- Fail: the capability is unavailable (Phase 010 not yet deployed).
+- Pass: the `ArtifactCommitter` service confirms it can perform a worktree-branch-to-feature-branch merge. Behaviorally, this means the service exposes or acknowledges a `mergeBranchIntoFeature` capability. The specific verification mechanism (method existence check, capability flag, version query) is a TSPEC concern, but whatever mechanism is used must produce a definitive pass/fail answer before any agent dispatch occurs.
+- Fail: the `ArtifactCommitter` service does not expose the two-tier merge capability, or Phase 010 has not been deployed and the service is entirely unavailable.
 
 #### 2.5.3 Fallback Behavior
 
@@ -501,6 +565,8 @@ THEN:  Check 2 fails; warning logged; sequential fallback applied
 #### 2.6.1 Behavioral Flow (Per Batch)
 
 > **Sub-batch note (REQ-NF-14-01):** When a topological batch is split into sub-batches (N.1, N.2, …), this lifecycle runs once per sub-batch with one modification: the **test gate (step 8) and plan status update (step 9) are deferred to after the final sub-batch** in the topological layer. Sub-batches N.1 through N.(last-1) skip steps 8–10 and proceed directly from step 7 (merge) to the next sub-batch at step 1. Only the final sub-batch N.last executes steps 8–10 for the full topological batch.
+>
+> **Sub-batch failure cascade:** If FSPEC-BD-02 is triggered for sub-batch N.M (due to any phase failure), **all remaining sub-batches N.(M+1) and beyond are immediately cancelled — none of them execute**. The failure handling and execution halt described in FSPEC-BD-02 apply to the entire topological batch. This preserves the no-partial-merge invariant: because sub-batch N.M had no merges (FSPEC-BD-02 §2.7.2 step 5), and no previous sub-batch had a failure, the feature branch remains in the same state it was in before topological batch N began.
 
 ```
 1. POST BATCH START NOTIFICATION (REQ-PR-01)
@@ -724,6 +790,22 @@ THEN:  Failure notifications posted for D and E; batch failure notice posted
        Execution halts
 ```
 
+**AT-BD-02-04: Sub-batch failure cascades to cancel remaining sub-batches**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: Topological Batch 1 is split into sub-batches:
+         Batch 1.1 = [Phase C, Phase D, Phase E, Phase F, Phase G]
+         Batch 1.2 = [Phase H, Phase I]
+       Phase D in sub-batch 1.1 fails; phases C, E, F, G all succeed
+WHEN:  Sub-batch 1.1 failure handling runs
+THEN:  No merges occur for sub-batch 1.1 (no-partial-merge invariant — any phase
+         failure in a sub-batch prevents all merges for that sub-batch)
+       Sub-batch 1.2 is cancelled; phases H and I are never dispatched
+       Failure notification posted for Phase D; batch failure notice posted for Batch 1
+       Execution halts; Batch 2 does not start
+       The feature branch is in the exact same state as before Batch 1 began
+```
+
 ---
 
 ### FSPEC-BD-03 — Resume Logic
@@ -759,6 +841,12 @@ If the developer needs to force a completed phase to re-run (e.g., because the D
 The tech lead responds by marking Phase B as not-completed in the in-memory batch plan (not writing to the plan document), placing it back in the batch computation. Phase B is then included in the batch execution as if it were not done. The developer is informed:
 
 > "Phase B has been added back to the execution plan. It will run in Batch {N}. Note: this does not modify the plan document — task statuses will be updated after the batch completes."
+
+**Downstream Done phases warning:** If Phase B has downstream phases that are also marked Done in the plan (e.g., Phase D which depends on Phase B), those downstream phases remain excluded from the in-memory batch plan unless the developer explicitly requests them to be re-run as well. The tech lead posts a warning alongside the above confirmation message:
+
+> "Warning: Phase D (which depends on Phase B) is still marked Done and will not be re-run. If Phase B's re-implementation changes its outputs, Phase D's Done status may be stale. To also re-run Phase D, type 'modify' and request 're-run Phase D'."
+
+This warning is informational only — the developer is in full control of which phases are re-run.
 
 #### 2.8.4 Acceptance Tests
 
@@ -808,7 +896,7 @@ THEN:  Phase B is added back to the in-memory batch plan
 
 | FSPEC ID | Title | Linked Requirements |
 |----------|-------|---------------------|
-| FSPEC-PD-01 | Dependency Graph Parsing | REQ-PD-01, REQ-PD-05 |
+| FSPEC-PD-01 | Dependency Graph Parsing | REQ-PD-01, REQ-PD-05, REQ-PD-06 |
 | FSPEC-PD-02 | Topological Batch Computation | REQ-PD-02, REQ-PD-04, REQ-NF-14-01 |
 | FSPEC-PD-03 | Phase Skill Assignment | REQ-PD-03 |
 | FSPEC-TL-01 | Pre-execution Plan Confirmation and Modification Loop | REQ-TL-02 |
@@ -843,6 +931,7 @@ THEN:  Phase B is added back to the in-memory batch plan
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-05) and test-engineer (TE F-01–F-07) cross-reviews of v1.1. **Medium fixes:** (1) BE F-01/TE F-03 — replaced "any recognizable form" with explicit enumeration of three supported dependency syntax forms (linear chain, fan-out, natural language); updated AT-PD-01-01 to use canonical fan-out syntax. (2) BE F-02 — amended §2.4.2 step 2b to reject moves placing a phase into the same batch as any of its dependencies, not just before them; added AT-TL-01-06 for same-batch rejection. (3) BE F-03 — added explicit sub-batch failure cascade statement to §2.6.1 sub-batch note; added AT-BD-02-04 for cascade scenario. (4) TE F-01 — added unrecognized Source File prefix fallback rule to §2.3.1 table and §2.3.2 precedence list. **Low fixes:** (5) BE F-04/TE F-07 — added REQ-PD-06 to FSPEC-PD-01 linked requirements and §4 traceability table. (6) BE F-05/TE F-07 — added behavioral pass condition description for FSPEC-TL-02 Check 2. (7) TE F-02 — added AT-TL-01-07 for 10-minute confirmation timeout. (8) TE F-06 — added AT-PD-01-05 (dangling reference) and AT-PD-01-06 (no task tables). (9) BE Q-02 — added downstream Done phases warning to §2.8.3. (10) BE Q-01 — clarified parse-time fallback → confirmation → skip pre-flight ordering in §2.5.1. |
 | 1.1 | 2026-03-19 | Product Manager | Corrected three pre-commit bugs: (1) AT-PD-01-01 "4-node DAG" → "6-node DAG" (phases A–F = 6 nodes); (2) FSPEC-PD-02 §2.2.1 step 3 and AT-PD-02-03 incorrectly stated test gate fires between sub-batches — corrected to align with REQ-NF-14-01 (gate fires once per topological batch after all sub-batches complete); (3) added sub-batch clarification note to FSPEC-BD-01 §2.6.1 making the deferred test gate behavior explicit. Also added REQ-NF-14-05 to REQ to back the FSPEC-TL-02 linked requirement reference. |
 | 1.0 | 2026-03-19 | Product Manager | Initial functional specification. Covers FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03. Addresses deferred items from backend-engineer and test-engineer reviews: BE Q-03 (resume auto-detect vs explicit resolved in FSPEC-BD-03), TE-F-03 (sub-batch split order resolved in FSPEC-PD-02 §2.2.3), TE-F-04 (modification loop termination resolved in FSPEC-TL-01 §2.4.3). |
 
