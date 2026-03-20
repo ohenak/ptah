@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | 014-FSPEC-tech-lead-orchestration |
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
-| **Version** | 1.4 |
+| **Version** | 1.5 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -173,6 +173,29 @@ THEN:  A warning is logged: "No task tables found; phase list derived from phase
        Batch computation proceeds using only the phase headers
        Both phases are treated as not completed (absence of tasks ≠ completion)
        Parse continues without error
+```
+
+**AT-PD-01-07: Form 1 — linear chain dependency parsing**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: A plan with phases A, B, C, D and a "Task Dependency Notes" section:
+         "A → B → C → D"   (linear chain: B depends on A, C on B, D on C)
+WHEN:  The tech lead parses the plan
+THEN:  The DAG contains edges: A→B, B→C, C→D (three edges from one declaration)
+       No warnings are emitted
+       Topological batching produces: Batch 1 = [A], Batch 2 = [B], Batch 3 = [C], Batch 4 = [D]
+```
+
+**AT-PD-01-08: Form 3 — natural language dependency parsing**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: A plan with phases A, B, C, D and a "Task Dependency Notes" section:
+         "Phase C depends on: Phase A, Phase B"
+         "Phase D depends on: Phase C"
+WHEN:  The tech lead parses the plan
+THEN:  The DAG contains edges: A→C, B→C, C→D
+       No warnings are emitted
+       Topological batching produces: Batch 1 = [A, B], Batch 2 = [C], Batch 3 = [D]
 ```
 
 ---
@@ -674,8 +697,9 @@ THEN:  Check 2 fails; the failure is logged with explanation
    For each phase in the batch:
    a. Create an isolated git worktree branched from the current tip of the
       feature branch (feat-{feature-name}).
-   b. The worktree branch is named: feat-{feature-name}/phase-{X}-{timestamp}
-      (where {X} is the phase letter and {timestamp} is a short unique suffix).
+   b. The TSPEC must define a worktree branch naming convention that avoids
+      conflicts with the persistent feature branch name (feat-{feature-name}).
+      The specific format is a TSPEC concern.
    c. Record the worktree path and branch name for later merge and cleanup.
 
 3. DISPATCH AGENTS IN PARALLEL
@@ -717,6 +741,13 @@ THEN:  Check 2 fails; the failure is logged with explanation
      Do not proceed to the next batch. The plan status is NOT updated.
      Post: "Test gate failed after Batch {N}. {K} test(s) failing: {test names/summary}.
      Resolve failures and resume from Batch {N}."
+
+   Note: Because the plan status is NOT updated for a failed batch, all phases in
+   the batch will be re-implemented when the tech lead is re-invoked — including
+   phases whose worktree merges succeeded before the test gate ran. Developers
+   should manually mark already-correct phases as Done in the plan document before
+   re-invoking if re-implementation of those phases would produce duplicate or
+   conflicting changes.
 
 9. UPDATE PLAN STATUS (REQ-BD-08) — FINAL STEP
    Write task status updates to the plan document on the feature branch.
@@ -803,6 +834,26 @@ WHEN:  The tech lead resumes
 THEN:  The plan shows D, E, F all as Not Done
        Batch computation includes D, E, and F (all three are re-implemented)
        The pre-execution confirmation shows a resume note identifying any earlier
+         batches that are fully Done; Batch 2 contains D, E, and F
+       Phase D is re-implemented over code already present on the feature branch
+         from its first successful merge
+       All three phases (D, E, F) complete and are merged in document order
+       The post-batch flow (test gate, plan status update) proceeds normally
+```
+
+**AT-BD-01-05: Test gate failure resume re-runs all batch phases**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: Batch 2 contains phases D, E, F (in document order)
+       All three agents complete successfully; all three worktrees are merged
+         into the feature branch
+       The test suite run after Batch 2 reports 1 failing test
+       Plan status is NOT updated; D, E, F remain Not Done in the plan document
+       The developer fixes the failing test and re-invokes the tech lead
+WHEN:  The tech lead resumes
+THEN:  The plan shows D, E, F all as Not Done
+       Batch computation includes D, E, and F (all three are re-implemented)
+       The pre-execution confirmation shows a resume note for any earlier
          batches that are fully Done; Batch 2 contains D, E, and F
        Phase D is re-implemented over code already present on the feature branch
          from its first successful merge
@@ -1077,6 +1128,7 @@ THEN:  Phase B is added back to the in-memory execution plan
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5 | 2026-03-19 | Product Manager | Addressed all findings from backend-engineer Round 4/5 and test-engineer Round 4 cross-reviews. **Medium fix (blocking):** F-01 — Removed git-infeasible worktree branch naming format from §2.6.1 step 2b (`feat-{feature-name}/phase-{X}-{timestamp}` conflicts with the existing `feat-{feature-name}` branch ref in git's filesystem). Replaced with a TSPEC delegation: "The TSPEC must define a worktree branch naming convention that avoids conflicts with the persistent feature branch name." **Low fixes:** F-02 (BE/TE) — Added AT-PD-01-07 (Form 1 linear chain parsing) and AT-PD-01-08 (Form 3 natural language parsing) to cover the two previously untested dependency syntax forms. F-03 (BE/TE) — Added developer guidance note to §2.6.1 step 8 advising that all batch phases will be re-implemented on resume after a test gate failure; added AT-BD-01-05 (test gate failure resume re-runs all batch phases) analogous to AT-BD-01-04. |
 | 1.4 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer Round 3 (BE F-01–F-02 + cosmetic) and test-engineer Round 3 (TE F-01–F-03) cross-reviews of v1.3. **Medium fixes (blocking):** (1) BE F-01 — Added explicit iteration counter rules to §2.4.3: recognized-but-rejected modifications (dependency-violating move, same-batch move, dependency-violating split) do NOT count toward the 5-iteration limit, consistent with the unrecognized-input exemption already specified. (2) TE F-01 — Added dependency-violation rejection rule to §2.4.2(c) (batch split): splits that would place a dependency phase after a phase that depends on it are rejected with an explanation and re-prompt; rejection does not consume a modification cycle. Added AT-TL-01-08 (valid split) and AT-TL-01-09 (dependency-violating split rejected). **Low fixes:** (3) BE F-02 / TE F-03 — Clarified §2.4.1 item 2 pre-flight status qualifier: line is shown when pre-flight ran and completed (pass or fail), not merely when "parallel mode is active"; added explicit note that it is NOT shown in parse-time sequential fallback (pre-flight never invoked). (4) TE F-02 — Expanded AT-TL-02-03 THEN clause to match AT-TL-02-02 level of specificity: specific failure message, pre-flight status line content, and sequential execution outcome. **Cosmetic:** (5) Fixed missing closing code fence in §2.4.2 modification loop. |
 | 1.3 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-03) and test-engineer (TE F-01–F-07) Round 2 cross-reviews of v1.2. **Medium fixes (blocking):** (1) BE F-01/TE F-01 — Added "re-run Phase" as modification type (d) to §2.4.2 step 2, making AT-BD-03-03 testable. (2) BE F-02/TE F-02 — Resolved pre-flight timing contradiction: pre-flight now runs **before** the confirmation is displayed (not after approval); updated §2.5.1, §2.5.3, AT-TL-01-01, AT-TL-02-01, AT-TL-02-02 to be consistent. When pre-flight fails, the developer sees the sequential fallback plan in the confirmation and must explicitly approve. (3) BE F-03/TE F-03 — Fixed §2.6.2 merge conflict note (Option B): corrected inaccurate claim that only aborted phases are re-run; added developer guidance for the partial-merge resume scenario; added AT-BD-01-04 covering the partial-merge resume path. **Low fixes:** (4) TE F-04 — Clarified "downstream" in §2.8.3 means the full transitive closure of dependents; added AT-BD-03-04 for the downstream Done phases warning. (5) TE F-05 — Added unrecognized modification request error rule to §2.4.2 step 2 (error message + re-prompt; does not count toward 5-iteration limit). (6) TE F-06 — Expanded §2.7.1 failure classification to explicitly include ROUTE_TO_AGENT and TASK_COMPLETE as FAILURE signals; classification is now exhaustive. (7) TE F-07 — Added AT-PD-03-05 for the unrecognized Source File prefix silent-backend-default rule (§2.3.2 rule 5). |
 | 1.2 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-05) and test-engineer (TE F-01–F-07) cross-reviews of v1.1. **Medium fixes:** (1) BE F-01/TE F-03 — replaced "any recognizable form" with explicit enumeration of three supported dependency syntax forms (linear chain, fan-out, natural language); updated AT-PD-01-01 to use canonical fan-out syntax. (2) BE F-02 — amended §2.4.2 step 2b to reject moves placing a phase into the same batch as any of its dependencies, not just before them; added AT-TL-01-06 for same-batch rejection. (3) BE F-03 — added explicit sub-batch failure cascade statement to §2.6.1 sub-batch note; added AT-BD-02-04 for cascade scenario. (4) TE F-01 — added unrecognized Source File prefix fallback rule to §2.3.1 table and §2.3.2 precedence list. **Low fixes:** (5) BE F-04/TE F-07 — added REQ-PD-06 to FSPEC-PD-01 linked requirements and §4 traceability table. (6) BE F-05/TE F-07 — added behavioral pass condition description for FSPEC-TL-02 Check 2. (7) TE F-02 — added AT-TL-01-07 for 10-minute confirmation timeout. (8) TE F-06 — added AT-PD-01-05 (dangling reference) and AT-PD-01-06 (no task tables). (9) BE Q-02 — added downstream Done phases warning to §2.8.3. (10) BE Q-01 — clarified parse-time fallback → confirmation → skip pre-flight ordering in §2.5.1. |
