@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | 014-FSPEC-tech-lead-orchestration |
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
-| **Version** | 1.2 |
+| **Version** | 1.3 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -355,6 +355,16 @@ WHEN:  Skill assignment runs
 THEN:  Assigned skill = backend-engineer; no warning emitted
 ```
 
+**AT-PD-03-05: Unrecognized Source File prefix (silent backend default)**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: A phase whose only Source File entry is "lib/utilities/helpers.ts"
+       (prefix "lib/" is not in the backend, frontend, docs, or empty categories)
+WHEN:  Skill assignment runs
+THEN:  Assigned skill = backend-engineer
+       No warning is emitted (silent default — unrecognized prefixes do not trigger the mixed-layer warning)
+```
+
 ---
 
 ### FSPEC-TL-01 — Pre-execution Plan Confirmation and Modification Loop
@@ -401,11 +411,23 @@ If the user responds **modify**, the tech lead enters a modification loop:
         parallel; a phase may only be in a batch strictly after all phases it depends on.
    c. Split a batch into two consecutive batches (user specifies which phases stay
       in the current batch and which move to the new batch).
+   d. Force a phase to re-run regardless of Done status (e.g., "re-run Phase B").
+      The tech lead marks the phase as not-completed in the in-memory batch plan
+      (without writing to the plan document) and places it back in the batch
+      computation. See §2.8.3 for the full behavior, including the downstream
+      Done phases warning that is emitted alongside the re-run confirmation.
+
+   Unrecognized modification request: If the modification request does not match
+   any of the four recognized types above, the tech lead responds:
+   "Unrecognized modification request. Valid modifications are: change skill
+   assignment, move a phase, split a batch, re-run a phase. Please try again."
+   The tech lead re-prompts with "What would you like to change?" An unrecognized
+   input does NOT count toward the 5-iteration modification limit.
 
 3. Present the updated Batch Execution Plan in full (same format as §2.4.1).
 
 4. Re-prompt: "Type approve to begin execution, modify to make another change, or cancel to abort."
-```
+
 
 #### 2.4.3 Modification Loop Termination Rules
 
@@ -420,12 +442,14 @@ The modification loop terminates when:
 
 #### 2.4.4 Acceptance Tests
 
-**AT-TL-01-01: Standard approval**
+**AT-TL-01-01: Standard approval (parallel mode)**
 ```
 WHO:   As the developer
-GIVEN: The tech lead has computed 3 batches for a 6-phase plan
+GIVEN: The tech lead has computed 3 batches for a 6-phase plan in parallel mode
+       Pre-flight checks have already run and both checks passed (Pass/Fail results
+       are visible in the Batch Execution Plan under "Pre-flight status")
 WHEN:  The developer reads the Batch Execution Plan and types "approve"
-THEN:  Execution begins immediately with Batch 1
+THEN:  Parallel execution begins immediately with Batch 1
 ```
 
 **AT-TL-01-02: Skill override modification**
@@ -497,9 +521,11 @@ THEN:  "Confirmation timeout — execution cancelled." is posted in the coordina
 
 #### 2.5.1 When Pre-flight Runs
 
-Pre-flight runs **after** the user approves the batch execution plan (FSPEC-TL-01) and **before** any agents are dispatched. In sequential fallback mode (all batches have one phase), pre-flight is skipped entirely.
+Pre-flight runs **before** the pre-execution confirmation is displayed (FSPEC-TL-01) and **before** any agents are dispatched. This is what allows §2.4.1 item 2 to show actual Pass/Fail results to the developer before they type "approve." In sequential fallback mode (all batches have one phase), pre-flight is skipped entirely — the confirmation is presented directly without running any infrastructure checks.
 
-**Ordering with parse-time fallback:** When sequential fallback is triggered during dependency parsing (FSPEC-PD-01 §2.1.5), the flow is: parse → fallback triggered → pre-execution confirmation shown to user (with "Sequential execution" label) → user approves → pre-flight is not invoked → sequential execution begins. The user always sees the confirmation step; pre-flight is simply never reached in sequential mode.
+**Ordering with parse-time fallback (sequential mode):** When sequential fallback is triggered during dependency parsing (FSPEC-PD-01 §2.1.5), the flow is: parse → fallback triggered → pre-execution confirmation shown (with "Sequential execution" label; no pre-flight results shown) → user approves → sequential execution begins. Pre-flight is not invoked in sequential mode.
+
+**Ordering with parallel mode:** When parallel execution is possible, the flow is: parse → topological batching → **pre-flight runs** → if both checks pass, the parallel Batch Execution Plan is presented to the developer showing Pass for each infrastructure check → user approves → parallel execution begins. If either check fails, see §2.5.3 for the fallback confirmation flow.
 
 #### 2.5.2 Infrastructure Checks
 
@@ -521,9 +547,12 @@ Verify that the `ArtifactCommitter` service (introduced in Phase 010) supports t
 
 If either check fails:
 1. Log the specific check that failed with an explanation.
-2. Post in the coordination thread: "Pre-flight check failed: {reason}. Falling back to sequential execution (one phase per batch). Parallel dispatch is unavailable pending Phase 010 deployment."
-3. Recompute the batch plan in sequential mode (one phase per batch, document order) — **without** re-presenting the plan for approval. The user already approved the intent; the tech lead is transparently degrading the execution mode, not changing what gets implemented.
-4. Proceed with sequential execution using the recomputed single-phase batches.
+2. Recompute the batch plan in sequential mode (one phase per batch, document order).
+3. Present the sequential fallback plan to the developer in the pre-execution confirmation step (FSPEC-TL-01), clearly indicating that parallel execution is unavailable:
+   > "Parallel execution unavailable — pre-flight check failed: {reason}. Showing sequential execution plan (one phase per batch). Type **approve** to proceed with sequential execution, or **cancel** to abort."
+   The §2.4.1 pre-flight status line in the confirmation shows the failed check result (Fail) so the developer understands why the mode has degraded.
+4. Wait for the developer to approve or cancel. The modification loop (FSPEC-TL-01 §2.4.2) is available — the developer may still request skill assignment changes within the sequential plan. The developer may also cancel entirely if they prefer to resolve the infrastructure issue before proceeding.
+5. Upon approval: proceed with sequential execution using the confirmed single-phase batches. Pre-flight does not re-run before sequential execution.
 
 #### 2.5.4 Acceptance Tests
 
@@ -531,18 +560,25 @@ If either check fails:
 ```
 WHO:   As the Ptah orchestrator
 GIVEN: feat-{feature-name} exists on the remote; ArtifactCommitter two-tier capability is available
-WHEN:  Pre-flight runs after plan approval
-THEN:  Both checks pass; parallel execution proceeds as planned
+WHEN:  Pre-flight runs before the pre-execution confirmation is displayed (parallel mode active)
+THEN:  Both checks pass; the Batch Execution Plan is presented to the developer with
+       "Pass" shown for both infrastructure checks under "Pre-flight status"
+       The developer may approve, modify, or cancel the plan
 ```
 
 **AT-TL-02-02: Feature branch missing on remote**
 ```
 WHO:   As the Ptah orchestrator
 GIVEN: The local feat-* branch exists but has not been pushed to remote
-WHEN:  Pre-flight Check 1 runs
-THEN:  Check 1 fails; warning logged; sequential fallback applied
-       Tech lead posts the fallback notification in the coordination thread
-       Sequential execution proceeds without re-prompting for approval
+WHEN:  Pre-flight Check 1 runs (before confirmation is shown)
+THEN:  Check 1 fails; warning logged; sequential fallback plan is computed
+       The pre-execution confirmation is presented to the developer showing the sequential plan:
+         "Parallel execution unavailable — pre-flight check failed: feature branch
+          'feat-{name}' not found on remote. Showing sequential execution plan
+          (one phase per batch). Type approve to proceed, or cancel to abort."
+       The "Pre-flight status" line shows "Fail — feature branch not found on remote"
+       The developer types "approve" and sequential execution begins
+       Pre-flight does not re-run before sequential execution begins
 ```
 
 **AT-TL-02-03: ArtifactCommitter capability absent**
@@ -651,7 +687,9 @@ If step 7 encounters a merge conflict while merging phase X's worktree branch:
 4. Halt execution. The plan status is **not** updated for this batch.
 5. Clean up all remaining (not-yet-merged) worktrees for this batch without merging.
 
-**Note:** Only the phases already successfully merged (before the conflict) have their changes on the feature branch. This partial state is expected and acceptable — the developer resolves the conflict and resumes from this batch number, which will re-implement any phases whose merges were aborted.
+**Note (partial-merge state and resume behavior):** Only the phases already successfully merged (before the conflict) have their changes on the feature branch. The plan status is **not** updated for any phase in this batch (step 4 above), meaning **all phases in the batch remain Not Done**. When the developer resolves the conflict and re-invokes the tech lead, the resume algorithm (FSPEC-BD-03 §2.8.1) works purely from plan Done-status — it will therefore include **every phase in this batch** in the next run, not only the phases whose merges were aborted. Phases whose worktrees merged successfully before the conflict will be re-implemented and re-merged on top of code already present on the feature branch.
+
+**Developer guidance for partial-merge resume:** Before re-invoking the tech lead, the developer should assess whether re-implementing already-merged phases is safe for their project. If re-running a previously-merged phase would produce duplicate or conflicting changes, the developer should manually mark those phases as Done in the plan document before re-invoking. This will cause the resume algorithm to exclude those phases and re-run only the phases whose merges were aborted.
 
 #### 2.6.3 Acceptance Tests
 
@@ -692,6 +730,26 @@ THEN:  The plan document is updated (tasks marked Done) AFTER all merges and AFT
        The plan commit is the last commit in the post-batch sequence
 ```
 
+**AT-BD-01-04: Merge conflict resume re-runs all batch phases**
+```
+WHO:   As the Ptah orchestrator
+GIVEN: Batch 2 contains phases D, E, F (in document order)
+       Phase D is merged successfully into the feature branch
+       Phase E encounters a merge conflict; its merge is aborted
+       Phase F has not been merged yet; its worktree is cleaned up without merging
+       The plan document is NOT updated (D, E, F all remain Not Done)
+       The developer resolves the conflict and re-invokes the tech lead
+WHEN:  The tech lead resumes
+THEN:  The plan shows D, E, F all as Not Done
+       Batch computation includes D, E, and F (all three are re-implemented)
+       The pre-execution confirmation shows a resume note identifying any earlier
+         batches that are fully Done; Batch 2 contains D, E, and F
+       Phase D is re-implemented over code already present on the feature branch
+         from its first successful merge
+       All three phases (D, E, F) complete and are merged in document order
+       The post-batch flow (test gate, plan status update) proceeds normally
+```
+
 ---
 
 ### FSPEC-BD-02 — Phase Failure Handling
@@ -703,13 +761,17 @@ THEN:  The plan document is updated (tasks marked Done) AFTER all merges and AFT
 
 #### 2.7.1 Failure Detection
 
-An agent is considered to have FAILED if it:
-- Returns a `ROUTE_TO_USER` routing signal (blocked on a human decision).
+An agent is considered to have FAILED if it returns any routing signal other than `LGTM`. This classification is exhaustive and covers:
+- `ROUTE_TO_USER` — the agent is blocked on a human decision and cannot proceed.
+- `ROUTE_TO_AGENT` — unexpected inter-agent routing; phase agents are not expected to re-route to other agents during implementation.
+- `TASK_COMPLETE` — premature terminal signal from a phase agent; this signal indicates the entire feature is done, which is unexpected when completing a single phase and is treated as a failure condition.
+- Any other response that cannot be classified as a `LGTM` signal.
+
+An agent is also considered to have FAILED if it:
 - Returns a non-zero exit code.
 - Times out without completing (timeout threshold is a TSPEC concern).
-- Returns an error response that cannot be classified as a LGTM signal.
 
-An agent is considered to have SUCCEEDED if it returns a `LGTM` routing signal and its exit code is 0.
+An agent is considered to have SUCCEEDED if and only if it returns a `LGTM` routing signal and its exit code is 0.
 
 #### 2.7.2 Behavioral Flow (Batch Failure)
 
@@ -842,7 +904,9 @@ The tech lead responds by marking Phase B as not-completed in the in-memory batc
 
 > "Phase B has been added back to the execution plan. It will run in Batch {N}. Note: this does not modify the plan document — task statuses will be updated after the batch completes."
 
-**Downstream Done phases warning:** If Phase B has downstream phases that are also marked Done in the plan (e.g., Phase D which depends on Phase B), those downstream phases remain excluded from the in-memory batch plan unless the developer explicitly requests them to be re-run as well. The tech lead posts a warning alongside the above confirmation message:
+**Downstream Done phases warning:** If Phase B has downstream phases that are also marked Done in the plan, those downstream phases remain excluded from the in-memory batch plan unless the developer explicitly requests them to be re-run as well. "Downstream" means the **full transitive closure** of Phase B's dependents: if Phase D depends on Phase B, and Phase E depends on Phase D, then both Phase D and Phase E are considered downstream of Phase B and each receives a warning if they are marked Done.
+
+The tech lead posts a warning for each downstream Done phase alongside the re-run confirmation message:
 
 > "Warning: Phase D (which depends on Phase B) is still marked Done and will not be re-run. If Phase B's re-implementation changes its outputs, Phase D's Done status may be stale. To also re-run Phase D, type 'modify' and request 're-run Phase D'."
 
@@ -878,6 +942,28 @@ THEN:  Phase B is added back to the in-memory batch plan
        The updated plan (now including Phase B) is re-presented for confirmation
        Phase B will execute as a normal phase in its appropriate batch
        The plan document is not modified at this point
+```
+
+**AT-BD-03-04: Downstream Done phases warning on force re-run**
+```
+WHO:   As the developer
+GIVEN: Phase B is marked Done in the plan document
+       Phase D (which directly depends on Phase B) is also marked Done
+       Phase E (which depends on Phase D, and transitively on Phase B) is also marked Done
+       The developer types "modify" then "re-run Phase B"
+WHEN:  The tech lead processes the re-run request
+THEN:  Phase B is added back to the in-memory execution plan
+       Two warnings are posted (one per downstream Done phase in the transitive closure):
+         "Warning: Phase D (which depends on Phase B) is still marked Done and will not
+          be re-run. If Phase B's re-implementation changes its outputs, Phase D's Done
+          status may be stale. To also re-run Phase D, type 'modify' and request
+          're-run Phase D'."
+         "Warning: Phase E (which depends on Phase D) is still marked Done and will not
+          be re-run. If Phase B's re-implementation changes its outputs, Phase E's Done
+          status may be stale. To also re-run Phase E, type 'modify' and request
+          're-run Phase E'."
+       Phase D and Phase E remain excluded from the batch plan (still marked as Done)
+       The updated plan (including Phase B, excluding D and E) is re-presented for approval
 ```
 
 ---
@@ -931,6 +1017,7 @@ THEN:  Phase B is added back to the in-memory batch plan
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.3 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-03) and test-engineer (TE F-01–F-07) Round 2 cross-reviews of v1.2. **Medium fixes (blocking):** (1) BE F-01/TE F-01 — Added "re-run Phase" as modification type (d) to §2.4.2 step 2, making AT-BD-03-03 testable. (2) BE F-02/TE F-02 — Resolved pre-flight timing contradiction: pre-flight now runs **before** the confirmation is displayed (not after approval); updated §2.5.1, §2.5.3, AT-TL-01-01, AT-TL-02-01, AT-TL-02-02 to be consistent. When pre-flight fails, the developer sees the sequential fallback plan in the confirmation and must explicitly approve. (3) BE F-03/TE F-03 — Fixed §2.6.2 merge conflict note (Option B): corrected inaccurate claim that only aborted phases are re-run; added developer guidance for the partial-merge resume scenario; added AT-BD-01-04 covering the partial-merge resume path. **Low fixes:** (4) TE F-04 — Clarified "downstream" in §2.8.3 means the full transitive closure of dependents; added AT-BD-03-04 for the downstream Done phases warning. (5) TE F-05 — Added unrecognized modification request error rule to §2.4.2 step 2 (error message + re-prompt; does not count toward 5-iteration limit). (6) TE F-06 — Expanded §2.7.1 failure classification to explicitly include ROUTE_TO_AGENT and TASK_COMPLETE as FAILURE signals; classification is now exhaustive. (7) TE F-07 — Added AT-PD-03-05 for the unrecognized Source File prefix silent-backend-default rule (§2.3.2 rule 5). |
 | 1.2 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-05) and test-engineer (TE F-01–F-07) cross-reviews of v1.1. **Medium fixes:** (1) BE F-01/TE F-03 — replaced "any recognizable form" with explicit enumeration of three supported dependency syntax forms (linear chain, fan-out, natural language); updated AT-PD-01-01 to use canonical fan-out syntax. (2) BE F-02 — amended §2.4.2 step 2b to reject moves placing a phase into the same batch as any of its dependencies, not just before them; added AT-TL-01-06 for same-batch rejection. (3) BE F-03 — added explicit sub-batch failure cascade statement to §2.6.1 sub-batch note; added AT-BD-02-04 for cascade scenario. (4) TE F-01 — added unrecognized Source File prefix fallback rule to §2.3.1 table and §2.3.2 precedence list. **Low fixes:** (5) BE F-04/TE F-07 — added REQ-PD-06 to FSPEC-PD-01 linked requirements and §4 traceability table. (6) BE F-05/TE F-07 — added behavioral pass condition description for FSPEC-TL-02 Check 2. (7) TE F-02 — added AT-TL-01-07 for 10-minute confirmation timeout. (8) TE F-06 — added AT-PD-01-05 (dangling reference) and AT-PD-01-06 (no task tables). (9) BE Q-02 — added downstream Done phases warning to §2.8.3. (10) BE Q-01 — clarified parse-time fallback → confirmation → skip pre-flight ordering in §2.5.1. |
 | 1.1 | 2026-03-19 | Product Manager | Corrected three pre-commit bugs: (1) AT-PD-01-01 "4-node DAG" → "6-node DAG" (phases A–F = 6 nodes); (2) FSPEC-PD-02 §2.2.1 step 3 and AT-PD-02-03 incorrectly stated test gate fires between sub-batches — corrected to align with REQ-NF-14-01 (gate fires once per topological batch after all sub-batches complete); (3) added sub-batch clarification note to FSPEC-BD-01 §2.6.1 making the deferred test gate behavior explicit. Also added REQ-NF-14-05 to REQ to back the FSPEC-TL-02 linked requirement reference. |
 | 1.0 | 2026-03-19 | Product Manager | Initial functional specification. Covers FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03. Addresses deferred items from backend-engineer and test-engineer reviews: BE Q-03 (resume auto-detect vs explicit resolved in FSPEC-BD-03), TE-F-03 (sub-batch split order resolved in FSPEC-PD-02 §2.2.3), TE-F-04 (modification loop termination resolved in FSPEC-TL-01 §2.4.3). |
