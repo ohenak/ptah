@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | 014-FSPEC-tech-lead-orchestration |
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
-| **Version** | 1.5 |
+| **Version** | 1.6 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -422,7 +422,7 @@ If the user responds **modify**, the tech lead enters a modification loop:
 ```
 1. Ask the user to specify the modification:
    "What would you like to change? (e.g., 'change Phase D to frontend-engineer',
-   'move Phase E to Batch 2', 'split Batch 3')"
+   'move Phase E to Batch 2', 'split Batch 3', 're-run Phase B')"
 
 2. Apply the requested modification to the in-memory batch plan.
    Valid modification types:
@@ -740,14 +740,15 @@ THEN:  Check 2 fails; the failure is logged with explanation
    - If any tests fail: report failures in the coordination thread; halt execution.
      Do not proceed to the next batch. The plan status is NOT updated.
      Post: "Test gate failed after Batch {N}. {K} test(s) failing: {test names/summary}.
-     Resolve failures and resume from Batch {N}."
+     Resolve the test failures and re-invoke the tech lead — execution will automatically resume from Batch {N}."
 
-   Note: Because the plan status is NOT updated for a failed batch, all phases in
-   the batch will be re-implemented when the tech lead is re-invoked — including
-   phases whose worktree merges succeeded before the test gate ran. Developers
-   should manually mark already-correct phases as Done in the plan document before
-   re-invoking if re-implementation of those phases would produce duplicate or
-   conflicting changes.
+   Note: After a test gate failure, all phases in the batch have already been merged
+   to the feature branch (step 7). On resume, all batch phases are re-implemented
+   over existing code — including phases whose worktree merges succeeded before the
+   test gate ran. If re-implementation would be unsafe, manually mark the at-risk
+   phases as Done in the plan document before re-invoking. The resume algorithm
+   (FSPEC-BD-03 §2.8.1) will then exclude those phases and re-run only the phases
+   that remain Not Done.
 
 9. UPDATE PLAN STATUS (REQ-BD-08) — FINAL STEP
    Write task status updates to the plan document on the feature branch.
@@ -774,7 +775,7 @@ If step 7 encounters a merge conflict while merging phase X's worktree branch:
 
 1. Abort the merge (restore the feature branch to its pre-merge state).
 2. Do **not** proceed with merging remaining phases in this batch.
-3. Post in the coordination thread: "Merge conflict detected when merging Phase {X} results. Conflicting files: {file1}, {file2}. Please resolve the conflict and resume from Batch {N}." (REQ-TL-04)
+3. Post in the coordination thread: "Merge conflict detected when merging Phase {X} results. Conflicting files: {file1}, {file2}. Resolve the conflict and re-invoke the tech lead — execution will automatically resume from Batch {N}." (REQ-TL-04)
 4. Halt execution. The plan status is **not** updated for this batch.
 5. Clean up all remaining (not-yet-merged) worktrees for this batch without merging.
 
@@ -880,7 +881,7 @@ An agent is considered to have FAILED if it returns any routing signal other tha
 
 An agent is also considered to have FAILED if it:
 - Returns a non-zero exit code.
-- Times out without completing (timeout threshold is a TSPEC concern).
+- Times out without completing (timeout threshold is a TSPEC concern). The timeout threshold is configured via `tech_lead_agent_timeout_ms` in the Ptah configuration (default: 600,000 ms) and is enforced by the Agent tool infrastructure — the tech lead receives a failure result when the agent exceeds this threshold. No active kill mechanism is required from the tech lead side.
 
 An agent is considered to have SUCCEEDED if and only if it returns a `LGTM` routing signal and its exit code is 0.
 
@@ -899,7 +900,7 @@ An agent is considered to have SUCCEEDED if and only if it returns a `LGTM` rout
    "Phase {X}: {phase title} — FAILED: {error summary}"
    Then post an overall failure notice:
    "Batch {N} failed. {K} phase(s) failed: {Phase X}, {Phase Y}. Implementation halted.
-   Resolve the failure(s) and resume from Batch {N}."
+   Resolve the failure(s) and re-invoke the tech lead — execution will automatically resume from Batch {N}."
 
 5. DO NOT MERGE any worktree changes, regardless of which phases succeeded.
    The no-partial-merge invariant: only complete batches (all phases succeeded)
@@ -1128,6 +1129,7 @@ THEN:  Phase B is added back to the in-memory execution plan
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.6 | 2026-03-19 | Product Manager | Addressed all Low findings from backend-engineer Round 6 and test-engineer Round 5 cross-reviews. **TE F-01** — Extended §2.4.2 step 1 re-prompt examples to include `'re-run Phase B'`, making modification type (d) discoverable before the error path. **TE F-02** — Added clarifying sentence to §2.7.1 timeout failure bullet explaining that timeout is enforced by the Agent tool infrastructure via `tech_lead_agent_timeout_ms` (default: 600,000 ms); no active kill mechanism is required. This resolves the apparent contradiction with §2.7.2 "no kill mechanism" statement. **TE F-03 / BE F-03 (combined)** — Revised all three halt messages to use "re-invoke the tech lead — execution will automatically resume from Batch {N}" phrasing, replacing the misleading "resume from Batch {N}" which implied explicit batch-number selection. Revised §2.6.1 step 8 developer note to explicitly state that phases have already been merged to the feature branch before the test gate fires, and restructured the guidance to mirror §2.6.2 advisory. Fixed §2.6.2 step 3 merge conflict message and §2.7.2 step 4 batch failure message with the same auto-detection phrasing. |
 | 1.5 | 2026-03-19 | Product Manager | Addressed all findings from backend-engineer Round 4/5 and test-engineer Round 4 cross-reviews. **Medium fix (blocking):** F-01 — Removed git-infeasible worktree branch naming format from §2.6.1 step 2b (`feat-{feature-name}/phase-{X}-{timestamp}` conflicts with the existing `feat-{feature-name}` branch ref in git's filesystem). Replaced with a TSPEC delegation: "The TSPEC must define a worktree branch naming convention that avoids conflicts with the persistent feature branch name." **Low fixes:** F-02 (BE/TE) — Added AT-PD-01-07 (Form 1 linear chain parsing) and AT-PD-01-08 (Form 3 natural language parsing) to cover the two previously untested dependency syntax forms. F-03 (BE/TE) — Added developer guidance note to §2.6.1 step 8 advising that all batch phases will be re-implemented on resume after a test gate failure; added AT-BD-01-05 (test gate failure resume re-runs all batch phases) analogous to AT-BD-01-04. |
 | 1.4 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer Round 3 (BE F-01–F-02 + cosmetic) and test-engineer Round 3 (TE F-01–F-03) cross-reviews of v1.3. **Medium fixes (blocking):** (1) BE F-01 — Added explicit iteration counter rules to §2.4.3: recognized-but-rejected modifications (dependency-violating move, same-batch move, dependency-violating split) do NOT count toward the 5-iteration limit, consistent with the unrecognized-input exemption already specified. (2) TE F-01 — Added dependency-violation rejection rule to §2.4.2(c) (batch split): splits that would place a dependency phase after a phase that depends on it are rejected with an explanation and re-prompt; rejection does not consume a modification cycle. Added AT-TL-01-08 (valid split) and AT-TL-01-09 (dependency-violating split rejected). **Low fixes:** (3) BE F-02 / TE F-03 — Clarified §2.4.1 item 2 pre-flight status qualifier: line is shown when pre-flight ran and completed (pass or fail), not merely when "parallel mode is active"; added explicit note that it is NOT shown in parse-time sequential fallback (pre-flight never invoked). (4) TE F-02 — Expanded AT-TL-02-03 THEN clause to match AT-TL-02-02 level of specificity: specific failure message, pre-flight status line content, and sequential execution outcome. **Cosmetic:** (5) Fixed missing closing code fence in §2.4.2 modification loop. |
 | 1.3 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-03) and test-engineer (TE F-01–F-07) Round 2 cross-reviews of v1.2. **Medium fixes (blocking):** (1) BE F-01/TE F-01 — Added "re-run Phase" as modification type (d) to §2.4.2 step 2, making AT-BD-03-03 testable. (2) BE F-02/TE F-02 — Resolved pre-flight timing contradiction: pre-flight now runs **before** the confirmation is displayed (not after approval); updated §2.5.1, §2.5.3, AT-TL-01-01, AT-TL-02-01, AT-TL-02-02 to be consistent. When pre-flight fails, the developer sees the sequential fallback plan in the confirmation and must explicitly approve. (3) BE F-03/TE F-03 — Fixed §2.6.2 merge conflict note (Option B): corrected inaccurate claim that only aborted phases are re-run; added developer guidance for the partial-merge resume scenario; added AT-BD-01-04 covering the partial-merge resume path. **Low fixes:** (4) TE F-04 — Clarified "downstream" in §2.8.3 means the full transitive closure of dependents; added AT-BD-03-04 for the downstream Done phases warning. (5) TE F-05 — Added unrecognized modification request error rule to §2.4.2 step 2 (error message + re-prompt; does not count toward 5-iteration limit). (6) TE F-06 — Expanded §2.7.1 failure classification to explicitly include ROUTE_TO_AGENT and TASK_COMPLETE as FAILURE signals; classification is now exhaustive. (7) TE F-07 — Added AT-PD-03-05 for the unrecognized Source File prefix silent-backend-default rule (§2.3.2 rule 5). |
