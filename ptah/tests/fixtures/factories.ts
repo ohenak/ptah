@@ -50,7 +50,7 @@ import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../
 import type { AgentRegistry } from "../../src/orchestrator/agent-registry.js";
 import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
 import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
-import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction } from "../../src/orchestrator/pdlc/phases.js";
+import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction, ContextDocumentSet, TaskType } from "../../src/orchestrator/pdlc/phases.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -62,6 +62,11 @@ export class FakeFileSystem implements FileSystem {
   appendFileError: Error | null = null;
   appendFileCalls: Array<{ path: string; content: string }> = [];
   renameError: Error | null = null;
+  /**
+   * Per-path exists() override. Paths not present default to the normal
+   * files/dirs check. Used by buildAgentRegistry() tests.
+   */
+  existsResults: Map<string, boolean> = new Map();
 
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
@@ -84,6 +89,7 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (this.existsResults.has(path)) return this.existsResults.get(path)!;
     return this.files.has(path) || this.dirs.has(path);
   }
 
@@ -507,26 +513,18 @@ export class FakeDiscordClient implements DiscordClient {
   replyToMessageError: Error | null = null;
   private channelMessageHandlers = new Map<string, (msg: ChannelMessage) => Promise<void>>();
 
+  // --- Phase 6 additions ---
+  debugChannelMessages: string[] = [];
+
   // --- Phase 7 additions ---
   calls: Array<
     | { method: "archiveThread"; threadId: string }
     | { method: "postPlainMessage"; threadId: string; content: string }
   > = [];
+  archiveThreadCalls: string[] = [];
   archiveThreadError: Error | null = null;
+  postPlainMessageCalls: Array<{ threadId: string; content: string }> = [];
   postPlainMessageError: Error | null = null;
-
-  async archiveThread(threadId: string): Promise<void> {
-    this.calls.push({ method: "archiveThread", threadId });
-    if (this.archiveThreadError) throw this.archiveThreadError;
-  }
-
-  async postPlainMessage(threadId: string, content: string): Promise<void> {
-    this.calls.push({ method: "postPlainMessage", threadId, content });
-    if (this.postPlainMessageError) throw this.postPlainMessageError;
-  }
-
-  // --- Phase 6 additions ---
-  debugChannelMessages: string[] = [];
 
   async postChannelMessage(channelId: string, content: string): Promise<string> {
     this.postChannelMessageCalls.push({ channelId, content });
@@ -552,6 +550,18 @@ export class FakeDiscordClient implements DiscordClient {
   async simulateChannelMessage(channelId: string, msg: ChannelMessage): Promise<void> {
     const handler = this.channelMessageHandlers.get(channelId);
     if (handler) await handler(msg);
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    this.calls.push({ method: "archiveThread", threadId });
+    if (this.archiveThreadError) throw this.archiveThreadError;
+    this.archiveThreadCalls.push(threadId);
+  }
+
+  async postPlainMessage(threadId: string, content: string): Promise<void> {
+    this.calls.push({ method: "postPlainMessage", threadId, content });
+    if (this.postPlainMessageError) throw this.postPlainMessageError;
+    this.postPlainMessageCalls.push({ threadId, content });
   }
 }
 
@@ -632,7 +642,6 @@ class FakeLogStore {
 }
 
 export class FakeLogger implements Logger {
-  messages: Array<{ level: "info" | "warn" | "error" | "debug"; message: string }> = [];
   private store: FakeLogStore;
   private _component: Component;
 
@@ -642,28 +651,27 @@ export class FakeLogger implements Logger {
   }
 
   get entries(): LogEntry[] { return this.store.entries; }
+  get messages(): Array<{ level: string; message: string }> {
+    return this.store.entries.map(e => ({
+      level: e.level.toLowerCase(),
+      message: e.message,
+    }));
+  }
 
   log(entry: LogEntry): void {
     this.store.entries.push(entry);
   }
 
   info(message: string): void {
-    this.messages.push({ level: "info", message });
     this.store.entries.push({ component: this._component, level: "INFO", message });
   }
-
   warn(message: string): void {
-    this.messages.push({ level: "warn", message });
     this.store.entries.push({ component: this._component, level: "WARN", message });
   }
-
   error(message: string): void {
-    this.messages.push({ level: "error", message });
     this.store.entries.push({ component: this._component, level: "ERROR", message });
   }
-
   debug(message: string): void {
-    this.messages.push({ level: "debug", message });
     this.store.entries.push({ component: this._component, level: "DEBUG", message });
   }
 
@@ -795,6 +803,8 @@ export class FakeContextAssembler implements ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;
+    contextDocuments?: ContextDocumentSet;
+    taskType?: TaskType;
   }> = [];
 
   async assemble(params: {
@@ -805,6 +815,8 @@ export class FakeContextAssembler implements ContextAssembler {
     triggerMessage: ThreadMessage;
     config: PtahConfig;
     worktreePath?: string;
+    contextDocuments?: ContextDocumentSet;
+    taskType?: TaskType;
   }): Promise<ContextBundle> {
     this.assembleCalls.push(params);
     if (this.assembleError) throw this.assembleError;

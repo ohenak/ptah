@@ -15,15 +15,74 @@ export interface DiscordConfig {
   mention_user_id: string;
 }
 
-// --- Phase 3: Agent config with optional colour and role mention mappings ---
+// --- Phase 7: New agent entry type (replaces flat AgentConfig) ---
 
-export interface AgentConfig {
+export interface AgentEntry {
+  id: string;           // unique, /^[a-z0-9-]+$/
+  skill_path: string;   // relative path from project root
+  log_file: string;     // relative path from project root
+  mention_id: string;   // Discord snowflake — /^\d+$/
+  display_name?: string; // defaults to id if absent
+}
+
+export interface RegisteredAgent {
+  id: string;
+  skill_path: string;
+  log_file: string;
+  mention_id: string;
+  display_name: string; // always set (id used as fallback)
+}
+
+export interface AgentsConfig {
   active: string[];
   skills: Record<string, string>;
   model: string;
   max_tokens: number;
   colours?: Record<string, string>;
   role_mentions?: Record<string, string>;
+}
+
+export interface LlmConfig {
+  model: string;
+  max_tokens: number;
+}
+
+export type Component =
+  | 'orchestrator'
+  | 'router'
+  | 'invocation-guard'
+  | 'skill-invoker'
+  | 'artifact-committer'
+  | 'response-poster'
+  | 'config'
+  | 'discord';
+
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+
+export interface LogEntry {
+  component: Component;
+  level: LogLevel;
+  message: string;
+}
+
+export type UserFacingErrorType =
+  | 'ERR-RP-01' // retry exhaustion
+  | 'ERR-RP-02' // unknown agent
+  | 'ERR-RP-03' // Discord MCP failure
+  | 'ERR-RP-04' // routing signal parse failure
+  | 'ERR-RP-05'; // skill file missing
+
+export interface UserFacingErrorContext {
+  agentDisplayName?: string;
+  agentId?: string;
+  maxRetries?: number;
+}
+
+export interface AgentValidationError {
+  index: number;
+  agentId?: string;
+  field: string;
+  reason: string;
 }
 
 // Token budget configuration (configurable per CB-R5)
@@ -50,7 +109,7 @@ export interface PtahConfig {
     name: string;
     version: string;
   };
-  agents: AgentConfig;
+  agents: AgentsConfig;
   agentEntries: AgentEntry[];
   llm?: LlmConfig;
   discord: DiscordConfig;
@@ -290,31 +349,6 @@ export interface RegisteredAgent {
   log_file: string;
   mention_id: string;
   display_name: string; // always set (id used as fallback)
-}
-
-export type Component =
-  | 'orchestrator' | 'router' | 'invocation-guard' | 'skill-invoker'
-  | 'artifact-committer' | 'response-poster' | 'config' | 'discord';
-
-export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-
-export interface LogEntry {
-  component: Component;
-  level: LogLevel;
-  message: string;
-}
-
-export type UserFacingErrorType =
-  | 'ERR-RP-01' // retry exhaustion
-  | 'ERR-RP-02' // unknown agent
-  | 'ERR-RP-03' // Discord MCP failure
-  | 'ERR-RP-04' // routing signal parse failure
-  | 'ERR-RP-05'; // skill file missing
-
-export interface UserFacingErrorContext {
-  agentDisplayName?: string;
-  agentId?: string;
-  maxRetries?: number;
 }
 
 /**

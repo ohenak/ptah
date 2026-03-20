@@ -113,6 +113,87 @@ Ptah is configured via `ptah/ptah.config.json`. Below is a reference for each se
 
 ## How It Works
 
+### Orchestration Flow
+
+```
+                         Discord Thread
+                              │
+                              ▼
+                     ┌────────────────┐
+                     │  handleMessage  │
+                     └───────┬────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+          Dedup?         Paused?         Bot?
+          (drop)         (drop)         (drop)
+              │              │              │
+              └──────────────┼──────────────┘
+                             │ pass
+                             ▼
+                   ┌───────────────────┐
+                   │ Turn-limit check  │
+                   │ (reconstruct if   │
+                   │  first encounter) │
+                   └────────┬──────────┘
+                            │
+                   limit? ──┤──► Close thread
+                            │
+                            ▼
+                   ┌───────────────────┐
+                   │  Resolve agent    │
+                   │  from @mention    │
+                   └────────┬──────────┘
+                            │
+                   no match ┤──► "Please @mention a role"
+                            │
+         ┌──────────────────▼──────────────────┐
+         │          ROUTING LOOP               │
+         │                                     │
+         │  ┌─────────────────────────────┐    │
+         │  │ 1. Create worktree          │    │
+         │  │ 2. Assemble 3-layer context │    │
+         │  │ 3. Invoke skill (w/ retry)  │    │
+         │  │ 4. Commit & merge docs      │    │
+         │  │ 5. Post response embed      │    │
+         │  │ 6. Auto-init PDLC (if new)  │    │
+         │  │ 7. Parse <routing> signal   │    │
+         │  └─────────────┬───────────────┘    │
+         │                │                    │
+         │    ┌───────────┼───────────┐        │
+         │    ▼           ▼           ▼        │
+         │  TASK_       ROUTE_      ROUTE_     │
+         │  COMPLETE    TO_AGENT    TO_USER    │
+         │  / LGTM                             │
+         │    │           │           │        │
+         │    │           │           ▼        │
+         │    │           │   ┌──────────────┐ │
+         │    │           │   │ Post to      │ │
+         │    │           │   │ #open-       │ │
+         │    │           │   │ questions    │ │
+         │    │           │   │ Pause thread │ │
+         │    │           │   │ Poll for     │ │
+         │    │           │   │ answer       │ │
+         │    │           │   └──────┬───────┘ │
+         │    │           │          │         │
+         │    │           │    ┌─────▼──────┐  │
+         │    │           │    │ Pattern B  │  │
+         │    │           │    │ Resume     │  │
+         │    │           │    │ (on answer)│  │
+         │    │           │    └─────┬──────┘  │
+         │    │           │          │         │
+         │    │           └──► loop ◄┘         │
+         │    │                                │
+         │    ▼                                │
+         │  ┌─────────────────────────┐        │
+         │  │ PDLC-managed?           │        │
+         │  │  Y: advance phase,      │        │
+         │  │     dispatch next agent  │        │
+         │  │  N: post completion      │        │
+         │  └─────────────────────────┘        │
+         └─────────────────────────────────────┘
+```
+
 ### 1. Create a thread in `#ptah-updates`
 
 Name the thread using the convention:
@@ -148,18 +229,19 @@ The orchestrator picks up the message and runs a **routing loop**:
 
 1. **Dedup & guard** — skips duplicate messages, checks turn limits, and drops messages for paused threads
 2. **Resolve agent** — maps the Discord @role mention to an agent ID via `role_mentions` config
-3. **Create worktree** — derives the feature branch (`feat-{slug}`) from the thread name, creates it from main if needed, then spins up an isolated git worktree on a per-invocation agent sub-branch (`ptah/{slug}/{agentId}/{invocationId}`) based off the feature branch
+3. **Create worktree** — derives the feature branch (`feat-{slug}`) from the thread name, creates it from main if needed, then spins up an isolated git worktree on a per-invocation agent sub-branch (`ptah/{slug}/{agentId}/{invocationId}`) based off the feature branch. A branch-uniqueness guard regenerates the invocation ID (up to 3 attempts) if the branch already exists with unmerged commits, or deletes a leftover branch with no unmerged commits.
 4. **Assemble context** — builds a 3-layer prompt within the token budget:
    - **Layer 1 (system):** agent skill prompt (`SKILL.md`) + feature `overview.md` + ACTION directives
    - **Layer 2 (feature files):** other `docs/{feature}/` files (REQ, FSPEC, TSPEC, etc.), trimmed to budget
    - **Layer 3 (user message):** the trigger message or previous agent's routing response
-5. **Invoke skill** — runs via Claude Agent SDK inside the worktree, with exponential backoff retry via InvocationGuard (configurable attempts, timeout)
+5. **Invoke skill** — runs via Claude Agent SDK inside the worktree, with exponential backoff retry via InvocationGuard (configurable attempts, timeout). The worktree is registered before invocation and deregistered after.
 6. **Commit & merge** — two-tier merge: only `docs/` changes are staged and committed on the agent sub-branch, then merged (`--no-ff`) into the feature branch and pushed to remote. Non-docs changes are filtered out. Worktree is cleaned up after merge. A merge lock serializes concurrent merges.
-7. **Post response** — posts the agent's text response as a Discord embed in the thread
-8. **Route** — parses the `<routing>` tag from the agent's response to determine the next step:
+7. **Post response** — posts the agent's text response as a Discord embed in the thread. If the Discord post fails after a successful commit, a partial-commit error is posted and the SHA is logged to `#debug`.
+8. **PDLC auto-initialization** — on first invocation for a feature, if the thread has at most 1 prior agent turn (age guard), the orchestrator auto-initializes a PDLC state machine for the feature. Configuration keywords can be included in the initial message using bracket syntax: `[backend-only]` (default), `[frontend-only]`, `[fullstack]`, `[skip-fspec]`. Threads with more prior turns fall through to the unmanaged path.
+9. **Route** — parses the `<routing>` tag from the agent's response to determine the next step:
 
    **For PDLC-managed features** (state machine tracks document lifecycle):
-   - **`TASK_COMPLETE` / `LGTM`** — the PDLC dispatcher advances to the next phase and dispatches the appropriate agent automatically (e.g., REQ creation → REQ review → FSPEC creation → ...)
+   - **`TASK_COMPLETE` / `LGTM`** — the PDLC dispatcher advances to the next phase and dispatches the appropriate agent automatically (e.g., REQ creation → REQ review → FSPEC creation → ...). During review phases, the cross-review file is parsed and a `review_submitted` event is fired instead.
    - **`ROUTE_TO_AGENT`** — ad-hoc coordination; invokes the target agent for one turn without changing the PDLC phase
    - **`ROUTE_TO_USER`** — pauses the thread, posts a question to `#open-questions`, and polls for the human answer (Pattern B resume)
 
@@ -169,6 +251,24 @@ The orchestrator picks up the message and runs a **routing loop**:
    - **`TASK_COMPLETE`** / **`LGTM`** — posts a completion embed and stops
 
    The routing loop continues until a terminal signal is reached or the turn limit is hit.
+
+### Startup Recovery
+
+On startup, the orchestrator restores its state so it can survive restarts:
+
+1. **Prune orphaned worktrees** — cleans up worktrees left behind by previous runs
+2. **Resolve channels** — looks up the `#debug` and `#open-questions` channels by name and registers a reply listener on `#open-questions`
+3. **Seed question map** — reads both `pending.md` and `resolved.md` to rebuild the Discord message ID → question ID map
+4. **Restore paused threads** — re-adds pending questions to the paused set and re-registers them with the question poller
+5. **Load PDLC state** — reads `ptah/state/pdlc-state.json` to restore feature phase tracking
+
+### Question Escalation (Pattern B)
+
+When an agent emits `ROUTE_TO_USER`, the orchestrator runs the full question-answer-resume cycle:
+
+1. **Pause** — the question is appended to the question store (assigned an auto-incrementing ID like `Q-0001`), a notification mentioning the configured user is posted to `#open-questions`, and the originating thread is paused (all further messages silently dropped)
+2. **Answer** — the configured user replies to the notification in `#open-questions`. The orchestrator matches the Discord reply to the original question via an in-memory message ID map, writes the answer to the question store, and reacts with a checkmark
+3. **Resume** — the question poller detects the answer, unpauses the thread, and triggers a Pattern B resume: a new worktree is created, the agent is re-invoked with a context bundle that includes the original question and the human's answer, artifacts are committed and merged, and routing continues as normal. The question is archived after a successful resume.
 
 ### Discord Channels
 

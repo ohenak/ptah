@@ -8,6 +8,7 @@ import {
   createThreadMessage,
 } from "../../fixtures/factories.js";
 import type { PtahConfig, ThreadMessage } from "../../../src/types.js";
+import type { TaskType } from "../../../src/orchestrator/pdlc/phases.js";
 
 describe("DefaultContextAssembler", () => {
   let fs: FakeFileSystem;
@@ -1186,6 +1187,102 @@ describe("DefaultContextAssembler", () => {
         assembler.extractFeatureName("my-feature \u2014 create spec \u2014 v2"),
       ).toBe("my-feature");
       // Only strips at first " — " occurrence; subsequent em-dashes are ignored
+    });
+  });
+
+  // ─── Task Type Directives (Issue #30) ──────────────────────────
+
+  describe("taskType directive injection", () => {
+    const setupRevisionTest = () => {
+      const featureName = "my-feature";
+      const featureDir = `docs/${featureName}`;
+      fs.addExistingDir(featureDir);
+      fs.addExisting(`${featureDir}/overview.md`, "Feature overview.");
+      fs.addExisting(`${featureDir}/spec.md`, "Spec content.");
+      return createThreadMessage({
+        threadName: `${featureName} — revise plan`,
+        content: "Please revise the PLAN.",
+      });
+    };
+
+    it("injects REVISION TASK directive into Layer 1 when taskType is Revise", async () => {
+      const triggerMessage = setupRevisionTest();
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: triggerMessage.threadName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        taskType: "Revise",
+      });
+
+      expect(result.systemPrompt).toContain("## REVISION TASK");
+      expect(result.systemPrompt).toContain("You are revising a document based on cross-review feedback.");
+      expect(result.systemPrompt).toContain("address every HIGH and MEDIUM severity issue");
+    });
+
+    it("injects RESUBMIT TASK directive into Layer 1 when taskType is Resubmit", async () => {
+      const triggerMessage = setupRevisionTest();
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: triggerMessage.threadName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        taskType: "Resubmit",
+      });
+
+      expect(result.systemPrompt).toContain("## RESUBMIT TASK");
+      expect(result.systemPrompt).toContain("Your document was approved but a co-author's document was rejected");
+    });
+
+    it("does NOT inject any task directive when taskType is undefined", async () => {
+      const triggerMessage = setupRevisionTest();
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: triggerMessage.threadName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+      });
+
+      expect(result.systemPrompt).not.toContain("## REVISION TASK");
+      expect(result.systemPrompt).not.toContain("## RESUBMIT TASK");
+    });
+
+    it("does NOT inject any task directive when taskType is Create", async () => {
+      const triggerMessage = setupRevisionTest();
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: triggerMessage.threadName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        taskType: "Create",
+      });
+
+      expect(result.systemPrompt).not.toContain("## REVISION TASK");
+      expect(result.systemPrompt).not.toContain("## RESUBMIT TASK");
+    });
+
+    it("does NOT inject any task directive when taskType is Review", async () => {
+      const triggerMessage = setupRevisionTest();
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: triggerMessage.threadName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        taskType: "Review",
+      });
+
+      expect(result.systemPrompt).not.toContain("## REVISION TASK");
+      expect(result.systemPrompt).not.toContain("## RESUBMIT TASK");
     });
   });
 });

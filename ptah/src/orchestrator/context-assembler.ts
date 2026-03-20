@@ -9,7 +9,7 @@ import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
 import type { TokenCounter } from "./token-counter.js";
 import { extractFeatureName as extractFeatureNameFromModule } from "./feature-branch.js";
-import type { ContextDocumentSet } from "./pdlc/phases.js";
+import type { ContextDocumentSet, TaskType } from "./pdlc/phases.js";
 
 export interface ContextAssembler {
   assemble(params: {
@@ -22,7 +22,7 @@ export interface ContextAssembler {
     worktreePath?: string;  // Phase 4: read Layer 2 from worktree when provided
     routingMessage?: string; // The previous agent's response text when routing between agents
     contextDocuments?: ContextDocumentSet; // Phase 11: PDLC phase-aware document set
-    taskType?: string;       // Phase 11: PDLC task type (Create, Review, Revise, Resubmit, Implement)
+    taskType?: TaskType;       // Phase 11: PDLC task type (Create, Review, Revise, Resubmit, Implement)
     documentType?: string;   // Phase 11: PDLC document type (REQ, FSPEC, TSPEC, PLAN, PROPERTIES, IMPLEMENTATION)
   }): Promise<ContextBundle>;
 }
@@ -62,7 +62,7 @@ export class DefaultContextAssembler implements ContextAssembler {
     worktreePath?: string;
     routingMessage?: string;
     contextDocuments?: ContextDocumentSet;
-    taskType?: string;
+    taskType?: TaskType;
     documentType?: string;
   }): Promise<ContextBundle> {
     const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments, taskType, documentType } = params;
@@ -86,6 +86,21 @@ export class DefaultContextAssembler implements ContextAssembler {
 
     // Build Layer 1: system prompt
     let layer1 = this.buildLayer1(rolePrompt, overviewContent);
+
+    // Issue #30: inject task type directive into Layer 1
+    if (taskType === "Revise") {
+      layer1 += `\n\n## REVISION TASK\n\n` +
+        `**You are revising a document based on cross-review feedback.**\n\n` +
+        `Your CROSS-REVIEW files are included in the feature files below. ` +
+        `Read each finding carefully and address every HIGH and MEDIUM severity issue. ` +
+        `Do NOT write a new cross-review. Do NOT review the document. ` +
+        `Update the existing document to resolve the feedback, then commit your changes.`;
+    } else if (taskType === "Resubmit") {
+      layer1 += `\n\n## RESUBMIT TASK\n\n` +
+        `**Your document was approved but a co-author's document was rejected, triggering a new review cycle.**\n\n` +
+        `Re-read your document and confirm it is still correct. If no changes are needed, ` +
+        `commit an empty update (touch the file) so the review cycle can proceed.`;
+    }
 
     // Layer 3: use the routing message (previous agent's response) when available,
     // otherwise fall back to the trigger message. Never include thread history.
