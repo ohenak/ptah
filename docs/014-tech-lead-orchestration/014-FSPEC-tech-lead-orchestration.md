@@ -4,7 +4,7 @@
 |-------|--------|
 | **Document ID** | 014-FSPEC-tech-lead-orchestration |
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
-| **Version** | 1.3 |
+| **Version** | 1.4 |
 | **Date** | March 19, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -379,7 +379,7 @@ THEN:  Assigned skill = backend-engineer
 Before dispatching any agents, the tech lead presents a **Batch Execution Plan** in the coordination thread. The plan must include:
 
 1. **Execution mode** — "Parallel (N batches)" or "Sequential fallback (N batches)" — with a reason if sequential fallback applies.
-2. **Pre-flight status** — Pass/Fail for each infrastructure check (feature branch presence, ArtifactCommitter availability) — only shown when parallel mode is active.
+2. **Pre-flight status** — Pass/Fail for each infrastructure check (feature branch presence, ArtifactCommitter availability) — shown when pre-flight ran and completed (regardless of whether it passed or failed). This line is NOT shown when sequential mode was triggered at parse time (missing or unparseable dependency section), because pre-flight is never invoked in that path. When pre-flight ran but failed, this line shows the Fail result and explains why sequential mode was chosen for the confirmation now being displayed.
 3. **Batch summary table:**
 
    | Batch | Phases | Skills |
@@ -410,7 +410,16 @@ If the user responds **modify**, the tech lead enters a modification loop:
         the move with an explanation and re-prompt. Phases within a batch execute in
         parallel; a phase may only be in a batch strictly after all phases it depends on.
    c. Split a batch into two consecutive batches (user specifies which phases stay
-      in the current batch and which move to the new batch).
+      in the current batch and which move to the new batch — the new batch is
+      inserted immediately after the current batch).
+      → If the requested split would place a phase in the new (later) batch while
+        any phase that depends on it remains in the current (earlier) batch, reject
+        the split with an explanation and re-prompt:
+        "Phase {X} cannot be moved to the new later batch because Phase {Y} (which
+        depends on Phase {X}) would remain in Batch {N} and execute before it.
+        Please adjust the split to keep dependencies before their dependents."
+        A recognized-but-rejected split does NOT count toward the 5-iteration
+        modification limit.
    d. Force a phase to re-run regardless of Done status (e.g., "re-run Phase B").
       The tech lead marks the phase as not-completed in the in-memory batch plan
       (without writing to the plan document) and places it back in the batch
@@ -427,7 +436,7 @@ If the user responds **modify**, the tech lead enters a modification loop:
 3. Present the updated Batch Execution Plan in full (same format as §2.4.1).
 
 4. Re-prompt: "Type approve to begin execution, modify to make another change, or cancel to abort."
-
+```
 
 #### 2.4.3 Modification Loop Termination Rules
 
@@ -437,6 +446,12 @@ The modification loop terminates when:
 - The user responds **cancel** → execution is aborted; the tech lead reports "Execution cancelled by user." No agents are dispatched.
 - The user provides **no response within 10 minutes** of the prompt → the tech lead reports "Confirmation timeout — execution cancelled." No agents are dispatched. (Timeout policy is approximate; exact implementation is a TSPEC concern.)
 - The modification loop has cycled **5 times without an approve or cancel** → the tech lead reports: "Maximum modification iterations reached. Please approve or cancel to proceed." and re-presents the final plan. If the user still does not respond within 10 minutes, apply the timeout rule above.
+
+**Iteration counter rules:** A cycle is counted each time the user successfully makes a recognized modification that reaches step 3 (re-presentation of the updated plan) and step 4 (re-prompt). Two categories of modification request do NOT advance the cycle counter:
+- **Unrecognized inputs** (no modification type matched — see §2.4.2 step 2 unrecognized-request rule): the tech lead re-prompts without updating the plan.
+- **Recognized-but-rejected modifications** (dependency-violating move, same-batch move, dependency-violating split — see §2.4.2 step 2(b) and 2(c)): the tech lead rejects with an explanation and re-prompts from step 1 without reaching step 3 or step 4. Because no plan update occurs and the approve/modify/cancel prompt is never reached, no cycle is consumed.
+
+Under both cases, a developer may make arbitrarily many unrecognized or rejected requests before the counter advances. Only successful plan modifications count toward the 5-iteration limit.
 
 **There is no automatic approval.** The tech lead never begins execution without an explicit **approve** response from the user.
 
@@ -508,6 +523,39 @@ WHEN:  The developer provides no response for 10 minutes
 THEN:  "Confirmation timeout — execution cancelled." is posted in the coordination thread
        No agents are dispatched; no worktrees are created
        Execution does not begin
+```
+
+**AT-TL-01-08: Valid batch split accepted**
+```
+WHO:   As the developer
+GIVEN: Batch 2 contains phases [C, D, E] where Phase D depends on Phase C and
+       Phase E has no dependencies on C or D
+       The plan is presented in the coordination thread
+WHEN:  The developer types "modify" then "split Batch 2 — keep Phase C and Phase E
+       in Batch 2, move Phase D to a new Batch 3"
+THEN:  The tech lead verifies no dependency violations (Phase D depends on C;
+       C remains in Batch 2 which executes before the new Batch 3 — valid)
+       The in-memory batch plan is updated: Batch 2 = [C, E]; new Batch 3 = [D];
+       original Batch 3 becomes Batch 4
+       The updated Batch Execution Plan is re-presented in full
+       The developer is re-prompted: "Type approve to begin execution, modify to
+       make another change, or cancel to abort."
+```
+
+**AT-TL-01-09: Dependency-violating batch split rejected**
+```
+WHO:   As the developer
+GIVEN: Batch 3 contains phases [C, D] where Phase D depends on Phase C
+       The plan is presented in the coordination thread
+WHEN:  The developer types "modify" then "split Batch 3 — move Phase C to a new
+       Batch 4, keep Phase D in Batch 3"
+THEN:  The tech lead rejects the split:
+         "Phase C cannot be moved to the new later batch because Phase D (which
+          depends on Phase C) would remain in Batch 3 and execute before it.
+          Please adjust the split to keep dependencies before their dependents."
+       The original plan is retained (Batch 3 = [C, D] unchanged)
+       The developer is re-prompted with "What would you like to change?"
+       The modification cycle counter is NOT incremented
 ```
 
 ---
@@ -585,8 +633,20 @@ THEN:  Check 1 fails; warning logged; sequential fallback plan is computed
 ```
 WHO:   As the Ptah orchestrator
 GIVEN: Phase 010 has not been deployed; ArtifactCommitter lacks two-tier merge support
-WHEN:  Pre-flight Check 2 runs
-THEN:  Check 2 fails; warning logged; sequential fallback applied
+       (Check 1 passed — feature branch exists on remote)
+WHEN:  Pre-flight Check 2 runs (before the pre-execution confirmation is shown)
+THEN:  Check 2 fails; the failure is logged with explanation
+       Sequential fallback plan is computed (one phase per batch, document order)
+       The pre-execution confirmation is presented to the developer showing the
+       sequential plan with the message:
+         "Parallel execution unavailable — pre-flight check failed: ArtifactCommitter
+          two-tier merge capability not available. Showing sequential execution plan
+          (one phase per batch). Type approve to proceed with sequential execution,
+          or cancel to abort."
+       The "Pre-flight status" line shows "Fail — ArtifactCommitter two-tier merge
+       capability unavailable"
+       The developer types "approve" and sequential execution begins
+       Pre-flight does not re-run before sequential execution begins
 ```
 
 ---
@@ -1017,6 +1077,7 @@ THEN:  Phase B is added back to the in-memory execution plan
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer Round 3 (BE F-01–F-02 + cosmetic) and test-engineer Round 3 (TE F-01–F-03) cross-reviews of v1.3. **Medium fixes (blocking):** (1) BE F-01 — Added explicit iteration counter rules to §2.4.3: recognized-but-rejected modifications (dependency-violating move, same-batch move, dependency-violating split) do NOT count toward the 5-iteration limit, consistent with the unrecognized-input exemption already specified. (2) TE F-01 — Added dependency-violation rejection rule to §2.4.2(c) (batch split): splits that would place a dependency phase after a phase that depends on it are rejected with an explanation and re-prompt; rejection does not consume a modification cycle. Added AT-TL-01-08 (valid split) and AT-TL-01-09 (dependency-violating split rejected). **Low fixes:** (3) BE F-02 / TE F-03 — Clarified §2.4.1 item 2 pre-flight status qualifier: line is shown when pre-flight ran and completed (pass or fail), not merely when "parallel mode is active"; added explicit note that it is NOT shown in parse-time sequential fallback (pre-flight never invoked). (4) TE F-02 — Expanded AT-TL-02-03 THEN clause to match AT-TL-02-02 level of specificity: specific failure message, pre-flight status line content, and sequential execution outcome. **Cosmetic:** (5) Fixed missing closing code fence in §2.4.2 modification loop. |
 | 1.3 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-03) and test-engineer (TE F-01–F-07) Round 2 cross-reviews of v1.2. **Medium fixes (blocking):** (1) BE F-01/TE F-01 — Added "re-run Phase" as modification type (d) to §2.4.2 step 2, making AT-BD-03-03 testable. (2) BE F-02/TE F-02 — Resolved pre-flight timing contradiction: pre-flight now runs **before** the confirmation is displayed (not after approval); updated §2.5.1, §2.5.3, AT-TL-01-01, AT-TL-02-01, AT-TL-02-02 to be consistent. When pre-flight fails, the developer sees the sequential fallback plan in the confirmation and must explicitly approve. (3) BE F-03/TE F-03 — Fixed §2.6.2 merge conflict note (Option B): corrected inaccurate claim that only aborted phases are re-run; added developer guidance for the partial-merge resume scenario; added AT-BD-01-04 covering the partial-merge resume path. **Low fixes:** (4) TE F-04 — Clarified "downstream" in §2.8.3 means the full transitive closure of dependents; added AT-BD-03-04 for the downstream Done phases warning. (5) TE F-05 — Added unrecognized modification request error rule to §2.4.2 step 2 (error message + re-prompt; does not count toward 5-iteration limit). (6) TE F-06 — Expanded §2.7.1 failure classification to explicitly include ROUTE_TO_AGENT and TASK_COMPLETE as FAILURE signals; classification is now exhaustive. (7) TE F-07 — Added AT-PD-03-05 for the unrecognized Source File prefix silent-backend-default rule (§2.3.2 rule 5). |
 | 1.2 | 2026-03-19 | Product Manager | Addressed all Medium and Low findings from backend-engineer (BE F-01–F-05) and test-engineer (TE F-01–F-07) cross-reviews of v1.1. **Medium fixes:** (1) BE F-01/TE F-03 — replaced "any recognizable form" with explicit enumeration of three supported dependency syntax forms (linear chain, fan-out, natural language); updated AT-PD-01-01 to use canonical fan-out syntax. (2) BE F-02 — amended §2.4.2 step 2b to reject moves placing a phase into the same batch as any of its dependencies, not just before them; added AT-TL-01-06 for same-batch rejection. (3) BE F-03 — added explicit sub-batch failure cascade statement to §2.6.1 sub-batch note; added AT-BD-02-04 for cascade scenario. (4) TE F-01 — added unrecognized Source File prefix fallback rule to §2.3.1 table and §2.3.2 precedence list. **Low fixes:** (5) BE F-04/TE F-07 — added REQ-PD-06 to FSPEC-PD-01 linked requirements and §4 traceability table. (6) BE F-05/TE F-07 — added behavioral pass condition description for FSPEC-TL-02 Check 2. (7) TE F-02 — added AT-TL-01-07 for 10-minute confirmation timeout. (8) TE F-06 — added AT-PD-01-05 (dangling reference) and AT-PD-01-06 (no task tables). (9) BE Q-02 — added downstream Done phases warning to §2.8.3. (10) BE Q-01 — clarified parse-time fallback → confirmation → skip pre-flight ordering in §2.5.1. |
 | 1.1 | 2026-03-19 | Product Manager | Corrected three pre-commit bugs: (1) AT-PD-01-01 "4-node DAG" → "6-node DAG" (phases A–F = 6 nodes); (2) FSPEC-PD-02 §2.2.1 step 3 and AT-PD-02-03 incorrectly stated test gate fires between sub-batches — corrected to align with REQ-NF-14-01 (gate fires once per topological batch after all sub-batches complete); (3) added sub-batch clarification note to FSPEC-BD-01 §2.6.1 making the deferred test gate behavior explicit. Also added REQ-NF-14-05 to REQ to back the FSPEC-TL-02 linked requirement reference. |
