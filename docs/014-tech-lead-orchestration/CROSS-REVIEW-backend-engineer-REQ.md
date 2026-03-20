@@ -4,75 +4,71 @@
 |-------|--------|
 | **Reviewer** | backend-engineer |
 | **Document Reviewed** | [014-REQ-tech-lead-orchestration](014-REQ-tech-lead-orchestration.md) |
-| **Review Round** | 3 (re-review of v1.2 following TE Round 3 "Needs revision") |
+| **Review Round** | 4 (re-review of v1.3 following BE Round 3 / TE Round 4 "Needs revision") |
 | **Date** | 2026-03-19 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
 ## Re-Review Summary
 
-This is a fresh Round 3 review triggered by the test engineer's Round 3 "Needs revision" verdict on v1.2. The prior BE Round 2 approval remains valid for all findings BE-F-01 through BE-F-06. However, codebase analysis of `pdlc-dispatcher.ts` and `phases.ts` reveals one new **Medium** finding not present in prior rounds: the `isForkJoinPhase` interaction with `useTechLead` for fullstack features. I also concur with TE-F-01 from an implementation standpoint.
+This is Round 4, reviewing v1.3. The PM has revised the REQ to address all blocking Medium findings from BE Round 3 and TE Round 4. Both Medium findings (F-01 and TE-F-01 / F-02) are now resolved. No new Medium or High findings identified. All remaining open Low findings are either resolved or explicitly deferred to TSPEC.
 
 ---
 
 ## Prior Findings — Resolution Status
 
-| Finding | Severity | Description | Status |
-|---------|----------|-------------|--------|
-| BE-F-01 | HIGH | Fan-out dependency syntax unspecified | ✅ Resolved |
-| BE-F-02 | HIGH | Partial-batch failure merge semantics undefined | ✅ Resolved |
-| BE-F-03 | HIGH | Worktree creation mechanism unspecified | ✅ Resolved |
-| BE-F-04 | MEDIUM | `pdlc-dispatcher.ts` integration path unspecified | ✅ Resolved |
-| BE-F-05 | LOW | R-05 risk severity stale | ✅ Resolved |
-| BE-F-06 | LOW | REQ-BD-08 concurrent write risk unaddressed | ✅ Resolved |
+| Finding | Round | Severity | Description | Status |
+|---------|-------|----------|-------------|--------|
+| BE-F-01 (Round 3) | 3 | HIGH | Fan-out dependency syntax unspecified | ✅ Resolved (v1.1) |
+| BE-F-02 (Round 3) | 3 | HIGH | Partial-batch failure merge semantics undefined | ✅ Resolved (v1.1) |
+| BE-F-03 (Round 3) | 3 | HIGH | Worktree creation mechanism unspecified | ✅ Resolved (v1.1) |
+| BE-F-04 (Round 3) | 3 | MEDIUM | `pdlc-dispatcher.ts` integration path unspecified | ✅ Resolved (v1.1) |
+| BE-F-01 (Round 3, NEW) | 3 | MEDIUM | `isForkJoinPhase` not explicitly suppressed when `useTechLead === true` | ✅ Resolved (v1.3) — see below |
+| TE-F-01 (Round 4 carry) | 3→4 | MEDIUM | REQ-NF-14-02 description contradicts acceptance criteria; default unspecified | ✅ Resolved (v1.3) — see below |
+| BE-F-02 (Round 3, NEW) | 3 | LOW | `FeatureConfig` extension implied but not named | ✅ Deferred to TSPEC (acceptable) |
+| TE-F-02 (Round 4 carry) | 3→4 | LOW | Plan file precondition failures unspecified | ✅ Resolved (v1.3) — added to REQ-PD-01 |
+| TE-F-03 (Round 4 carry) | 3→4 | LOW | Sub-batch split order unspecified | ✅ Deferred to TSPEC (acceptable) |
+| TE-F-04 (Round 4 carry) | 3→4 | LOW | REQ-TL-02 modification loop termination undocumented | ✅ Deferred to TSPEC (acceptable) |
+| TE-F-03 (Round 4, NEW) | 4 | LOW | Test suite invocation timeout unspecified | ✅ Deferred to TSPEC via note in REQ-BD-05 (acceptable) |
+
+---
+
+## Resolved Medium Findings — Verification
+
+### BE-F-01 / TE-F-02 — RESOLVED: `isForkJoinPhase` suppression now explicitly required
+
+**Verification:** REQ-NF-14-03 v1.3 now reads:
+
+> "The `FORK_JOIN_PHASES` classification for fullstack IMPLEMENTATION continues to apply when `useTechLead` is false. When `useTechLead === true`, the `FORK_JOIN_PHASES` fork-join behavior for IMPLEMENTATION is suppressed regardless of `discipline`, and a single tech-lead dispatch is issued instead."
+
+This exactly matches the resolution requested in BE Round 3 and TE Round 4. A TSPEC author now has an unambiguous implementation target: modify `isForkJoinPhase` (or the dispatch decision logic) to return `false` when `config.useTechLead === true`. A test engineer can now write a deterministic integration test asserting that a fullstack feature with `useTechLead: true` receives exactly one tech-lead dispatch with no fork-join pair. ✅
+
+### TE-F-01 / F-01 — RESOLVED: REQ-NF-14-02 contradiction and default value specified
+
+**Verification:** REQ-NF-14-02 v1.3 description now reads:
+
+> "After each agent completes successfully, its worktree must be cleaned up. After a failed agent completes, its worktree must be cleaned up unless `retain_failed_worktrees` is set to `true` in the Ptah configuration. The `retain_failed_worktrees` flag defaults to `false` when absent — cleanup is the default behavior on failure."
+
+And the acceptance criteria now reads:
+
+> "Worktrees are removed after successful completion; worktrees are removed after failure unless `retain_failed_worktrees: true` is set in configuration (default: `false`); when retention is enabled, failed worktrees are preserved for debugging"
+
+The prior contradiction is fully eliminated. Description and acceptance criteria are now consistent. The default value (`false`) is explicitly stated in both the description and the acceptance criteria. A test author can now write a deterministic failure-path test for the unconfigured case (expect cleanup) and a separate test for the `retain_failed_worktrees: true` case (expect retention). ✅
+
+### TE-F-02 (Low) — RESOLVED: Plan file precondition added to REQ-PD-01
+
+**Verification:** REQ-PD-01 acceptance criteria v1.3 now includes: "If the plan file is missing or unreadable, the tech lead reports the error with the file path and halts." This is a clean, testable addition. ✅
+
+### TE-F-03 (Low, Round 4) — Deferred to TSPEC: Test suite timeout
+
+**Verification:** REQ-BD-05 v1.3 changelog confirms "deferred test suite invocation timeout to TSPEC via note in REQ-BD-05." The REQ-level acknowledgment of deferral is present. This is acceptable — the core assertion/invocation failure modes are fully specified and testable without the timeout policy. ✅
 
 ---
 
 ## New Findings
 
-### F-01 — MEDIUM: `isForkJoinPhase` is not explicitly suppressed when `useTechLead === true` for fullstack features
-
-**Affected requirements:** REQ-TL-01, REQ-NF-14-03
-
-**Codebase context:** In `pdlc-dispatcher.ts`, the function `isForkJoinPhase` returns `true` when `config.discipline === "fullstack"` and the phase is in `FORK_JOIN_PHASES` (which includes `IMPLEMENTATION`). When `isForked === true`, the dispatcher fires the `subtask_complete` event path rather than `lgtm`, splitting IMPLEMENTATION into a fork/join over `eng` and `fe`.
-
-REQ-TL-01 states the orchestrator must route to tech-lead when `useTechLead: true`. REQ-NF-14-03 states:
-
-> "The `FORK_JOIN_PHASES` classification for fullstack IMPLEMENTATION continues to apply when `useTechLead` is false."
-
-This sentence implies (by contrast) that FORK_JOIN_PHASES should **not** apply when `useTechLead === true`. However, it never explicitly states this. A TSPEC author reading only REQ-NF-14-03 could:
-
-- (Correct) modify `isForkJoinPhase` to return `false` when `config.useTechLead === true`, suppressing fork-join and allowing the single tech-lead dispatch path to take over.
-- (Incorrect) leave `isForkJoinPhase` unchanged, causing the dispatcher to simultaneously attempt a fork-join dispatch (`eng` + `fe`) and a tech-lead dispatch — producing two conflicting dispatch actions for the same IMPLEMENTATION phase.
-
-The ambiguity is silent and would only be caught at runtime. This needs an explicit statement at the REQ level.
-
-**Resolution needed:** Add one sentence to REQ-NF-14-03 (or REQ-TL-01): _"When `useTechLead === true`, the `FORK_JOIN_PHASES` fork-join behavior for IMPLEMENTATION is suppressed regardless of `discipline`, and a single tech-lead dispatch is issued instead."_
-
----
-
-### F-02 — LOW: `FeatureConfig` interface extension is implied but not named
-
-**Affected requirements:** REQ-TL-01, REQ-NF-14-03
-
-REQ-TL-01 refers to "the feature's `FeatureConfig` has `useTechLead: true`" but the current `FeatureConfig` interface in `phases.ts` only defines `{ discipline: Discipline; skipFspec: boolean }`. The REQ never names the interface or states it must be extended.
-
-This is Low — any TSPEC author will know to add `useTechLead?: boolean` to `FeatureConfig`. However, given `FeatureConfig` is also persisted in the state file (`PdlcStateFile`), the TSPEC must also address migration: existing state files without `useTechLead` must default to `undefined`/`false`. A migration note in the REQ's constraints section would reduce TSPEC guesswork.
-
-**Resolution needed (Low — acceptable to defer to TSPEC):** The TSPEC should explicitly state: "Add `useTechLead?: boolean` to `FeatureConfig`; treat `undefined` as `false` everywhere to preserve backward compatibility with existing persisted state."
-
----
-
-## Concurrence with TE Round 3 Findings
-
-### TE-F-01 — MEDIUM: REQ-NF-14-02 contradicts itself on failure-case cleanup
-
-I concur from an implementation standpoint. The description ("After each agent completes (success or failure), its worktree must be cleaned up") and the acceptance criteria ("Worktrees are removed after successful completion; retained on failure if configured") are genuinely contradictory for the failure path when `retain_failed_worktrees` is `false`. An implementation author using the description as the source of truth would always clean up on failure. An author using the acceptance criteria would conditionally clean up. The default value for `retain_failed_worktrees` being unspecified compounds this — when the flag is absent, the expected behavior is ambiguous. The TE's proposed resolution is correct.
-
-### TE-F-02 through TE-F-04 — LOW
-
-No additional technical concerns beyond the TE's write-up. F-02 (plan file precondition failures) is worth a brief REQ clause; F-03 and F-04 are cleanly deferred to TSPEC.
+None. No new High, Medium, or Low findings identified in v1.3.
 
 ---
 
@@ -84,23 +80,27 @@ None. All prior questions (Q-01 through Q-03) remain resolved.
 
 ## Positive Observations
 
-All Round 2 positive observations remain valid. One additional observation:
+All prior positive observations remain valid. Additional observations on v1.3:
 
-- **REQ-NF-14-03's backward-compatibility structure** is well-designed as a migration pattern: the `useTechLead` flag can be incrementally adopted per feature without requiring any changes to existing feature state files. The opt-in flag avoids forced migration and makes the feature easy to test in isolation against the existing dispatcher code paths.
+- **v1.3 revision scope is minimal and targeted.** The PM correctly restricted changes to the two blocking findings and one Low (REQ-PD-01 precondition), avoiding scope creep that could introduce new issues. The changelog accurately reflects what changed.
+- **REQ-NF-14-02 is now the clearest worktree lifecycle specification in the document set.** The three-sentence description (success cleanup, failure cleanup default, explicit default value) is immediately translatable into a decision table for TSPEC: two success-path rows (success, cleanup) and two failure-path rows (failure + flag false → cleanup; failure + flag true → retain).
+- **REQ-NF-14-03 backward-compatibility structure** correctly handles the three cases: (a) `useTechLead` absent → existing behavior unchanged; (b) `useTechLead: false` → existing behavior unchanged; (c) `useTechLead: true` → single tech-lead dispatch, fork-join suppressed. All three cases are now deterministically testable.
+- **The overall REQ set is implementation-ready.** With all Medium findings resolved, the TSPEC author has unambiguous specifications for all P0 requirements. The deferred Low items (FeatureConfig migration, sub-batch ordering, loop termination) are appropriate TSPEC concerns and do not block design.
 
 ---
 
 ## Recommendation
 
-**Needs revision.**
+**Approved.**
 
-| Finding | Severity | Blocking? |
-|---------|----------|-----------|
-| F-01 (NEW) | MEDIUM | Yes — `isForkJoinPhase` suppression for `useTechLead === true` must be explicitly required before TSPEC authoring to avoid a silent dual-dispatch bug for fullstack features |
-| F-02 (NEW) | LOW | No — acceptable to defer to TSPEC |
-| TE-F-01 | MEDIUM | Yes — REQ-NF-14-02 description/criteria contradiction with undefined default must be resolved |
-| TE-F-02 | LOW | No — recommended brief REQ clause |
-| TE-F-03 | LOW | No — defer to TSPEC |
-| TE-F-04 | LOW | No — defer to TSPEC |
+All blocking Medium findings (BE-F-01 and TE-F-01/F-02) have been correctly resolved in v1.3. All Low findings are either resolved or appropriately deferred to TSPEC. No new findings. The REQ is ready for TSPEC authoring.
 
-**Required before re-approval:** F-01 and TE-F-01 (both Medium) must be resolved. The PM should address both in the next version, then route back for re-review.
+| Finding | Severity | Status |
+|---------|----------|--------|
+| BE-F-01 (Round 3) — `isForkJoinPhase` suppression | MEDIUM | ✅ Resolved in v1.3 |
+| TE-F-01 (Round 3→4) — REQ-NF-14-02 contradiction | MEDIUM | ✅ Resolved in v1.3 |
+| TE-F-02 (Round 4) — Plan file precondition | LOW | ✅ Resolved in v1.3 |
+| TE-F-03 (Round 4) — Test suite timeout | LOW | ✅ Deferred to TSPEC |
+| BE-F-02 (Round 3) — FeatureConfig extension | LOW | ✅ Deferred to TSPEC |
+| TE-F-03 (Round 3→4) — Sub-batch split order | LOW | ✅ Deferred to TSPEC |
+| TE-F-04 (Round 3→4) — Modification loop termination | LOW | ✅ Deferred to TSPEC |
