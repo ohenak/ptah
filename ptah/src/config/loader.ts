@@ -177,9 +177,25 @@ export class NodeConfigLoader implements ConfigLoader {
 
   private applyDefaults(config: Record<string, unknown>): void {
     if (Array.isArray(config.agents)) {
-      // New format: agents is an AgentEntry[] array — populate agentEntries from it
-      config.agentEntries = (config.agents as AgentEntry[]);
-      // Keep agents as-is for the new format (consumers will read agentEntries)
+      // New format: agents is an AgentEntry[] array — populate agentEntries and
+      // build the legacy AgentsConfig shape so existing consumers
+      // (context-assembler, pattern-b-context-builder) continue to work.
+      const entries = config.agents as AgentEntry[];
+      config.agentEntries = entries;
+
+      const llm = config.llm as Record<string, unknown> | undefined;
+      const skills: Record<string, string> = {};
+      for (const entry of entries) {
+        skills[entry.id] = entry.skill_path;
+      }
+      config.agents = {
+        active: entries.map(e => e.id),
+        skills,
+        model: (llm?.model as string) ?? "claude-sonnet-4-6",
+        max_tokens: (llm?.max_tokens as number) ?? 8192,
+        colours: {} as Record<string, string>,
+        role_mentions: {} as Record<string, string>,
+      };
     } else {
       // Old format: agents is an AgentConfig object
       const agents = config.agents as Record<string, unknown>;
