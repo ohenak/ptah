@@ -20,14 +20,14 @@ Adds the `mentionable` field to `AgentEntry`, updates `loader.ts` validation to 
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Add `mentionable?: boolean` field to `AgentEntry` type | — | `ptah/src/types.ts` | ⬚ Not Started |
-| 2 | Add `MergeBranchParams`, `BranchMergeResult`, `BranchMergeStatus` types | — | `ptah/src/types.ts` | ⬚ Not Started |
-| 3 | Add `tech_lead_agent_timeout_ms` and `retain_failed_worktrees` to orchestrator config type | — | `ptah/src/types.ts` | ⬚ Not Started |
-| 4 | Update `loader.ts` validation: skip snowflake regex when `mentionable === false` | `ptah/tests/unit/config/loader.test.ts` | `ptah/src/config/loader.ts` | ⬚ Not Started |
-| 5 | Test: agent with `mentionable: false` and empty `mention_id` passes validation | `ptah/tests/unit/config/loader.test.ts` | — | ⬚ Not Started |
-| 6 | Test: agent with `mentionable: true` and empty `mention_id` is rejected | `ptah/tests/unit/config/loader.test.ts` | — | ⬚ Not Started |
-| 7 | Test: agent with absent `mentionable` and empty `mention_id` is rejected (backward compat) | `ptah/tests/unit/config/loader.test.ts` | — | ⬚ Not Started |
-| 8 | Test: agent with absent `mentionable` and valid snowflake passes validation | `ptah/tests/unit/config/loader.test.ts` | — | ⬚ Not Started |
+| 1 | Add `mentionable?: boolean` field to `AgentEntry` type | — | `ptah/src/types.ts` | ✅ Done |
+| 2 | Add `MergeBranchParams`, `BranchMergeResult`, `BranchMergeStatus` types | — | `ptah/src/types.ts` | ✅ Done |
+| 3 | Add `tech_lead_agent_timeout_ms` and `retain_failed_worktrees` to orchestrator config type | — | `ptah/src/types.ts` | ✅ Done |
+| 4 | Update `loader.ts` validation: skip snowflake regex when `mentionable === false` | `ptah/tests/unit/config/loader.test.ts` | `ptah/src/config/loader.ts` | ✅ Done |
+| 5 | Test: agent with `mentionable: false` and empty `mention_id` passes validation | `ptah/tests/unit/config/loader.test.ts` | — | ✅ Done |
+| 6 | Test: agent with `mentionable: true` and empty `mention_id` is rejected | `ptah/tests/unit/config/loader.test.ts` | — | ✅ Done |
+| 7 | Test: agent with absent `mentionable` and empty `mention_id` is rejected (backward compat) | `ptah/tests/unit/config/loader.test.ts` | — | ✅ Done |
+| 8 | Test: agent with absent `mentionable` and valid snowflake passes validation | `ptah/tests/unit/config/loader.test.ts` | — | ✅ Done |
 
 ### Phase B — Dispatcher Routing
 
