@@ -36,17 +36,18 @@ Adds `useTechLead?: boolean` to `FeatureConfig`, updates `phaseToAgentId` to ret
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
 | 1 | Add `useTechLead?: boolean` to `FeatureConfig` interface | — | `ptah/src/orchestrator/pdlc/phases.ts` | ⬚ Not Started |
-| 2 | Update `phaseToAgentId`: return `"tl"` for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
-| 3 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (backend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 4 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (fullstack) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 5 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (frontend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 6 | Test: preserves existing routing when `useTechLead` is absent | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 7 | Test: preserves existing routing when `useTechLead` is false | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 8 | Test: does not affect TSPEC_CREATION routing even when `useTechLead` is true | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 9 | Update `isForkJoinPhase`: return false for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
-| 10 | Test: returns false for IMPLEMENTATION when `useTechLead` is true and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 11 | Test: returns true for IMPLEMENTATION when `useTechLead` is absent and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 12 | Test: returns true for TSPEC_CREATION when `useTechLead` is true (no suppression for non-IMPLEMENTATION) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 2 | Add `makeTechLeadConfig` factory helper to `factories.ts` | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| 3 | Update `phaseToAgentId`: return `"tl"` for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
+| 4 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (backend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 5 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (fullstack) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 6 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (frontend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 7 | Test: preserves existing routing when `useTechLead` is absent | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 8 | Test: preserves existing routing when `useTechLead` is false | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 9 | Test: does not affect TSPEC_CREATION routing even when `useTechLead` is true | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 10 | Update `isForkJoinPhase`: return false for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
+| 11 | Test: returns false for IMPLEMENTATION when `useTechLead` is true and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 12 | Test: returns true for IMPLEMENTATION when `useTechLead` is absent and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 13 | Test: returns true for TSPEC_CREATION when `useTechLead` is true (no suppression for non-IMPLEMENTATION) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
 
 ### Phase C — Config and Template Updates
 
@@ -115,25 +116,27 @@ Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green
 
 ## 3. Task Dependency Notes
 
-Phase A → [Phase B, Phase C, Phase D, Phase E]
+Phase A → [Phase C, Phase D, Phase E]
 Phase C → Phase E
+Phase B has no dependencies (FeatureConfig.useTechLead is defined in phases.ts, not types.ts; makeTechLeadConfig factory is created within Phase B)
 Phase F has no dependencies on Phases A–E (SKILL.md is a prompt file, not TypeScript)
 
 ```
 Phase A (Foundation Types & Config Loader)
-├── → Phase B (Dispatcher Routing)          — needs FeatureConfig.useTechLead type
 ├── → Phase C (Config & Template Updates)   — needs mentionable field in loader
 ├── → Phase D (ArtifactCommitter)           — needs MergeBranchParams/BranchMergeResult types
 └── → Phase E (Integration Test)            — needs types + config entry
+
+Phase B (Dispatcher Routing)                — independent; modifies phases.ts and pdlc-dispatcher.ts only
 
 Phase C → Phase E                           — integration test loads ptah.config.json with "tl" entry
 
 Phase F (SKILL.md)                          — independent; prompt-based, no TypeScript imports
 ```
 
-**Parallelism opportunities:** After Phase A completes, Phases B, C, D, and F can all execute in parallel. Phase E must wait for Phase C. This gives a 3-batch execution with the tech-lead orchestrator:
-- Batch 1: Phase A, Phase F (independent)
-- Batch 2: Phase B, Phase C, Phase D (all depend on A; F continues if not done)
+**Parallelism opportunities:** Phases A, B, and F are all independent and can execute in Batch 1. After Phase A completes, Phases C and D can run in Batch 2. Phase E must wait for Phase C. This gives a 3-batch execution:
+- Batch 1: Phase A, Phase B, Phase F (all independent)
+- Batch 2: Phase C, Phase D (depend on A)
 - Batch 3: Phase E (depends on C)
 
 ## 4. Integration Points
