@@ -369,7 +369,6 @@ describe("NodeConfigLoader", () => {
       expect(result).toEqual(expected);
       // Verify specific fields to confirm typing
       expect(result.project.name).toBe("test-project");
-      expect(result.project.version).toBe("1.0.0");
       expect(result.discord.bot_token_env).toBe("DISCORD_BOT_TOKEN");
       expect(result.discord.server_id).toBe("test-server-123");
       expect(result.discord.channels.updates).toBe("agent-updates");

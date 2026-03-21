@@ -109,7 +109,6 @@ export interface ThreadStateEntry {
 export interface PtahConfig {
   project: {
     name: string;
-    version: string;
   };
   agents: AgentsConfig;
   agentEntries: AgentEntry[];
