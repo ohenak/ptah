@@ -137,16 +137,22 @@ export class NodeConfigLoader implements ConfigLoader {
         );
       }
 
-      if (typeof entry.mention_id !== "string" || entry.mention_id === "") {
-        throw new Error(
-          `ptah.config.json agents[${i}].mention_id is missing or empty.`
-        );
-      }
+      // When mentionable is explicitly false, skip snowflake validation for mention_id.
+      // When mentionable is true or absent (defaults to true), require a valid snowflake.
+      const isMentionable = entry.mentionable !== false;
 
-      if (!/^\d+$/.test(entry.mention_id as string)) {
-        throw new Error(
-          `ptah.config.json agents[${i}].mention_id "${entry.mention_id}" is invalid. Must match /^\\d+$/.`
-        );
+      if (isMentionable) {
+        if (typeof entry.mention_id !== "string" || entry.mention_id === "") {
+          throw new Error(
+            `ptah.config.json agents[${i}].mention_id is missing or empty.`
+          );
+        }
+
+        if (!/^\d+$/.test(entry.mention_id as string)) {
+          throw new Error(
+            `ptah.config.json agents[${i}].mention_id "${entry.mention_id}" is invalid. Must match /^\\d+$/.`
+          );
+        }
       }
     }
   }

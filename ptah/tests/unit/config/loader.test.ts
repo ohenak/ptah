@@ -1,6 +1,39 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { NodeConfigLoader, isNodeError } from "../../../src/config/loader.js";
 import { FakeFileSystem, defaultTestConfig, makeAgentEntry } from "../../fixtures/factories.js";
+import type { AgentEntry, PtahConfig } from "../../../src/types.js";
+
+/** Build a full config JSON object with the agents array containing a single agent entry. */
+function makeConfigWithAgent(agent: Partial<AgentEntry> & { id: string; skill_path: string }) {
+  return {
+    project: { name: "test", version: "1.0.0" },
+    agents: [
+      {
+        log_file: "./logs/test.log",
+        mention_id: "111111111111111111",
+        display_name: "Test Agent",
+        ...agent,
+      },
+    ],
+    discord: {
+      server_id: "test-server-123",
+      bot_token_env: "DISCORD_BOT_TOKEN",
+      channels: { updates: "updates", questions: "questions", debug: "debug" },
+      mention_user_id: "test-user-456",
+    },
+    orchestrator: { max_turns_per_thread: 10, pending_poll_seconds: 30, retry_attempts: 3 },
+    git: { commit_prefix: "[ptah]", auto_commit: true },
+    docs: { root: "docs", templates: "./ptah/templates" },
+  };
+}
+
+/** Load a config object through NodeConfigLoader, returning the parsed PtahConfig. */
+async function loadConfig(config: Record<string, unknown>): Promise<PtahConfig> {
+  const fs = new FakeFileSystem();
+  fs.addExisting("ptah.config.json", JSON.stringify(config));
+  const loader = new NodeConfigLoader(fs);
+  return loader.load();
+}
 
 describe("NodeConfigLoader", () => {
   let fs: FakeFileSystem;
@@ -741,6 +774,53 @@ describe("NodeConfigLoader", () => {
       const result = await loader.load();
       expect("agentEntries" in result).toBe(true);
       expect(Array.isArray(result.agentEntries)).toBe(true);
+    });
+  });
+
+  // Phase 14: mentionable field validation
+  describe("config loader — mentionable field validation", () => {
+    it("accepts an agent entry with mentionable: false and empty mention_id", async () => {
+      const config = makeConfigWithAgent({
+        id: "tl",
+        mention_id: "",
+        mentionable: false,
+        skill_path: "../.claude/skills/tech-lead/SKILL.md",
+        display_name: "Tech Lead",
+      });
+      const result = await loadConfig(config);
+      expect(result.agentEntries).toContainEqual(expect.objectContaining({ id: "tl" }));
+    });
+
+    it("rejects an agent entry with mentionable: true and empty mention_id", async () => {
+      const config = makeConfigWithAgent({
+        id: "bad",
+        mention_id: "",
+        mentionable: true,
+        skill_path: "./some-skill.md",
+        display_name: "Bad Agent",
+      });
+      await expect(loadConfig(config)).rejects.toThrow(/mention_id/);
+    });
+
+    it("requires valid snowflake for mention_id when mentionable is absent (defaults to true)", async () => {
+      const config = makeConfigWithAgent({
+        id: "pm",
+        mention_id: "123456789012345678",
+        skill_path: "./skills/pm.md",
+        display_name: "PM",
+      });
+      const result = await loadConfig(config);
+      expect(result.agentEntries).toContainEqual(expect.objectContaining({ id: "pm" }));
+    });
+
+    it("rejects empty mention_id when mentionable is absent", async () => {
+      const config = makeConfigWithAgent({
+        id: "bad",
+        mention_id: "",
+        skill_path: "./some-skill.md",
+        display_name: "Bad Agent",
+      });
+      await expect(loadConfig(config)).rejects.toThrow(/mention_id/);
     });
   });
 });

@@ -23,6 +23,8 @@ export interface AgentEntry {
   log_file: string;     // relative path from project root
   mention_id: string;   // Discord snowflake — /^\d+$/
   display_name?: string; // defaults to id if absent
+  /** When false, skip snowflake regex validation for mention_id. Defaults to true. */
+  mentionable?: boolean;
 }
 
 export interface RegisteredAgent {
@@ -124,6 +126,10 @@ export interface PtahConfig {
     shutdown_timeout_ms?: number;
     /** If true (default), archive the Discord thread after LGTM/TASK_COMPLETE resolution signal. */
     archive_on_resolution?: boolean;
+    /** Timeout for tech-lead-dispatched engineer agents in ms. Default: 600_000 (10 min) */
+    tech_lead_agent_timeout_ms?: number;
+    /** If true, retain failed agent worktrees for debugging. Default: false */
+    retain_failed_worktrees?: boolean;
   };
   git: {
     commit_prefix: string;
@@ -341,6 +347,8 @@ export interface AgentEntry {
   log_file: string;     // relative path from project root
   mention_id: string;   // Discord snowflake — /^\d+$/
   display_name?: string; // defaults to id if absent
+  /** When false, skip snowflake regex validation for mention_id. Defaults to true. */
+  mentionable?: boolean;
 }
 
 /** A fully validated, registered agent in the live Orchestrator registry. */
@@ -361,4 +369,31 @@ export interface AgentValidationError {
   agentId?: string;       // set if id was parseable; undefined if id itself was missing/invalid
   field: string;          // which field failed (e.g. 'id', 'skill_path', 'mention_id', 'log_file')
   reason: string;         // human-readable description
+}
+
+// --- Phase 14: Tech-lead orchestration merge types ---
+
+/** Parameters for merging a worktree agent branch into the feature branch */
+export interface MergeBranchParams {
+  /** The branch to merge (the worktree/agent branch) */
+  sourceBranch: string;
+  /** The target feature branch (e.g., "feat-014-tech-lead-orchestration") */
+  featureBranch: string;
+  /** Absolute path to a worktree that has the feature branch checked out */
+  featureBranchWorktreePath: string;
+  /** Agent ID for logging */
+  agentId: string;
+}
+
+export type BranchMergeStatus =
+  | "merged"             // merge succeeded; commit created on featureBranch
+  | "already-up-to-date" // source branch is already in featureBranch history; no-op
+  | "conflict"           // merge conflict; featureBranch left at pre-merge state
+  | "merge-error";       // git error during merge (not a conflict)
+
+export interface BranchMergeResult {
+  status: BranchMergeStatus;
+  commitSha: string | null;       // set if status === "merged"
+  conflictingFiles: string[];     // set if status === "conflict"
+  errorMessage: string | null;    // set if status === "merge-error"
 }
