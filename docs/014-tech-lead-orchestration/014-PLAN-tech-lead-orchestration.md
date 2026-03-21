@@ -55,9 +55,9 @@ Adds the `"tl"` agent entry to `ptah.config.json` (with `mentionable: false`) an
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Add `"tl"` agent entry to `ptah.config.json` with `mentionable: false` | — | `ptah/ptah.config.json` | ⬚ Not Started |
-| 2 | Add `tech_lead_agent_timeout_ms` and `retain_failed_worktrees` to orchestrator section | — | `ptah/ptah.config.json` | ⬚ Not Started |
-| 3 | Update `backend-plans-template.md`: document fan-out dependency syntax in Task Dependency Notes | — | `docs/templates/backend-plans-template.md` | ⬚ Not Started |
+| 1 | Add `"tl"` agent entry to `ptah.config.json` with `mentionable: false` | — | `ptah/ptah.config.json` | ✅ Done |
+| 2 | Add `tech_lead_agent_timeout_ms` and `retain_failed_worktrees` to orchestrator section | — | `ptah/ptah.config.json` | ✅ Done |
+| 3 | Update `backend-plans-template.md`: document fan-out dependency syntax in Task Dependency Notes | — | `docs/templates/backend-plans-template.md` | ✅ Done |
 
 ### Phase D — ArtifactCommitter: mergeBranchIntoFeature
 
