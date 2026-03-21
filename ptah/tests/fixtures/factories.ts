@@ -1439,3 +1439,13 @@ export class FakeAgentRegistry implements AgentRegistry {
     return [...this.agents];
   }
 }
+
+/** Stub FeatureConfig with useTechLead=true */
+export function makeTechLeadConfig(overrides?: Partial<FeatureConfig>): FeatureConfig {
+  return {
+    discipline: "backend-only",
+    skipFspec: false,
+    useTechLead: true,
+    ...overrides,
+  };
+}

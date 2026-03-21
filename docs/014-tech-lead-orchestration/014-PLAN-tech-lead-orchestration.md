@@ -35,19 +35,19 @@ Adds `useTechLead?: boolean` to `FeatureConfig`, updates `phaseToAgentId` to ret
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Add `useTechLead?: boolean` to `FeatureConfig` interface | — | `ptah/src/orchestrator/pdlc/phases.ts` | ⬚ Not Started |
-| 2 | Add `makeTechLeadConfig` factory helper to `factories.ts` | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 3 | Update `phaseToAgentId`: return `"tl"` for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
-| 4 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (backend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 5 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (fullstack) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 6 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (frontend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 7 | Test: preserves existing routing when `useTechLead` is absent | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 8 | Test: preserves existing routing when `useTechLead` is false | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 9 | Test: does not affect TSPEC_CREATION routing even when `useTechLead` is true | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 10 | Update `isForkJoinPhase`: return false for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ⬚ Not Started |
-| 11 | Test: returns false for IMPLEMENTATION when `useTechLead` is true and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 12 | Test: returns true for IMPLEMENTATION when `useTechLead` is absent and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
-| 13 | Test: returns true for TSPEC_CREATION when `useTechLead` is true (no suppression for non-IMPLEMENTATION) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ⬚ Not Started |
+| 1 | Add `useTechLead?: boolean` to `FeatureConfig` interface | — | `ptah/src/orchestrator/pdlc/phases.ts` | ✅ Done |
+| 2 | Add `makeTechLeadConfig` factory helper to `factories.ts` | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 3 | Update `phaseToAgentId`: return `"tl"` for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ✅ Done |
+| 4 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (backend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 5 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (fullstack) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 6 | Test: returns `"tl"` for IMPLEMENTATION when `useTechLead` is true (frontend-only) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 7 | Test: preserves existing routing when `useTechLead` is absent | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 8 | Test: preserves existing routing when `useTechLead` is false | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 9 | Test: does not affect TSPEC_CREATION routing even when `useTechLead` is true | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 10 | Update `isForkJoinPhase`: return false for IMPLEMENTATION when `useTechLead === true` | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | `ptah/src/orchestrator/pdlc/pdlc-dispatcher.ts` | ✅ Done |
+| 11 | Test: returns false for IMPLEMENTATION when `useTechLead` is true and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 12 | Test: returns true for IMPLEMENTATION when `useTechLead` is absent and fullstack | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
+| 13 | Test: returns true for TSPEC_CREATION when `useTechLead` is true (no suppression for non-IMPLEMENTATION) | `ptah/tests/unit/orchestrator/pdlc/pdlc-dispatcher.test.ts` | — | ✅ Done |
 
 ### Phase C — Config and Template Updates
 

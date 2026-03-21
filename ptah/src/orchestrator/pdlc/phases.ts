@@ -28,6 +28,7 @@ export type Discipline = "backend-only" | "frontend-only" | "fullstack";
 export interface FeatureConfig {
   discipline: Discipline;
   skipFspec: boolean;
+  useTechLead?: boolean;
 }
 
 // --- Event Types (FSPEC-SM-01) ---
