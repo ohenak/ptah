@@ -86,7 +86,7 @@ Validates end-to-end wiring: loads real `ptah.config.json`, resolves the `"tl"` 
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Integration test: loads ptah.config.json, resolves "tl" agent, asserts skill_path exists | `ptah/tests/integration/config/agent-registry.test.ts` | — | ⬚ Not Started |
+| 1 | Integration test: loads ptah.config.json, resolves "tl" agent, asserts skill_path exists | `ptah/tests/integration/config/agent-registry.test.ts` | — | ✅ Done |
 
 ### Phase F — Tech-Lead SKILL.md
 
