@@ -6,7 +6,10 @@ import {
 import {
   FakeGitClient,
   FakeMergeLock,
+  FakeMergeLockWithTimeout,
   FakeLogger,
+  makeCommitterWithLock,
+  makeMergeBranchParams,
 } from "../../fixtures/factories.js";
 import { MergeLockTimeoutError } from "../../../src/orchestrator/merge-lock.js";
 import type { CommitParams } from "../../../src/types.js";
@@ -406,5 +409,66 @@ describe("formatAgentName", () => {
 
   it("handles multiple hyphens", () => {
     expect(formatAgentName("pm-lead-agent")).toBe("Pm Lead Agent");
+  });
+});
+
+// --- Phase 14: mergeBranchIntoFeature tests ---
+
+describe("DefaultArtifactCommitter.mergeBranchIntoFeature", () => {
+  it("returns merged status with commitSha on successful merge and releases lock", async () => {
+    const git = new FakeGitClient();
+    git.mergeInWorktreeResult = "merged";
+    git.getShortShaResult = "abc123";
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
+    const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
+    expect(result.status).toBe("merged");
+    expect(result.commitSha).toBe("abc123");
+    expect(result.conflictingFiles).toHaveLength(0);
+    expect(lock.releaseCalls).toBe(1);
+  });
+
+  it("returns conflict status and conflicting files, aborts merge, and releases lock", async () => {
+    const git = new FakeGitClient();
+    git.mergeInWorktreeResult = "conflict";
+    git.getConflictedFilesResult = ["src/foo.ts", "src/bar.ts"];
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
+    const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
+    expect(result.status).toBe("conflict");
+    expect(result.conflictingFiles).toEqual(["src/foo.ts", "src/bar.ts"]);
+    expect(git.abortMergeInWorktreeCalls).toHaveLength(1);
+    expect(lock.releaseCalls).toBe(1);
+  });
+
+  it("returns already-up-to-date when source is already in target history and releases lock", async () => {
+    const git = new FakeGitClient();
+    git.mergeInWorktreeResult = "already-up-to-date";
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
+    const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
+    expect(result.status).toBe("already-up-to-date");
+    expect(result.commitSha).toBeNull();
+    expect(lock.releaseCalls).toBe(1);
+  });
+
+  it("returns merge-error on lock timeout (lock not acquired, no release)", async () => {
+    const git = new FakeGitClient();
+    const lock = new FakeMergeLockWithTimeout();
+    const committer = makeCommitterWithLock(git, lock);
+    const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
+    expect(result.status).toBe("merge-error");
+    expect(result.errorMessage).toContain("Merge lock timeout");
+  });
+
+  it("returns merge-error when git throws an unexpected error and releases lock", async () => {
+    const git = new FakeGitClient();
+    git.mergeInWorktreeError = new Error("git internal error");
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
+    const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
+    expect(result.status).toBe("merge-error");
+    expect(result.errorMessage).toBe("git internal error");
+    expect(lock.releaseCalls).toBe(1);
   });
 });

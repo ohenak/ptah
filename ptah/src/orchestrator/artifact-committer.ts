@@ -1,4 +1,4 @@
-import type { CommitParams, CommitResult } from "../types.js";
+import type { CommitParams, CommitResult, MergeBranchParams, BranchMergeResult } from "../types.js";
 import type { GitClient } from "../services/git.js";
 import type { MergeLock } from "./merge-lock.js";
 import { MergeLockTimeoutError } from "./merge-lock.js";
@@ -6,9 +6,15 @@ import type { Logger } from "../services/logger.js";
 
 export interface ArtifactCommitter {
   commitAndMerge(params: CommitParams): Promise<CommitResult>;
+  mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult>;
 }
 
+/** Merge lock timeout for commitAndMerge (existing) */
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
+
+/** Merge lock timeout for mergeBranchIntoFeature — 30 seconds is sufficient for
+ *  serializing sequential merge operations within a single batch. */
+const MERGE_BRANCH_LOCK_TIMEOUT_MS = 30_000;
 
 export function formatAgentName(agentId: string): string {
   return agentId
@@ -167,6 +173,67 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
       };
     } finally {
       release();
+    }
+  }
+
+  async mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult> {
+    const { sourceBranch, featureBranch, featureBranchWorktreePath, agentId } = params;
+    this.logger.info(`[merge] Merging ${sourceBranch} → ${featureBranch} (agent: ${agentId})`);
+
+    // 1. Acquire merge lock to serialize concurrent merge operations
+    let releaseLock: (() => void) | null = null;
+    try {
+      releaseLock = await this.mergeLock.acquire(MERGE_BRANCH_LOCK_TIMEOUT_MS);
+    } catch (err) {
+      if (err instanceof MergeLockTimeoutError) {
+        return {
+          status: "merge-error",
+          commitSha: null,
+          conflictingFiles: [],
+          errorMessage: "Merge lock timeout — another merge is in progress",
+        };
+      }
+      throw err;
+    }
+
+    try {
+      // 2. Attempt merge
+      const mergeResult = await this.gitClient.mergeInWorktree(
+        featureBranchWorktreePath,
+        sourceBranch,
+      );
+
+      if (mergeResult === "merged") {
+        const sha = await this.gitClient.getShortSha("HEAD");
+        return { status: "merged", commitSha: sha, conflictingFiles: [], errorMessage: null };
+      }
+
+      if (mergeResult === "already-up-to-date") {
+        return { status: "already-up-to-date", commitSha: null, conflictingFiles: [], errorMessage: null };
+      }
+
+      if (mergeResult === "conflict") {
+        // 3. Get conflicting files, then abort
+        const conflictFiles = await this.gitClient.getConflictedFiles(featureBranchWorktreePath);
+        await this.gitClient.abortMergeInWorktree(featureBranchWorktreePath);
+        return { status: "conflict", commitSha: null, conflictingFiles: conflictFiles, errorMessage: null };
+      }
+
+      return {
+        status: "merge-error",
+        commitSha: null,
+        conflictingFiles: [],
+        errorMessage: `Unexpected merge result: ${mergeResult}`,
+      };
+    } catch (err) {
+      return {
+        status: "merge-error",
+        commitSha: null,
+        conflictingFiles: [],
+        errorMessage: err instanceof Error ? err.message : String(err),
+      };
+    } finally {
+      releaseLock?.();
     }
   }
 
