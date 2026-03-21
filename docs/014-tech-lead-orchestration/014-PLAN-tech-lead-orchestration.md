@@ -65,20 +65,20 @@ Adds the `mergeBranchIntoFeature` method to `ArtifactCommitter` interface and im
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Add `mergeBranchIntoFeature` to `ArtifactCommitter` interface | — | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 2 | Add `DEFAULT_LOCK_TIMEOUT_MS` constant (30,000 ms) | — | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 3 | Add `MergeLock` interface and `MergeLockTimeoutError` | — | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 4 | Add `FakeMergeLock` (records acquire/release) to factories | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 5 | Add `FakeMergeLockWithTimeout` (throws on acquire) to factories | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 6 | Add `makeCommitter`, `makeCommitterWithLock`, `makeMergeBranchParams` factories | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 7 | Extend existing `FakeGitClient` with `mergeInWorktree`, `getShortSha`, `getConflictedFiles`, `abortMergeInWorktree` | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 8 | Implement `DefaultArtifactCommitter.mergeBranchIntoFeature` | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 9 | Test: returns merged status with commitSha on successful merge; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ⬚ Not Started |
-| 10 | Test: returns conflict status with conflicting files, aborts merge; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ⬚ Not Started |
-| 11 | Test: returns already-up-to-date; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ⬚ Not Started |
-| 12 | Test: returns merge-error on lock timeout (lock not acquired) | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ⬚ Not Started |
-| 13 | Test: returns merge-error when git throws unexpected error; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ⬚ Not Started |
-| 14 | Add `mergeBranchIntoFeature` to `FakeArtifactCommitter` in factories | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| 1 | Add `mergeBranchIntoFeature` to `ArtifactCommitter` interface | — | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 2 | Add `DEFAULT_LOCK_TIMEOUT_MS` constant (30,000 ms) | — | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 3 | Add `MergeLock` interface and `MergeLockTimeoutError` | — | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 4 | Add `FakeMergeLock` (records acquire/release) to factories | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 5 | Add `FakeMergeLockWithTimeout` (throws on acquire) to factories | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 6 | Add `makeCommitter`, `makeCommitterWithLock`, `makeMergeBranchParams` factories | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 7 | Extend existing `FakeGitClient` with `mergeInWorktree`, `getShortSha`, `getConflictedFiles`, `abortMergeInWorktree` | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 8 | Implement `DefaultArtifactCommitter.mergeBranchIntoFeature` | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 9 | Test: returns merged status with commitSha on successful merge; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ✅ Done |
+| 10 | Test: returns conflict status with conflicting files, aborts merge; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ✅ Done |
+| 11 | Test: returns already-up-to-date; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ✅ Done |
+| 12 | Test: returns merge-error on lock timeout (lock not acquired) | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ✅ Done |
+| 13 | Test: returns merge-error when git throws unexpected error; lock released | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | — | ✅ Done |
+| 14 | Add `mergeBranchIntoFeature` to `FakeArtifactCommitter` in factories | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
 
 ### Phase E — Integration Test: Agent Registry Wiring
 

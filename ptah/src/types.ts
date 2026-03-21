@@ -292,7 +292,7 @@ export interface WorktreeInfo {
 
 // --- Phase 4: Artifact commit types ---
 
-export type MergeResult = "merged" | "conflict" | "merge-error";
+export type MergeResult = "merged" | "conflict" | "merge-error" | "already-up-to-date";
 
 export interface CommitParams {
   worktreePath: string;

@@ -10,6 +10,7 @@ import type { ContextAssembler } from "../../src/orchestrator/context-assembler.
 import type { SkillInvoker } from "../../src/orchestrator/skill-invoker.js";
 import type { ResponsePoster } from "../../src/orchestrator/response-poster.js";
 import type { MergeLock, MergeLockRelease } from "../../src/orchestrator/merge-lock.js";
+import { MergeLockTimeoutError } from "../../src/orchestrator/merge-lock.js";
 import type { ArtifactCommitter } from "../../src/orchestrator/artifact-committer.js";
 import type { AgentLogWriter } from "../../src/orchestrator/agent-log-writer.js";
 import type { MessageDeduplicator } from "../../src/orchestrator/message-deduplicator.js";
@@ -40,6 +41,8 @@ import type {
   RegisteredAgent,
   UserFacingErrorType,
   UserFacingErrorContext,
+  MergeBranchParams,
+  BranchMergeResult,
 } from "../../src/types.js";
 import type { QuestionStore } from "../../src/orchestrator/question-store.js";
 import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
@@ -1095,11 +1098,26 @@ export class FakeMergeLock implements MergeLock {
   }
 }
 
+// Phase 14: FakeMergeLockWithTimeout — simulates a lock timeout
+export class FakeMergeLockWithTimeout implements MergeLock {
+  async acquire(_timeoutMs?: number): Promise<MergeLockRelease> {
+    throw new MergeLockTimeoutError(30_000);
+  }
+}
+
 // Task 12: FakeArtifactCommitter
 export class FakeArtifactCommitter implements ArtifactCommitter {
   results: CommitResult[] = [defaultCommitResult()];
   callIndex: number = 0;
   commitAndMergeCalls: CommitParams[] = [];
+  mergeBranchError: Error | null = null;
+  mergeBranchResult: BranchMergeResult = {
+    status: "merged",
+    commitSha: "abc123",
+    conflictingFiles: [],
+    errorMessage: null,
+  };
+  mergeBranchCalls: MergeBranchParams[] = [];
 
   async commitAndMerge(params: CommitParams): Promise<CommitResult> {
     this.commitAndMergeCalls.push(params);
@@ -1108,6 +1126,12 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
       return this.results[this.results.length - 1]!;
     }
     return this.results[this.callIndex++];
+  }
+
+  async mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult> {
+    this.mergeBranchCalls.push(params);
+    if (this.mergeBranchError) throw this.mergeBranchError;
+    return this.mergeBranchResult;
   }
 }
 
@@ -1446,6 +1470,31 @@ export function makeTechLeadConfig(overrides?: Partial<FeatureConfig>): FeatureC
     discipline: "backend-only",
     skipFspec: false,
     useTechLead: true,
+    ...overrides,
+  };
+}
+
+// --- Phase 14: mergeBranchIntoFeature factory helpers ---
+
+import { DefaultArtifactCommitter } from "../../src/orchestrator/artifact-committer.js";
+
+/** Factory: create a DefaultArtifactCommitter with a FakeGitClient and default FakeMergeLock */
+export function makeCommitter(git: GitClient): DefaultArtifactCommitter {
+  return new DefaultArtifactCommitter(git, new FakeMergeLock(), new FakeLogger());
+}
+
+/** Factory: create a DefaultArtifactCommitter with a specific lock implementation */
+export function makeCommitterWithLock(git: GitClient, lock: MergeLock): DefaultArtifactCommitter {
+  return new DefaultArtifactCommitter(git, lock, new FakeLogger());
+}
+
+/** Factory: default MergeBranchParams for tests */
+export function makeMergeBranchParams(overrides?: Partial<MergeBranchParams>): MergeBranchParams {
+  return {
+    sourceBranch: "worktree/phase-a",
+    featureBranch: "feat-014-tech-lead-orchestration",
+    featureBranchWorktreePath: "/tmp/worktree-feature",
+    agentId: "eng",
     ...overrides,
   };
 }
