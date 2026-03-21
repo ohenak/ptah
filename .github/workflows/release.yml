@@ -23,6 +23,7 @@ jobs:
 
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -48,15 +49,26 @@ jobs:
             echo "Version already $current — skipping npm version bump"
           fi
 
-      - name: Commit version bump
+      - name: Create version bump PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git diff --quiet package.json && {
+            echo "No version changes — skipping PR"
+            exit 0
+          }
+          branch="release/ptah-v${{ inputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
           git add package.json
-          git diff --cached --quiet && echo "No version changes to commit" || {
-            git commit -m "release: ptah v${{ inputs.version }}"
-            git push
-          }
+          git commit -m "release: bump ptah to v${{ inputs.version }}"
+          git push -u origin "$branch"
+          gh pr create \
+            --title "release: ptah v${{ inputs.version }}" \
+            --body "Automated version bump to v${{ inputs.version }}." \
+            --base main \
+            --head "$branch"
 
       - name: Create GitHub Release
         env:
