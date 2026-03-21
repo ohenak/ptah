@@ -40,20 +40,23 @@ jobs:
       - run: npm test
 
       - name: Bump version in package.json
-        run: npm version "${{ inputs.version }}" --no-git-tag-version
-
-      - name: Bump version in ptah.config.json
         run: |
-          jq --arg v "${{ inputs.version }}" '.project.version = $v' ptah.config.json > tmp.json
-          mv tmp.json ptah.config.json
+          current=$(node -p "require('./package.json').version")
+          if [ "$current" != "${{ inputs.version }}" ]; then
+            npm version "${{ inputs.version }}" --no-git-tag-version
+          else
+            echo "Version already $current — skipping npm version bump"
+          fi
 
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json ptah.config.json
-          git commit -m "release: ptah v${{ inputs.version }}"
-          git push
+          git add package.json
+          git diff --cached --quiet && echo "No version changes to commit" || {
+            git commit -m "release: ptah v${{ inputs.version }}"
+            git push
+          }
 
       - name: Create GitHub Release
         env:

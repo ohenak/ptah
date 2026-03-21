@@ -106,7 +106,6 @@ export function buildConfig(projectName: string): string {
   const config = {
     project: {
       name,
-      version: "1.0.0",
     },
     agents: {
       active: ["pm-agent", "dev-agent", "test-agent"],

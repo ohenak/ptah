@@ -569,7 +569,6 @@ export function defaultTestConfig(): PtahConfig {
   return {
     project: {
       name: "test-project",
-      version: "1.0.0",
     },
     agents: {
       active: ["pm-agent", "dev-agent", "test-agent"],
