@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { DefaultPdlcDispatcher } from "../../../../src/orchestrator/pdlc/pdlc-dispatcher.js";
+import { DefaultPdlcDispatcher, phaseToAgentId, isForkJoinPhase } from "../../../../src/orchestrator/pdlc/pdlc-dispatcher.js";
 import { PdlcPhase } from "../../../../src/orchestrator/pdlc/phases.js";
 import type {
   FeatureState,
@@ -17,6 +17,7 @@ import {
   FakeStateStore,
   FakeFileSystem,
   FakeLogger,
+  makeTechLeadConfig,
 } from "../../../fixtures/factories.js";
 
 // --- Test helpers ---
@@ -1135,6 +1136,57 @@ describe("DefaultPdlcDispatcher", () => {
             m.message.includes("already initialized (concurrent request)"),
         ),
       ).toBe(true);
+    });
+  });
+
+  // --- Phase B: Dispatcher Routing — useTechLead ---
+
+  describe("phaseToAgentId — useTechLead routing", () => {
+    it("returns 'tl' for IMPLEMENTATION when useTechLead is true (backend-only)", () => {
+      const config = makeTechLeadConfig({ discipline: "backend-only" });
+      expect(phaseToAgentId(PdlcPhase.IMPLEMENTATION, config)).toBe("tl");
+    });
+
+    it("returns 'tl' for IMPLEMENTATION when useTechLead is true (fullstack)", () => {
+      const config = makeTechLeadConfig({ discipline: "fullstack" });
+      expect(phaseToAgentId(PdlcPhase.IMPLEMENTATION, config)).toBe("tl");
+    });
+
+    it("returns 'tl' for IMPLEMENTATION when useTechLead is true (frontend-only)", () => {
+      const config = makeTechLeadConfig({ discipline: "frontend-only" });
+      expect(phaseToAgentId(PdlcPhase.IMPLEMENTATION, config)).toBe("tl");
+    });
+
+    it("preserves existing routing when useTechLead is absent", () => {
+      const config: FeatureConfig = { discipline: "backend-only", skipFspec: false };
+      expect(phaseToAgentId(PdlcPhase.IMPLEMENTATION, config)).toBe("eng");
+    });
+
+    it("preserves existing routing when useTechLead is false", () => {
+      const config: FeatureConfig = { discipline: "frontend-only", skipFspec: false, useTechLead: false };
+      expect(phaseToAgentId(PdlcPhase.IMPLEMENTATION, config)).toBe("fe");
+    });
+
+    it("does not affect TSPEC_CREATION routing even when useTechLead is true", () => {
+      const config = makeTechLeadConfig({ discipline: "backend-only" });
+      expect(phaseToAgentId(PdlcPhase.TSPEC_CREATION, config)).toBe("eng");
+    });
+  });
+
+  describe("isForkJoinPhase — useTechLead suppresses fork-join for IMPLEMENTATION", () => {
+    it("returns false for IMPLEMENTATION when useTechLead is true and fullstack", () => {
+      const config = makeTechLeadConfig({ discipline: "fullstack" });
+      expect(isForkJoinPhase(PdlcPhase.IMPLEMENTATION, config)).toBe(false);
+    });
+
+    it("returns true for IMPLEMENTATION when useTechLead is absent and fullstack", () => {
+      const config: FeatureConfig = { discipline: "fullstack", skipFspec: false };
+      expect(isForkJoinPhase(PdlcPhase.IMPLEMENTATION, config)).toBe(true);
+    });
+
+    it("returns true for TSPEC_CREATION when useTechLead is true and fullstack (no suppression for non-IMPLEMENTATION)", () => {
+      const config = makeTechLeadConfig({ discipline: "fullstack" });
+      expect(isForkJoinPhase(PdlcPhase.TSPEC_CREATION, config)).toBe(true);
     });
   });
 });

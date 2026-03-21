@@ -86,14 +86,16 @@ function phaseToDocumentType(phase: PdlcPhase): DocumentType {
   return "";
 }
 
-function phaseToAgentId(phase: PdlcPhase, config: FeatureConfig): string {
+export function phaseToAgentId(phase: PdlcPhase, config: FeatureConfig): string {
   switch (phase) {
     case Phase.REQ_CREATION:
     case Phase.FSPEC_CREATION:
       return "pm";
     case Phase.TSPEC_CREATION:
     case Phase.PLAN_CREATION:
+      return config.discipline === "frontend-only" ? "fe" : "eng";
     case Phase.IMPLEMENTATION:
+      if (config.useTechLead) return "tl";
       return config.discipline === "frontend-only" ? "fe" : "eng";
     case Phase.PROPERTIES_CREATION:
       return "qa";
@@ -119,7 +121,8 @@ function isApprovedPhase(phase: PdlcPhase): boolean {
   return APPROVED_PHASES.has(phase);
 }
 
-function isForkJoinPhase(phase: PdlcPhase, config: FeatureConfig): boolean {
+export function isForkJoinPhase(phase: PdlcPhase, config: FeatureConfig): boolean {
+  if (config.useTechLead && phase === Phase.IMPLEMENTATION) return false;
   return config.discipline === "fullstack" && FORK_JOIN_PHASES.has(phase);
 }
 
