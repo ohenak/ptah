@@ -12,12 +12,14 @@ import { NodeFileSystem } from "../../../src/services/filesystem.js";
  *
  * Prerequisite: ptah.config.json must be present locally with the "tl"
  * agent entry (added in Phase C). The file is gitignored so it won't
- * exist in CI — this test validates local development wiring only.
+ * exist in CI — this test is skipped when the config file is absent.
  */
-describe("agent registry wiring — integration", () => {
+
+const ptahRoot = resolve(__dirname, "../../../");
+const configExists = existsSync(resolve(ptahRoot, "ptah.config.json"));
+
+describe.skipIf(!configExists)("agent registry wiring — integration", () => {
   it("resolves 'tl' agent from ptah.config.json with a valid skill_path", async () => {
-    // ptah/ root — __dirname is tests/integration/config/
-    const ptahRoot = resolve(__dirname, "../../../");
     const fs = new NodeFileSystem(ptahRoot);
     const loader = new NodeConfigLoader(fs);
     const config = await loader.load();
