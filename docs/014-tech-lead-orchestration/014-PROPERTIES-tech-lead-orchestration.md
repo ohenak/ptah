@@ -8,7 +8,7 @@
 | **Requirements** | [014-REQ-tech-lead-orchestration](./014-REQ-tech-lead-orchestration.md) |
 | **Specifications** | [014-TSPEC-tech-lead-orchestration](./014-TSPEC-tech-lead-orchestration.md), [014-FSPEC-tech-lead-orchestration](./014-FSPEC-tech-lead-orchestration.md) |
 | **Execution Plan** | [014-PLAN-tech-lead-orchestration](./014-PLAN-tech-lead-orchestration.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | 2026-03-21 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -52,12 +52,12 @@ This document catalogs the testable properties for Phase 14 — Tech Lead Orches
 |----------|-------|----------------------|------------|
 | Functional | 24 | REQ-PD-01–06, REQ-BD-01–06, REQ-BD-08, REQ-TL-01–03, REQ-TL-05, REQ-PR-01–04, REQ-NF-14-01, REQ-NF-14-04, REQ-NF-14-05 | Unit / Acceptance |
 | Contract | 6 | REQ-TL-01, REQ-BD-04, REQ-NF-14-03 | Unit / Integration |
-| Error Handling | 14 | REQ-PD-01, REQ-PD-05, REQ-PD-06, REQ-BD-05, REQ-BD-07, REQ-TL-02, REQ-TL-04, REQ-NF-14-02, REQ-NF-14-05 | Unit / Acceptance |
+| Error Handling | 15 | REQ-PD-01, REQ-PD-05, REQ-PD-06, REQ-BD-05, REQ-BD-07, REQ-TL-02, REQ-TL-04, REQ-NF-14-02, REQ-NF-14-05 | Unit / Acceptance |
 | Data Integrity | 3 | REQ-BD-04, REQ-BD-08 | Unit |
 | Integration | 2 | REQ-TL-01, REQ-NF-14-03 | Integration |
 | Performance | 2 | REQ-BD-07, REQ-NF-14-01 | Unit |
 | Idempotency | 1 | REQ-BD-06 | Acceptance |
-| **Total** | **52** | | |
+| **Total** | **53** | | |
 
 ---
 
@@ -127,6 +127,7 @@ Failure modes, error propagation, and graceful degradation.
 | PROP-NF-02 | SKILL.md must clean up successful worktrees after completion; must clean up failed worktrees unless `retain_failed_worktrees: true` in config (default: false) | REQ-NF-14-02, TSPEC §5.7 | Acceptance | P1 |
 | PROP-NF-03 | SKILL.md must check feature branch on remote (`git ls-remote`) and `mergeBranchIntoFeature` exists (Grep) before parallel dispatch; fall back to sequential on failure | REQ-NF-14-05, TSPEC §5.4 | Acceptance | P1 |
 | PROP-TL-11 | SKILL.md must cancel execution and post timeout message (no agents dispatched, exit LGTM) when AskUserQuestion times out (10 min), handling both null and sentinel returns defensively | REQ-TL-02, TSPEC §5.10 | Acceptance | P0 |
+| PROP-BD-19 | SKILL.md must exit with `ROUTE_TO_USER` (failure described in `question` field) when a blocking failure occurs during batch execution — phase agent failure, merge conflict, test gate assertion failure, or test gate runner failure. Clean-exit scenarios (plan not found, all phases done, user cancel, confirmation timeout) must exit with `LGTM`. | REQ-BD-05, REQ-BD-07, REQ-TL-04, TSPEC §6, §12 | Acceptance | P0 |
 
 ### 3.4 Data Integrity Properties
 
@@ -201,14 +202,14 @@ Properties that define what the system must NOT do.
 | REQ-BD-02 | PROP-BD-02, PROP-TL-04 | Full |
 | REQ-BD-03 | PROP-BD-02 | Full |
 | REQ-BD-04 | PROP-BD-03, PROP-BD-10, PROP-TL-06, PROP-TL-07 | Full |
-| REQ-BD-05 | PROP-BD-04, PROP-BD-05, PROP-BD-N02 | Full |
+| REQ-BD-05 | PROP-BD-04, PROP-BD-05, PROP-BD-19, PROP-BD-N02 | Full |
 | REQ-BD-06 | PROP-BD-07, PROP-BD-18 | Full |
-| REQ-BD-07 | PROP-BD-08, PROP-BD-09, PROP-BD-16, PROP-BD-N01 | Full |
+| REQ-BD-07 | PROP-BD-08, PROP-BD-09, PROP-BD-16, PROP-BD-19, PROP-BD-N01 | Full |
 | REQ-BD-08 | PROP-BD-06, PROP-BD-15 | Full |
 | REQ-TL-01 | PROP-TL-01, PROP-TL-02, PROP-TL-05, PROP-TL-12, PROP-TL-13 | Full |
 | REQ-TL-02 | PROP-TL-03, PROP-TL-11, PROP-TL-N03 | Full |
 | REQ-TL-03 | PROP-TL-N01 | Full |
-| REQ-TL-04 | PROP-BD-10 | Full |
+| REQ-TL-04 | PROP-BD-10, PROP-BD-19 | Full |
 | REQ-TL-05 | PROP-TL-04 | Full |
 | REQ-PR-01 | PROP-BD-01 | Full — batch start notification is implicit in batch execution lifecycle (PROP-BD-01) |
 | REQ-PR-02 | PROP-BD-09 | Full — phase completion notification is part of batch lifecycle |
@@ -236,7 +237,7 @@ Properties that define what the system must NOT do.
 | TSPEC §5.7 (Phase failure handling) | PROP-BD-08, PROP-BD-09, PROP-BD-N01, PROP-NF-02 | Full |
 | TSPEC §5.9 (Plan status update) | PROP-BD-06, PROP-BD-15 | Full |
 | TSPEC §5.10 (Confirmation loop) | PROP-TL-03, PROP-TL-11, PROP-TL-N03 | Full |
-| TSPEC §6 (Error handling table) | PROP-PD-13–18, PROP-BD-08–12, PROP-TL-11 | Full |
+| TSPEC §6 (Error handling table) | PROP-PD-13–18, PROP-BD-08–12, PROP-BD-19, PROP-TL-11 | Full |
 | TSPEC §7.3 (Config loader — mentionable) | PROP-TL-08, PROP-TL-09, PROP-TL-10 | Full |
 | TSPEC §9 (Integration points) | PROP-TL-12, PROP-TL-13 | Full |
 
@@ -259,16 +260,16 @@ Properties that define what the system must NOT do.
      /----------------\
     /    Unit Tests     \  16 -- dispatcher, committer, config loader, types
    /____________________\
-    Acceptance Tests       34 -- SKILL.md behavioral validation (TSPEC §7.5)
+    Acceptance Tests       35 -- SKILL.md behavioral validation (TSPEC §7.5)
 ```
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 16 | 31% |
+| Unit | 16 | 30% |
 | Integration | 2 | 4% |
-| Acceptance (SKILL.md) | 34 | 65% |
+| Acceptance (SKILL.md) | 35 | 66% |
 | E2E | 0 | 0% |
-| **Total** | **52** | **100%** |
+| **Total** | **53** | **100%** |
 
 **Note:** The high acceptance test percentage reflects the architectural decision to implement the core orchestration logic as a prompt-based SKILL.md rather than TypeScript code. These acceptance tests (TSPEC §7.5, AT-PD-01 through AT-BD-03-08) are manual validation scenarios, not Vitest tests. All TypeScript-testable behavior is covered by unit and integration tests, maintaining a healthy test pyramid for the compiled codebase.
 
@@ -296,6 +297,7 @@ Properties that define what the system must NOT do.
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2026-03-21 | Test Engineer | Added PROP-BD-19 (ROUTE_TO_USER exit signal contract for blocking failures) per PM cross-review F-01. Updated counts: Error Handling 14→15, Total 52→53, Acceptance 34→35. |
 | 1.0 | 2026-03-21 | Test Engineer | Initial properties document |
 
 ---
