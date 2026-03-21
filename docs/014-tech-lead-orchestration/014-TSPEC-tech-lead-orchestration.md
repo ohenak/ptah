@@ -195,6 +195,10 @@ function isForkJoinPhase(phase: PdlcPhase, config: FeatureConfig): boolean {
 ### 4.4 `DefaultArtifactCommitter.mergeBranchIntoFeature` Implementation
 
 ```typescript
+/** Merge lock timeout in milliseconds. 30 seconds is sufficient for serializing
+ *  sequential merge operations within a single batch. */
+const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
+
 async mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult> {
   const { sourceBranch, featureBranch, featureBranchWorktreePath, agentId } = params;
   this.logger.info(`[merge] Merging ${sourceBranch} → ${featureBranch} (agent: ${agentId})`);
@@ -458,8 +462,9 @@ When any phase agent fails (non-LGTM signal, non-zero exit, or timeout):
 3. Post overall batch failure notice with resume instructions.
 4. **DO NOT MERGE any worktrees** — not for failed phases, not for successful ones.
 5. Clean up ALL worktrees for this batch:
-   - Successful worktrees: always delete
+   - Successful worktrees: always delete (using worktree path and branch from Agent result)
    - Failed worktrees: delete unless `retain_failed_worktrees: true` in config
+   - **Branch name unavailable fallback (see OQ-03):** If the Agent tool result for a failed agent does not include the worktree branch name, the tech-lead cannot clean up that specific worktree. In this case: log a warning (`"Failed agent for Phase {X} did not return a worktree branch — manual cleanup may be required"`), skip cleanup for that worktree, and continue with cleanup for the remaining worktrees whose branch names are known.
 6. HALT. Plan is NOT updated.
 
 **No-partial-merge invariant:** The feature branch is left in exactly the same state as before the batch began. All phases in the batch will be re-run when the developer re-invokes.
@@ -506,7 +511,7 @@ The tech-lead presents the Batch Execution Plan and collects user input via the 
 - `split Batch {N}` — user specifies which phases stay and which move to a new batch; validated against dependency ordering
 - `re-run {Phase X}` — marks an in-memory not-completed override; warns about downstream Done phases (full transitive closure)
 
-**Timeout:** 10 minutes of user inactivity cancels execution. The `AskUserQuestion` tool's built-in timeout enforces this; if the call returns without a response (or returns a timeout signal), the tech-lead posts the cancellation message and exits with `LGTM` (no agents were dispatched).
+**Timeout:** 10 minutes of user inactivity cancels execution. The `AskUserQuestion` tool's built-in timeout enforces this. **Defensive handling:** Since the exact return value on timeout is unverified (see OQ-02), the SKILL.md must treat BOTH a `null` return AND a sentinel timeout signal (e.g., `{ timeout: true }` or an empty string) as a timeout event. The implementation should check: if the return value is falsy, empty, or contains a timeout indicator → post the cancellation message and exit with `LGTM` (no agents were dispatched).
 
 **Iteration counter:** Only SUCCESSFUL modifications (reaching re-presentation) count toward the 5-cycle limit. Unrecognized inputs and rejected-but-recognized modifications (dependency violations) do NOT consume a cycle.
 
@@ -526,10 +531,10 @@ The tech-lead presents the Batch Execution Plan and collects user input via the 
 | All phases already Done | Empty batch list after exclusion | Post "nothing to do"; exit cleanly | LGTM |
 | Pre-flight Check 1 fails (remote branch missing) | `git ls-remote` returns empty | Post notification; revert to sequential plan; re-present to user | — |
 | Pre-flight Check 2 fails (no mergeBranchIntoFeature) | Grep returns no match | Post notification; revert to sequential plan; re-present to user | — |
-| Phase agent failure (ROUTE_TO_USER / error / timeout) | Agent result is non-LGTM | No-partial-merge; cleanup worktrees; halt | LGTM |
-| Merge conflict between phases | `git merge` exits conflict | Abort merge; post conflict files; halt | LGTM |
-| Test gate — assertion failure | Vitest exits non-zero | Post failing tests; halt; plan NOT updated | LGTM |
-| Test gate — runner failure | Vitest fails to start | Post runner error output; halt | LGTM |
+| Phase agent failure (ROUTE_TO_USER / error / timeout) | Agent result is non-LGTM | No-partial-merge; cleanup worktrees; halt | ROUTE_TO_USER |
+| Merge conflict between phases | `git merge` exits conflict | Abort merge; post conflict files; halt | ROUTE_TO_USER |
+| Test gate — assertion failure | Vitest exits non-zero | Post failing tests; halt; plan NOT updated | ROUTE_TO_USER |
+| Test gate — runner failure | Vitest fails to start | Post runner error output; halt | ROUTE_TO_USER |
 | Confirmation cancelled by user | User types "cancel" | Post cancellation message; no agents dispatched | LGTM |
 | Confirmation timeout (10 min) | AskUserQuestion timeout | Post timeout message; no agents dispatched | LGTM |
 | Max modification iterations (5) | Iteration counter reaches 5 | Post "maximum modifications reached"; re-present plan; force approve/cancel | — |
@@ -576,6 +581,79 @@ function makeTechLeadConfig(overrides?: Partial<FeatureConfig>): FeatureConfig {
     ...overrides,
   };
 }
+
+/** GitClient interface — the subset used by DefaultArtifactCommitter.mergeBranchIntoFeature */
+interface GitClient {
+  mergeInWorktree(worktreePath: string, sourceBranch: string): Promise<"merged" | "already-up-to-date" | "conflict">;
+  getShortSha(ref: string): Promise<string>;
+  getConflictedFiles(worktreePath: string): Promise<string[]>;
+  abortMergeInWorktree(worktreePath: string): Promise<void>;
+}
+
+/** Fake GitClient for mergeBranchIntoFeature tests */
+class FakeGitClient implements GitClient {
+  mergeInWorktreeResult: "merged" | "already-up-to-date" | "conflict" = "merged";
+  mergeInWorktreeError: Error | null = null;
+  shortSha: string = "abc1234";
+  conflictedFiles: string[] = [];
+  abortMergeInWorktreeCalled = false;
+
+  async mergeInWorktree(_worktreePath: string, _sourceBranch: string) {
+    if (this.mergeInWorktreeError) throw this.mergeInWorktreeError;
+    return this.mergeInWorktreeResult;
+  }
+  async getShortSha(_ref: string) { return this.shortSha; }
+  async getConflictedFiles(_worktreePath: string) { return this.conflictedFiles; }
+  async abortMergeInWorktree(_worktreePath: string) { this.abortMergeInWorktreeCalled = true; }
+}
+
+/** MergeLock interface */
+interface MergeLock {
+  acquire(timeoutMs: number): Promise<() => void>;
+}
+
+/** Fake MergeLock that records acquire/release calls for assertion */
+class FakeMergeLock implements MergeLock {
+  acquireCalled = false;
+  releaseCalled = false;
+  releaseCallCount = 0;
+
+  async acquire(_timeoutMs: number): Promise<() => void> {
+    this.acquireCalled = true;
+    return () => {
+      this.releaseCalled = true;
+      this.releaseCallCount++;
+    };
+  }
+}
+
+/** Fake MergeLock that simulates a lock timeout */
+class FakeMergeLockWithTimeout implements MergeLock {
+  async acquire(_timeoutMs: number): Promise<() => void> {
+    throw new MergeLockTimeoutError("Merge lock timeout — another merge is in progress");
+  }
+}
+
+/** Factory: create a DefaultArtifactCommitter with a FakeGitClient and default FakeMergeLock */
+function makeCommitter(git: GitClient): DefaultArtifactCommitter {
+  return new DefaultArtifactCommitter(git, new FakeMergeLock(), new FakeLogger());
+}
+
+/** Factory: create a DefaultArtifactCommitter with a specific lock implementation */
+function makeCommitterWithLock(git: GitClient, lock: MergeLock): DefaultArtifactCommitter {
+  return new DefaultArtifactCommitter(git, lock, new FakeLogger());
+}
+
+/** Factory: default MergeBranchParams for tests */
+function makeMergeBranchParams(overrides?: Partial<MergeBranchParams>): MergeBranchParams {
+  return {
+    sourceBranch: "worktree/phase-a",
+    featureBranch: "feat-014-tech-lead-orchestration",
+    featureBranchWorktreePath: "/tmp/worktree-feature",
+    agentId: "eng",
+    ...overrides,
+  };
+}
 ```
 
 ### 7.3 Test Categories
@@ -589,7 +667,9 @@ function makeTechLeadConfig(overrides?: Partial<FeatureConfig>): FeatureConfig {
 | mergeBranchIntoFeature already-up-to-date | `artifact-committer.test.ts` | Returns { status: "already-up-to-date" } |
 | mergeBranchIntoFeature lock timeout | `artifact-committer.test.ts` | Returns { status: "merge-error", errorMessage: "Merge lock timeout..." } |
 | mergeBranchIntoFeature git error | `artifact-committer.test.ts` | Returns { status: "merge-error", errorMessage: ... } |
-| SKILL.md logic | FSPEC acceptance tests | Validated manually via acceptance tests AT-PD-01-* through AT-BD-03-* |
+| Config loader — mentionable field | `config/loader.test.ts` | Agent with `mentionable: false` passes validation with empty `mention_id`; agent with `mentionable: true` or absent still requires valid snowflake |
+| Agent registry wiring (integration) | `integration/agent-registry.test.ts` | Loads `ptah.config.json`, resolves "tl" agent, asserts `skill_path` resolves to an existing file |
+| SKILL.md logic | FSPEC acceptance tests | Validated via acceptance test scenarios defined in §7.5 |
 
 ### 7.4 Specific Test Cases
 
@@ -650,38 +730,47 @@ describe("isForkJoinPhase — useTechLead suppresses fork-join for IMPLEMENTATIO
 
 ```typescript
 describe("DefaultArtifactCommitter.mergeBranchIntoFeature", () => {
-  it("returns merged status with commitSha on successful merge", async () => {
+  it("returns merged status with commitSha on successful merge and releases lock", async () => {
     const git = new FakeGitClient();
     git.mergeInWorktreeResult = "merged";
     git.shortSha = "abc123";
-    const committer = makeCommitter(git);
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
     const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
     expect(result.status).toBe("merged");
     expect(result.commitSha).toBe("abc123");
     expect(result.conflictingFiles).toHaveLength(0);
+    expect(lock.releaseCalled).toBe(true);
+    expect(lock.releaseCallCount).toBe(1);
   });
 
-  it("returns conflict status and conflicting files, then aborts merge", async () => {
+  it("returns conflict status and conflicting files, aborts merge, and releases lock", async () => {
     const git = new FakeGitClient();
     git.mergeInWorktreeResult = "conflict";
     git.conflictedFiles = ["src/foo.ts", "src/bar.ts"];
-    const committer = makeCommitter(git);
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
     const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
     expect(result.status).toBe("conflict");
     expect(result.conflictingFiles).toEqual(["src/foo.ts", "src/bar.ts"]);
     expect(git.abortMergeInWorktreeCalled).toBe(true);
+    expect(lock.releaseCalled).toBe(true);
+    expect(lock.releaseCallCount).toBe(1);
   });
 
-  it("returns already-up-to-date when source is already in target history", async () => {
+  it("returns already-up-to-date when source is already in target history and releases lock", async () => {
     const git = new FakeGitClient();
     git.mergeInWorktreeResult = "already-up-to-date";
-    const committer = makeCommitter(git);
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
     const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
     expect(result.status).toBe("already-up-to-date");
     expect(result.commitSha).toBeNull();
+    expect(lock.releaseCalled).toBe(true);
+    expect(lock.releaseCallCount).toBe(1);
   });
 
-  it("returns merge-error on lock timeout", async () => {
+  it("returns merge-error on lock timeout (lock not acquired, no release)", async () => {
     const git = new FakeGitClient();
     const lock = new FakeMergeLockWithTimeout();
     const committer = makeCommitterWithLock(git, lock);
@@ -690,16 +779,318 @@ describe("DefaultArtifactCommitter.mergeBranchIntoFeature", () => {
     expect(result.errorMessage).toContain("Merge lock timeout");
   });
 
-  it("returns merge-error when git throws an unexpected error", async () => {
+  it("returns merge-error when git throws an unexpected error and releases lock", async () => {
     const git = new FakeGitClient();
     git.mergeInWorktreeError = new Error("git internal error");
-    const committer = makeCommitter(git);
+    const lock = new FakeMergeLock();
+    const committer = makeCommitterWithLock(git, lock);
     const result = await committer.mergeBranchIntoFeature(makeMergeBranchParams());
     expect(result.status).toBe("merge-error");
     expect(result.errorMessage).toBe("git internal error");
+    expect(lock.releaseCalled).toBe(true);
+    expect(lock.releaseCallCount).toBe(1);
   });
 });
 ```
+
+#### `config/loader.test.ts` additions
+
+```typescript
+describe("config loader — mentionable field validation", () => {
+  it("accepts an agent entry with mentionable: false and empty mention_id", async () => {
+    const config = makeConfigWithAgent({
+      id: "tl",
+      mention_id: "",
+      mentionable: false,
+      skill_path: "../.claude/skills/tech-lead/SKILL.md",
+      display_name: "Tech Lead",
+    });
+    const result = await loadConfig(config);
+    expect(result.agents).toContainEqual(expect.objectContaining({ id: "tl" }));
+  });
+
+  it("rejects an agent entry with mentionable: true and empty mention_id", async () => {
+    const config = makeConfigWithAgent({
+      id: "bad",
+      mention_id: "",
+      mentionable: true,
+      skill_path: "./some-skill.md",
+      display_name: "Bad Agent",
+    });
+    await expect(loadConfig(config)).rejects.toThrow(/mention_id/);
+  });
+
+  it("requires valid snowflake for mention_id when mentionable is absent (defaults to true)", async () => {
+    const config = makeConfigWithAgent({
+      id: "pm",
+      mention_id: "123456789012345678",
+      skill_path: "./pm-skill.md",
+      display_name: "Product Manager",
+    });
+    const result = await loadConfig(config);
+    expect(result.agents).toContainEqual(expect.objectContaining({ id: "pm" }));
+  });
+
+  it("rejects empty mention_id when mentionable is absent", async () => {
+    const config = makeConfigWithAgent({
+      id: "bad",
+      mention_id: "",
+      skill_path: "./some-skill.md",
+      display_name: "Bad Agent",
+    });
+    await expect(loadConfig(config)).rejects.toThrow(/mention_id/);
+  });
+});
+```
+
+#### `integration/agent-registry.test.ts`
+
+```typescript
+import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+
+describe("agent registry wiring — integration", () => {
+  it("resolves 'tl' agent from ptah.config.json with a valid skill_path", async () => {
+    const config = await loadConfig(); // loads real ptah.config.json
+    const tlAgent = config.agents.find((a) => a.id === "tl");
+    expect(tlAgent).toBeDefined();
+    expect(tlAgent!.mentionable).toBe(false);
+
+    // skill_path is relative to ptah.config.json location — resolve it
+    const configDir = resolve(__dirname, "../../"); // ptah/ root
+    const skillPath = resolve(configDir, tlAgent!.skill_path);
+    expect(existsSync(skillPath)).toBe(true);
+  });
+});
+```
+
+### 7.5 Acceptance Test Scenarios (SKILL.md)
+
+The SKILL.md is prompt-based and cannot be unit-tested in Vitest. The following acceptance test scenarios define the manual validation criteria. Each scenario specifies preconditions, actions, and expected outcomes.
+
+#### AT-PD-01 — Dependency parsing: linear chain syntax
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan contains `Phase A → Phase B → Phase C` in Task Dependency Notes |
+| **Action** | Tech-lead parses the plan |
+| **Expected** | DAG contains edges (A→B), (B→C). Batches: Batch 1 = [A], Batch 2 = [B], Batch 3 = [C] |
+
+#### AT-PD-02 — Dependency parsing: fan-out syntax
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan contains `Phase A → [Phase B, Phase C, Phase D]` |
+| **Action** | Tech-lead parses the plan |
+| **Expected** | DAG contains edges (A→B), (A→C), (A→D). Batches: Batch 1 = [A], Batch 2 = [B, C, D] |
+
+#### AT-PD-03 — Dependency parsing: natural language syntax
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan contains `Phase C depends on: Phase A, Phase B` |
+| **Action** | Tech-lead parses the plan |
+| **Expected** | DAG contains edges (A→C), (B→C). Batches: Batch 1 = [A, B], Batch 2 = [C] |
+
+#### AT-PD-04 — Cycle detection triggers sequential fallback
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan contains `Phase A → Phase B` and `Phase B → Phase A` (cycle) |
+| **Action** | Tech-lead parses the plan |
+| **Expected** | Cycle detected and logged: `"Cycle detected: Phase A → Phase B → Phase A"`. Sequential fallback activated. Confirmation shows sequential plan with explanation |
+
+#### AT-PD-05 — Missing dependency section triggers sequential fallback
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan has no "Task Dependency Notes" heading |
+| **Action** | Tech-lead parses the plan |
+| **Expected** | Warning logged. Sequential fallback activated (phases in document order, one per batch) |
+
+#### AT-PD-06 — Topological batching with sub-batch splitting
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan with 8 phases: A (root), B–H all depend on A. Concurrency cap = 5 |
+| **Action** | Tech-lead computes batches |
+| **Expected** | Batch 1 = [A]. Batch 2.1 = [B, C, D, E, F] (first 5 in document order). Batch 2.2 = [G, H]. Test gate fires once after Batch 2.2 merges, NOT between 2.1 and 2.2 |
+
+#### AT-PD-07 — Skill assignment: all backend
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase has tasks with source files in `src/` and `tests/` only |
+| **Action** | Tech-lead assigns skill |
+| **Expected** | Skill = `backend-engineer`. No warning |
+
+#### AT-PD-08 — Skill assignment: all frontend
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase has tasks with source files in `app/` and `components/` only |
+| **Action** | Tech-lead assigns skill |
+| **Expected** | Skill = `frontend-engineer`. No warning |
+
+#### AT-PD-09 — Skill assignment: mixed layers
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase has tasks with source files in both `src/` and `app/` |
+| **Action** | Tech-lead assigns skill |
+| **Expected** | Skill = `backend-engineer`. Mixed-layer warning posted in confirmation |
+
+#### AT-PD-10 — Skill assignment: docs-only defaults to backend
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase has tasks with source files in `docs/` only |
+| **Action** | Tech-lead assigns skill |
+| **Expected** | Skill = `backend-engineer`. No warning |
+
+#### AT-BD-01-01 — Pre-flight: both checks pass
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Feature branch exists on remote. `mergeBranchIntoFeature` exists in `artifact-committer.ts` |
+| **Action** | Tech-lead runs pre-flight checks |
+| **Expected** | Both checks pass. Parallel plan presented in confirmation |
+
+#### AT-BD-01-02 — Pre-flight: remote branch missing
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Feature branch does NOT exist on remote |
+| **Action** | Tech-lead runs pre-flight checks |
+| **Expected** | Check 1 fails. Sequential fallback activated. Confirmation shows sequential plan with failure explanation |
+
+#### AT-BD-01-03 — Pre-flight: mergeBranchIntoFeature missing
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | `mergeBranchIntoFeature` not found in `artifact-committer.ts` |
+| **Action** | Tech-lead runs pre-flight checks |
+| **Expected** | Check 2 fails. Sequential fallback activated. Confirmation shows sequential plan with failure explanation |
+
+#### AT-BD-02-01 — Confirmation loop: change skill assignment
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Confirmation presented with Phase B assigned to backend-engineer |
+| **Action** | User types `change Phase B to frontend-engineer` |
+| **Expected** | Phase B skill updated. Plan re-presented with updated assignment. Modification counter incremented by 1 |
+
+#### AT-BD-02-02 — Confirmation loop: move phase to different batch
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase C in Batch 2 depends on Phase A (Batch 1) only |
+| **Action** | User types `move Phase C to Batch 3` |
+| **Expected** | Phase C moved to Batch 3. Plan re-presented. Modification counter incremented |
+
+#### AT-BD-02-03 — Confirmation loop: move phase rejected (dependency violation)
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase B in Batch 2 depends on Phase A (Batch 1) |
+| **Action** | User types `move Phase B to Batch 1` |
+| **Expected** | Rejected: Phase B cannot be in same or earlier batch as its dependency Phase A. Error message posted. Modification counter NOT incremented |
+
+#### AT-BD-02-04 — Confirmation loop: re-run completed phase
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Phase A is marked Done. Phase B depends on Phase A and is also Done |
+| **Action** | User types `re-run Phase A` |
+| **Expected** | Phase A marked for re-run. Warning posted about downstream Done phases (Phase B). Plan re-presented |
+
+#### AT-BD-02-05 — Confirmation loop: cancel
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Confirmation presented |
+| **Action** | User types `cancel` |
+| **Expected** | Cancellation message posted. No agents dispatched. Exit with LGTM |
+
+#### AT-BD-02-06 — Confirmation loop: timeout
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Confirmation presented via AskUserQuestion |
+| **Action** | User does not respond for 10 minutes |
+| **Expected** | Timeout message posted. No agents dispatched. Exit with LGTM |
+
+#### AT-BD-02-07 — Confirmation loop: max modifications reached
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | User has made 5 successful modifications |
+| **Action** | User attempts a 6th modification |
+| **Expected** | "Maximum modifications reached" message. Plan re-presented with approve/cancel only |
+
+#### AT-BD-03-01 — Batch execution: success path
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 with Phases A, B. Both agents succeed. Merges succeed. Tests pass |
+| **Action** | Tech-lead executes Batch 1 |
+| **Expected** | Both agents dispatched in parallel with worktrees. Results collected. Merges performed in document order. Test gate runs and passes. Plan updated — Phase A and B tasks marked ✅. Commit and push |
+
+#### AT-BD-03-02 — Batch execution: phase failure (no-partial-merge)
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 with Phases A, B. Phase A succeeds, Phase B fails |
+| **Action** | Tech-lead executes Batch 1 |
+| **Expected** | Both agents complete (A succeeds, B fails). NO worktrees merged (not A, not B). All worktrees cleaned up (B retained if `retain_failed_worktrees: true`). Failure notification with resume instructions. Plan NOT updated. Exit with ROUTE_TO_USER |
+
+#### AT-BD-03-03 — Batch execution: merge conflict
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 with Phases A, B, C (all succeed). Merge of Phase B conflicts with Phase A's merge |
+| **Action** | Tech-lead merges in document order |
+| **Expected** | Phase A merged successfully. Phase B merge conflicts. Merge aborted. Phase C NOT attempted. Conflict notification with file names. Unmerged worktrees cleaned up. Plan NOT updated. Exit with ROUTE_TO_USER |
+
+#### AT-BD-03-04 — Batch execution: test gate assertion failure
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 merges succeed. Vitest run produces assertion failures |
+| **Action** | Tech-lead runs test gate |
+| **Expected** | Failing test names reported. Plan NOT updated. Exit with ROUTE_TO_USER |
+
+#### AT-BD-03-05 — Batch execution: test gate runner failure
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 merges succeed. Vitest fails to start (compilation error) |
+| **Action** | Tech-lead runs test gate |
+| **Expected** | Runner error output reported. Plan NOT updated. Exit with ROUTE_TO_USER |
+
+#### AT-BD-03-06 — Resume auto-detection
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Plan has Phases A–D. Phase A and B are marked ✅ Done. Phase C and D are not |
+| **Action** | Tech-lead is invoked |
+| **Expected** | Phases A and B excluded from DAG. Batching computed from C and D only. Resume note shown in confirmation: "Resuming from Phase C (Phases A, B already completed)" |
+
+#### AT-BD-03-07 — Plan status update
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Batch 1 (Phases A, B) completes successfully (merges + test gate pass) |
+| **Action** | Tech-lead updates plan |
+| **Expected** | All task rows under Phase A and Phase B have status changed to ✅. Single commit: `"chore: mark Batch 1 phases as Done in plan"`. Pushed to feature branch |
+
+#### AT-BD-03-08 — Sub-batch: test gate fires only after final sub-batch
+
+| Field | Value |
+|-------|-------|
+| **Precondition** | Topological batch with 7 phases (all depend on Phase A, which is Done). Concurrency cap = 5 |
+| **Action** | Tech-lead splits into sub-batches 2.1 (5 phases) and 2.2 (2 phases) and executes |
+| **Expected** | Sub-batch 2.1: dispatch, collect, merge. NO test gate, NO plan update. Sub-batch 2.2: dispatch, collect, merge. Test gate runs ONCE after 2.2 merges. Plan update covers all 7 phases. Single batch summary |
 
 ---
 
@@ -746,7 +1137,7 @@ describe("DefaultArtifactCommitter.mergeBranchIntoFeature", () => {
 | Agent registry | `ptah.config.json` | New "tl" agent entry with skill_path pointing to SKILL.md |
 | Feature state | `phases.ts` | `FeatureConfig.useTechLead?: boolean` persisted in `pdlc-state.json` |
 | ArtifactCommitter | `artifact-committer.ts` | New `mergeBranchIntoFeature` method; pre-flight Check 2 grepping for it |
-| Config validation | `config/loader.ts` | No validation change needed (useTechLead is optional; tech_lead_agent_timeout_ms and retain_failed_worktrees are optional) |
+| Config validation | `config/loader.ts` | Add `mentionable?: boolean` to `AgentEntry`; when `false`, skip snowflake regex for `mention_id`. Required for "tl" agent registration (see OQ-01 resolution) |
 | Plan template | `docs/templates/backend-plans-template.md` | Fan-out syntax documentation in Task Dependency Notes section |
 | Test gate command | SKILL.md | `npx vitest run` from `ptah/` directory — must match actual project layout |
 | Agent dispatch timeout | SKILL.md + `ptah.config.json` | Tech-lead reads `orchestrator.tech_lead_agent_timeout_ms` from config (default 600,000 ms) |
@@ -781,6 +1172,7 @@ Add the "tl" agent entry and the two optional orchestrator fields:
       "skill_path": "../.claude/skills/tech-lead/SKILL.md",
       "log_file": "./docs/agent-logs/tl.md",
       "mention_id": "",
+      "mentionable": false,
       "display_name": "Tech Lead"
     }
   ],
@@ -792,7 +1184,7 @@ Add the "tl" agent entry and the two optional orchestrator fields:
 }
 ```
 
-**Note on `mention_id`:** The tech-lead agent does not correspond to a Discord role (it is dispatched internally by the orchestrator, not via Discord mentions). The `mention_id` is left empty. Config validation must accommodate an empty string for agents that are not Discord-mentionable.
+**Note on `mention_id` and `mentionable`:** The tech-lead agent does not correspond to a Discord role (it is dispatched internally by the orchestrator, not via Discord mentions). The `mention_id` is left empty and `mentionable` is set to `false`, which instructs the config loader to skip the snowflake regex validation for this agent entry (see OQ-01 resolution).
 
 ---
 
@@ -822,9 +1214,9 @@ The SKILL.md is the primary deliverable. It must implement:
 
 | ID | Question | Owner | Status |
 |----|----------|-------|--------|
-| OQ-01 | `config/loader.ts` validates `mention_id` as a non-empty string matching `/^\d+$/` (lines 140–150). The "tl" agent has no Discord role mention. **Resolution options:** (a) Add an optional `mentionable?: boolean` field to `AgentEntry`; when `false`, skip the snowflake regex validation (validation still requires non-empty string). (b) Assign a placeholder snowflake (any valid Discord snowflake) to the "tl" entry. Option (a) is preferred as it correctly models intent. This is a **blocking concern** — without a valid mention_id or a validation bypass, adding "tl" to ptah.config.json crashes the config loader. The PLAN must include a task to add `mentionable?: boolean` to `AgentEntry` and update `loader.ts` validation to skip the regex check when `mentionable === false`. | eng | Open — requires implementation decision |
-| OQ-02 | The `AskUserQuestion` tool's timeout behavior (return value when user doesn't respond) needs to be verified against the 10-minute confirmation timeout requirement | eng | Open — test in integration |
-| OQ-03 | When the Agent tool returns a result for a failed agent (ROUTE_TO_USER), does it also return the worktree branch name? The tech-lead needs to know the branch for cleanup. | eng | Open — verify Agent tool API behavior |
+| OQ-01 | `config/loader.ts` validates `mention_id` as a non-empty string matching `/^\d+$/` (lines 140–150). The "tl" agent has no Discord role mention. **Resolution: Option (a) — add `mentionable?: boolean` to `AgentEntry`.** When `mentionable` is `false`, the loader skips snowflake regex validation for `mention_id` (empty string is allowed). When `mentionable` is `true` or absent (default), the existing validation applies. This correctly models the intent that some agents are internal orchestration agents, not user-mentionable Discord roles. **The PLAN must include an explicit task for this change (add `mentionable` field to `AgentEntry`, update `loader.ts` validation), scheduled before the `ptah.config.json` update task.** Test coverage for this change is specified in §7.3 and §7.4. | eng | **Resolved — option (a)** |
+| OQ-02 | The `AskUserQuestion` tool's timeout behavior (return value when user doesn't respond) needs to be verified against the 10-minute confirmation timeout requirement. **Mitigation:** §5.10 specifies defensive handling — the SKILL.md treats both a `null` return and a sentinel timeout signal as a timeout event. This ensures correct behavior regardless of the tool's actual return value. Verification should still be performed during integration testing. | eng | Open — mitigated by defensive handling in §5.10; verify in integration |
+| OQ-03 | When the Agent tool returns a result for a failed agent (ROUTE_TO_USER), does it also return the worktree branch name? The tech-lead needs to know the branch for cleanup. **Mitigation:** §5.7 step 5 now includes a fallback: if the branch name is unavailable, the tech-lead logs a warning and skips cleanup for that worktree. Manual cleanup may be required. Verification should still be performed during integration testing. | eng | Open — mitigated by fallback in §5.7; verify in integration |
 
 ---
 
