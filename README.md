@@ -2,7 +2,7 @@
 
 An AI-powered multi-agent orchestrator that coordinates specialized engineering skills through Discord and the [Claude Agent SDK](https://docs.anthropic.com/en/docs/claude-code/sdk).
 
-Ptah connects a team of AI agents — product manager, backend engineer, frontend engineer, and test engineer — to collaborate on feature development inside Discord threads, with automatic git commits, human-in-the-loop question escalation, and graceful lifecycle management.
+Ptah connects a team of AI agents — product manager, backend engineer, frontend engineer, test engineer, and tech lead — to collaborate on feature development inside Discord threads, with automatic git commits, human-in-the-loop question escalation, and graceful lifecycle management.
 
 ## Project Structure
 
@@ -23,6 +23,7 @@ ptah/                       — Ptah CLI (TypeScript, ESM, Vitest)
   frontend-engineer         — Frontend features with TDD and spec-driven development
   backend-engineer          — Backend features with TDD and spec-driven development
   test-engineer             — Test strategy, property documentation, and test plans
+  tech-lead                 — Plan analysis, parallel batch orchestration, and agent dispatch
 docs/                       — Feature-based documentation (each folder maps to a feature):
   001-init/                 — Project scaffolding and `ptah init`
   002-discord-bot/          — Discord.js client and message handling
@@ -36,6 +37,7 @@ docs/                       — Feature-based documentation (each folder maps to
   010-parallel-feature-development/ — Multi-threaded feature work with worktree isolation
   011-orchestrator-pdlc-state-machine/ — PDLC state machine for document lifecycle
   012-skill-simplification/ — Skill definition simplification
+  014-tech-lead-orchestration/ — Tech-lead parallel batch execution
   requirements/             — Master requirements and traceability matrix
   templates/                — Markdown templates for specs, plans, and traceability
 ```
@@ -74,13 +76,16 @@ Ptah is configured via `ptah/ptah.config.json`. Below is a reference for each se
 
 ### `agents`
 
+Array of agent entries. Each agent has:
+
 | Key | Type | Description |
 |-----|------|-------------|
-| `active` | string[] | Agent IDs to activate (e.g., `["pm", "eng", "fe", "qa"]`) |
-| `skills` | object | Map of agent ID → relative path to its `SKILL.md` file |
-| `model` | string | Claude model to use for agent invocations (e.g., `claude-sonnet-4-6`) |
-| `max_tokens` | number | Maximum token budget per invocation (default: `800000`) |
-| `role_mentions` | object | Map of Discord role ID → agent ID, used to route @mentions to the correct agent |
+| `id` | string | Agent identifier (e.g., `"pm"`, `"eng"`, `"fe"`, `"qa"`, `"tl"`) |
+| `skill_path` | string | Relative path to the agent's `SKILL.md` file |
+| `log_file` | string | Relative path to the agent's log file |
+| `mention_id` | string | Discord role snowflake ID for @mention routing |
+| `mentionable` | boolean? | Whether this agent is Discord-mentionable (default: `true`). Set to `false` for internal orchestration agents like the tech lead that are dispatched programmatically, not via Discord mentions. When `false`, `mention_id` can be empty. |
+| `display_name` | string | Human-readable agent name |
 
 ### `orchestrator`
 
@@ -90,6 +95,8 @@ Ptah is configured via `ptah/ptah.config.json`. Below is a reference for each se
 | `pending_poll_seconds` | number | Interval in seconds to poll for pending question answers (default: `30`) |
 | `retry_attempts` | number | Number of retry attempts on transient invocation failures (default: `3`) |
 | `invocation_timeout_ms` | number | Timeout per agent invocation in milliseconds (default: `1800000` / 30 min) |
+| `tech_lead_agent_timeout_ms` | number | Timeout for tech-lead-dispatched engineer agents in milliseconds (default: `600000` / 10 min) |
+| `retain_failed_worktrees` | boolean | If `true`, retain failed agent worktrees for debugging instead of cleaning up (default: `false`) |
 
 ### `git`
 
@@ -222,6 +229,7 @@ Available agents (configured in `ptah/ptah.config.json`):
 | `eng` | Backend Engineer | Backend features, APIs, TDD |
 | `fe` | Frontend Engineer | Frontend features, UI components, TDD |
 | `qa` | Test Engineer | Test strategy, properties, test plans |
+| `tl` | Tech Lead | Plan analysis, parallel batch orchestration (internal — not Discord-mentionable) |
 
 ### 3. What happens next
 
@@ -235,7 +243,7 @@ The orchestrator picks up the message and runs a **routing loop**:
    - **Layer 2 (feature files):** other `docs/{feature}/` files (REQ, FSPEC, TSPEC, etc.), trimmed to budget
    - **Layer 3 (user message):** the trigger message or previous agent's routing response
 5. **Invoke skill** — runs via Claude Agent SDK inside the worktree, with exponential backoff retry via InvocationGuard (configurable attempts, timeout). The worktree is registered before invocation and deregistered after.
-6. **Commit & merge** — two-tier merge: only `docs/` changes are staged and committed on the agent sub-branch, then merged (`--no-ff`) into the feature branch and pushed to remote. Non-docs changes are filtered out. Worktree is cleaned up after merge. A merge lock serializes concurrent merges.
+6. **Commit & merge** — two-tier merge: only `docs/` changes are staged and committed on the agent sub-branch, then merged (`--no-ff`) into the feature branch and pushed to remote. Non-docs changes are filtered out. Worktree is cleaned up after merge. A merge lock serializes concurrent merges. For tech-lead orchestration, `mergeBranchIntoFeature` handles merging full worktree branches (not just docs) into the feature branch with conflict detection and abort.
 7. **Post response** — posts the agent's text response as a Discord embed in the thread. If the Discord post fails after a successful commit, a partial-commit error is posted and the SHA is logged to `#debug`.
 8. **PDLC auto-initialization** — on first invocation for a feature, if the thread has at most 1 prior agent turn (age guard), the orchestrator auto-initializes a PDLC state machine for the feature. Configuration keywords can be included in the initial message using bracket syntax: `[backend-only]` (default), `[frontend-only]`, `[fullstack]`, `[skip-fspec]`. Threads with more prior turns fall through to the unmanaged path.
 9. **Route** — parses the `<routing>` tag from the agent's response to determine the next step:
@@ -292,10 +300,12 @@ FSPEC_CREATION (PM) → FSPEC_REVIEW → FSPEC_APPROVED →
 TSPEC_CREATION (Eng) → TSPEC_REVIEW → TSPEC_APPROVED →
 PLAN_CREATION (Eng) → PLAN_REVIEW → PLAN_APPROVED →
 PROPERTIES_CREATION (QA) → PROPERTIES_REVIEW → PROPERTIES_APPROVED →
-IMPLEMENTATION (Eng) → IMPLEMENTATION_REVIEW → DONE
+IMPLEMENTATION (Eng or Tech Lead) → IMPLEMENTATION_REVIEW → DONE
 ```
 
 FSPEC can be skipped (`skipFspec: true` in feature config) — the state machine transitions directly from `REQ_APPROVED` to `TSPEC_CREATION`.
+
+When `useTechLead: true` is set in the feature config, IMPLEMENTATION routes to the tech-lead agent instead of directly to `eng`/`fe`. See [Tech-Lead Orchestration](#tech-lead-orchestration) below.
 
 ### Documents
 
@@ -334,12 +344,110 @@ The state machine selects which documents to include as context for each agent i
 
 Feature state is persisted to `ptah/state/pdlc-state.json` using atomic writes (write to `.tmp`, then rename). State is loaded on startup and survives orchestrator restarts.
 
+## Tech-Lead Orchestration
+
+When a feature's `FeatureConfig` has `useTechLead: true`, the IMPLEMENTATION phase is handled by the tech-lead agent instead of a single engineer. The tech lead analyzes the plan's dependency graph, computes parallel execution batches, and dispatches multiple engineer subagents concurrently.
+
+### How It Works
+
+```
+                    Approved PLAN
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Parse dependencies  │
+              │  (3 syntax forms)    │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Topological batch   │
+              │  computation (Kahn's)│
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Pre-flight checks   │
+              │  (remote branch,     │
+              │   merge capability)  │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  Present plan for    │
+              │  user confirmation   │
+              └──────────┬──────────┘
+                         │
+                    approve / modify / cancel
+                         │
+          ┌──────────────┼──────────────┐
+          │         For each batch:     │
+          │                             │
+          │  1. Dispatch phases in      │
+          │     parallel (Agent tool    │
+          │     + isolation: worktree)  │
+          │  2. Collect results         │
+          │  3. Merge worktrees         │
+          │     (serialized, doc order) │
+          │  4. Run test gate           │
+          │     (npx vitest run)        │
+          │  5. Update plan status      │
+          │  6. Next batch              │
+          └─────────────────────────────┘
+```
+
+### Dependency Syntax
+
+The tech lead parses three dependency syntax forms from the plan's "Task Dependency Notes" section:
+
+| Syntax | Example | Edges Produced |
+|--------|---------|----------------|
+| Linear chain | `Phase A → Phase B → Phase C` | (A→B), (B→C) |
+| Fan-out | `Phase A → [Phase B, Phase C]` | (A→B), (A→C) |
+| Natural language | `Phase C depends on: Phase A, Phase B` | (A→C), (B→C) |
+
+### Batch Execution
+
+- Batches execute **sequentially** — Batch N waits for Batch N-1 to complete and pass the test gate
+- Phases within a batch execute **in parallel** — each in an isolated git worktree
+- Concurrency cap of **5 agents** per batch — larger batches are split into sub-batches
+- The test gate fires once per topological batch (after all sub-batches merge), not between sub-batches
+
+### Failure Handling
+
+- **Phase failure:** No worktrees are merged (no-partial-merge invariant). The feature branch is left in its pre-batch state. The developer fixes and re-invokes.
+- **Merge conflict:** The conflicting merge is aborted, remaining merges are skipped, and conflicting file names are reported.
+- **Test gate failure:** Assertion failures and runner failures are distinguished and reported separately. Plan status is NOT updated.
+
+### Skill Assignment
+
+The tech lead assigns each phase to `backend-engineer` or `frontend-engineer` based on source file prefixes in the plan's task table:
+
+| Prefix | Skill |
+|--------|-------|
+| `src/`, `config/`, `tests/`, `bin/` | backend-engineer |
+| `app/`, `components/`, `pages/`, `styles/`, `hooks/` | frontend-engineer |
+| `docs/`, empty, unrecognized | backend-engineer (default) |
+| Mixed backend + frontend | backend-engineer + warning |
+
+### Resume
+
+The tech lead auto-detects completed phases by reading task statuses from the plan. Phases where all tasks are marked Done (✅) are excluded from batch computation. Re-invoking the tech lead on a partially-completed plan resumes from the first incomplete batch.
+
+### Configuration
+
+Tech-lead orchestration is opt-in per feature via `useTechLead: true` in the feature's `FeatureConfig`. When absent or `false`, the existing sequential dispatch to `eng`/`fe` is preserved — no behavioral change for existing features.
+
+For fullstack features, `useTechLead: true` suppresses the PDLC-level fork-join for IMPLEMENTATION. The tech lead handles its own internal parallelism instead.
+
 ## Key Capabilities
 
-- **Multi-agent orchestration** — coordinates 4 specialized agents with automatic inter-agent routing
+- **Multi-agent orchestration** — coordinates 5 specialized agents with automatic inter-agent routing
+- **Tech-lead orchestration** — analyzes plan dependencies, computes parallel batches via topological layering, and dispatches multiple engineer subagents concurrently with inter-batch test gates
 - **PDLC state machine** — enforces document lifecycle phases and cross-skill review gates
 - **Token budget management** — layered token allocation across context assembly (skill prompt, feature context, thread history)
 - **Git workflow** — two-tier merge (agent sub-branch → feature branch), isolated worktrees per invocation, auto-commits, merge-lock serialization
+- **Worktree branch merging** — `mergeBranchIntoFeature` for serialized merging of parallel agent worktrees into the feature branch with conflict detection
 - **Question escalation** — persistent question store with polling for human answers
 - **Auto feature bootstrap** — automatically creates feature folders and overview files on first mention
 - **Parallel feature development** — concurrent work on multiple features via isolated git worktrees
