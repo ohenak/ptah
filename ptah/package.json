@@ -1,5 +1,5 @@
 {
-  "name": "ptah",
+  "name": "@ohenak/ptah",
   "version": "0.2.0",
   "description": "Ptah CLI",
   "type": "module",
