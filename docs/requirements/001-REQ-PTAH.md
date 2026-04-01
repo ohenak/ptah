@@ -6,8 +6,8 @@
 |-------|--------|
 | **Document ID** | REQ-PTAH |
 | **Parent Document** | [PTAH_PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 3.0 |
-| **Date** | April 1, 2026 |
+| **Version** | 2.1 |
+| **Date** | March 13, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 | **Approval Date** | Pending |
@@ -111,105 +111,6 @@ Each user story describes a real-world situation that the product must support. 
 | **Pain points** | Tightly coupled architectures require code changes to add new agents. Without a standard extension pattern, each addition is ad-hoc. |
 | **Key needs** | Configuration-driven agent registration, standardized Skill interface, automatic log file creation. |
 
-### US-10: Orchestrator Recovers from Crashes Without Data Loss
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | The Orchestrator process crashes midway through an agent invocation. When restarted, the workflow resumes from its last completed step — no manual intervention, no duplicate work, no lost state. |
-| **Goals** | Zero data loss on crash. Automatic workflow resumption. No duplicate agent invocations for already-completed phases. |
-| **Pain points** | Current state in `pdlc-state.json` and in-memory structures can become inconsistent on crash — partially written JSON, in-flight invocations with no record, orphaned worktrees. |
-| **Key needs** | Event-sourced workflow state (Temporal). Idempotent Activity execution. Automatic retry of interrupted Activities. |
-
-### US-11: Developer Configures Custom Workflow Phases
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants to use Ptah for a different workflow than the default 7-phase PDLC (e.g., `Discovery → Design → Implementation → QA → Deploy`). They define custom phases, agent assignments, reviewer manifests, and transition rules in configuration. |
-| **Goals** | Any linear or branching workflow expressible in configuration. Adding/removing/reordering phases requires zero code changes. |
-| **Pain points** | Current implementation hardcodes 15 phases as TypeScript enums, agent mappings as switch statements, and reviewer manifests as static tables. Changing the workflow requires modifying 4+ source files. |
-| **Key needs** | Declarative phase definition in config. Configurable agent-to-phase mappings. Configurable reviewer assignments. Config validation at startup. |
-
-### US-12: Developer Observes Workflow State via Temporal UI
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants real-time visibility into all active feature workflows — current phase, active agents, pending reviewers, full execution history — via the Temporal Web UI. |
-| **Goals** | Real-time workflow visibility. Full execution history with timestamps. Inspect any past workflow step. |
-| **Pain points** | Current observability limited to console logs and JSON state file. No history of transitions, no timeline view. |
-| **Key needs** | Temporal Queries. Meaningful workflow IDs. Searchable workflow attributes. |
-
-### US-13: Developer Migrates Existing Ptah State to Temporal
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer has existing Ptah v4 features at various PDLC phases. They upgrade to v5 (Temporal-based). The migration tool reads `pdlc-state.json` and creates Temporal workflows for each in-progress feature at the correct phase. |
-| **Goals** | Zero-downtime migration. In-progress features continue from current phase. No features lost or restarted. |
-| **Pain points** | Without migration, all in-progress features restart from scratch — losing days of review cycles and approvals. |
-| **Key needs** | Migration CLI command (`ptah migrate`). Validation. Dry-run mode. |
-
-### US-14: Developer Uses Ptah Without Discord (CLI-Only Mode)
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants to use Ptah in a CI/CD pipeline or locally without a Discord server. They run `ptah start --provider cli` and interact via terminal. |
-| **Goals** | Zero external service dependencies for local development. CI/CD integration without messaging platform setup. |
-| **Pain points** | Current Ptah requires a Discord server, bot token, and configured channels before any work can begin. |
-| **Key needs** | CLI messaging provider. Stdout for output. Stdin or config-file for human input. Headless mode. |
-
-### US-15: Developer Integrates Ptah with Slack
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A team uses Slack and wants to use Ptah without switching to Discord. They configure `messaging.provider: "slack"`. |
-| **Goals** | Same orchestration experience on Slack as on Discord. |
-| **Pain points** | Teams using Slack cannot adopt Ptah without switching to Discord. |
-| **Key needs** | Slack messaging provider. Thread creation. Block Kit formatting. Event subscription. |
-
-### US-16: Developer Receives Notifications via Webhooks
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants Ptah notifications integrated into their monitoring stack via standard HTTP webhooks with structured JSON payloads. |
-| **Goals** | Integration with any external system via webhooks. |
-| **Pain points** | Current implementation only supports Discord for notifications. |
-| **Key needs** | Webhook provider. Configurable URL. Structured JSON payloads. Retry on failure. |
-
-### US-17: Developer Extends Ptah with Custom Agent Types and Hooks
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants to add a Security Agent with lifecycle hooks (e.g., upload scan results after implementation) without modifying Ptah's source code. |
-| **Goals** | Extend Ptah with arbitrary agent types and custom logic at phase boundaries without forking. |
-| **Pain points** | No mechanism for custom logic at phase transitions. |
-| **Key needs** | Lifecycle hooks (on-phase-enter/exit, on-agent-complete, on-workflow-complete). Hook handlers as shell commands, TypeScript functions, or HTTP endpoints. |
-
-### US-18: Developer Uses Ptah as a Library
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants to embed Ptah's orchestration into their own Node.js application via `@ohenak/ptah-core`, creating workflows and handling events programmatically. |
-| **Goals** | Use Ptah without the CLI wrapper. Programmatic control over workflows. |
-| **Pain points** | Current Ptah is a black-box CLI. Embedding requires subprocess spawning. |
-| **Key needs** | Exported API: `createOrchestrator()`, `startWorkflow()`, `sendSignal()`, `onEvent()`. TypeScript types. |
-
-### US-19: Ptah Agents Interoperate via Standard Protocols
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer has LangGraph agents (Python) and wants them to participate in Ptah workflows alongside Claude Code agents via A2A and MCP protocols. |
-| **Goals** | Mixed-framework orchestration. MCP for tools, A2A for agent communication. |
-| **Pain points** | Current Ptah only supports Claude Code agents. |
-| **Key needs** | MCP client for tools. A2A server/client for cross-framework agents. Skill adapter interface. |
-
-### US-20: Developer Runs Non-Claude Skills
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A developer wants to use a Python agent or shell script as a "skill" in Ptah with `type: "executable"` or `type: "a2a"`. |
-| **Goals** | Any executable or network-reachable agent can participate in a Ptah workflow. |
-| **Pain points** | Current `SkillClient` only supports Claude Code. |
-| **Key needs** | Skill adapter interface with implementations: `claude-code`, `executable`, `a2a`. Common output contract. |
-
 ---
 
 ## 3. Scope Boundaries
@@ -303,15 +204,7 @@ Detailed requirements for each phase are in their own documents. Each phase docu
 | **Phase 7 — Polish** | [007-REQ-polish](../007-polish/007-REQ-polish.md) | 2 (DI, NF domains) | Pending specification |
 | **Phase 9 — Auto Feature Bootstrap** | [009-REQ-PTAH-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-REQ-PTAH-auto-feature-bootstrap.md) | 8 (AF domain) | All FSPEC'd ([009-FSPEC-ptah-auto-feature-bootstrap](../009-auto-feature-bootstrap/009-FSPEC-ptah-auto-feature-bootstrap.md)); TSPEC pending |
 
-### v5.0 Milestones
-
-| Milestone | Document | Requirements | Status |
-|-----------|----------|-------------|--------|
-| **Milestone 1 — Temporal Foundation + Config-Driven Workflow** | [015-REQ-temporal-foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) | 20 (TF, CD, MG, NF domains) | Draft |
-| **Milestone 2 — Messaging Abstraction** | [016-REQ-messaging-abstraction](../016-messaging-abstraction/016-REQ-messaging-abstraction.md) | 7 (MA domain) | Draft |
-| **Milestone 3 — Framework Extensibility & Distribution** | [017-REQ-framework-extensibility](../017-framework-extensibility/017-REQ-framework-extensibility.md) | 7 (FX domain) | Draft |
-
-**Total:** 62 requirements across v4.0 phases + 34 requirements across v5.0 milestones = **96 requirements**.
+**Total:** 62 requirements across 8 phases (Phases 1–7 + Phase 9).
 
 ### Domain Key
 
@@ -325,11 +218,6 @@ Detailed requirements for each phase are in their own documents. Each phase docu
 | SI | Skill Invocation — Skill execution, commits, and guardrails |
 | NF | Non-Functional |
 | AF | Auto Feature Bootstrap — PM skill folder bootstrap |
-| TF | Temporal Foundation — Durable workflow execution |
-| CD | Config-Driven Workflow — Declarative phase/agent/transition configuration |
-| MG | Migration — State migration from v4 to v5 |
-| MA | Messaging Abstraction — Provider-agnostic communication |
-| FX | Framework Extensibility — Library API, plugins, protocol support |
 
 ---
 
@@ -405,7 +293,6 @@ All open questions have been resolved. Decisions are recorded below and reflecte
 | 1.4 | March 9, 2026 | Product Manager | Updated REQ-IN-07: `ptah init` now copies existing `.claude/skills/` Claude Code skill files as the scaffolded agent Skill definitions instead of creating placeholder files. Mapping: `product-manager` → `pm-agent`, `backend-engineer` → `dev-agent`, `frontend-engineer` → `frontend-agent`, `test-engineer` → `test-agent`. Falls back to placeholder if source skill not found. Added Frontend Agent as fourth active agent — updated Purpose (Section 1), Scope (Section 3.1), Assumption A-06, REQ-IN-07, and REQ-IN-08. |
 | 2.0 | March 10, 2026 | Product Manager | **Split into per-phase documents.** Master document now serves as index with shared context (user stories, scope, assumptions, constraints, success metrics, risks, open questions). Detailed requirements moved to 7 phase documents: 001-REQ-PTAH-init, 002-REQ-PTAH-discord-bot, 003-REQ-PTAH-skill-routing, 004-REQ-PTAH-artifact-commits, 005-REQ-PTAH-user-questions, 006-REQ-PTAH-guardrails, 007-REQ-PTAH-polish. |
 | 2.1 | March 13, 2026 | Product Manager | Added Phase 9 (Auto Feature Bootstrap). Added US-09. Added Phase 9 to phase documents table. Added AF domain code. Total requirements updated from 54 to 62. FSPEC complete: 009-FSPEC-ptah-auto-feature-bootstrap. |
-| 3.0 | April 1, 2026 | Product Manager | **Ptah v5.0 milestones added.** Added US-10 through US-20 (11 new user stories). Added 3 milestone REQ documents: 015-REQ-temporal-foundation (20 reqs), 016-REQ-messaging-abstraction (7 reqs), 017-REQ-framework-extensibility (7 reqs). Added 5 new domain codes (TF, CD, MG, MA, FX). Total requirements: 96 (62 v4.0 + 34 v5.0). |
 
 ---
 

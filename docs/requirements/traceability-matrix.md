@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | April 1, 2026 |
-| **Version** | 3.0 |
+| **Date** | March 19, 2026 |
+| **Version** | 2.9 |
 | **Status** | Draft |
 
 ---
@@ -193,43 +193,6 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23], [US-24], [US-25] | [REQ-NF-14-03] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23] | [REQ-NF-14-05] | [FSPEC-TL-02](../014-tech-lead-orchestration/014-FSPEC-tech-lead-orchestration.md) | P1 | 14 | FSPEC Complete |
-| **v5.0 Milestone 1 — Temporal Foundation + Config-Driven Workflow** | | | | | |
-| [US-10], [US-11] | [REQ-TF-01] | Pending | P0 | M1 | Pending Spec |
-| [US-10] | [REQ-TF-02] | Pending | P0 | M1 | Pending Spec |
-| [US-10] | [REQ-TF-03] | Pending | P0 | M1 | Pending Spec |
-| [US-12] | [REQ-TF-04] | Pending | P0 | M1 | Pending Spec |
-| [US-10] | [REQ-TF-05] | Pending | P0 | M1 | Pending Spec |
-| [US-10], [US-11] | [REQ-TF-06] | Pending | P0 | M1 | Pending Spec |
-| [US-10] | [REQ-TF-07] | Pending | P0 | M1 | Pending Spec |
-| [US-10], [US-11] | [REQ-TF-08] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-01] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-02] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-03] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-04] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-05] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-06] | Pending | P0 | M1 | Pending Spec |
-| [US-11] | [REQ-CD-07] | Pending | P1 | M1 | Pending Spec |
-| [US-13] | [REQ-MG-01] | Pending | P0 | M1 | Pending Spec |
-| [US-13] | [REQ-MG-02] | Pending | P1 | M1 | Pending Spec |
-| [US-10], [US-12] | [REQ-NF-09] | Pending | P0 | M1 | Pending Spec |
-| [US-12] | [REQ-NF-10] | Pending | P1 | M1 | Pending Spec |
-| [US-10] | [REQ-NF-11] | Pending | P1 | M1 | Pending Spec |
-| **v5.0 Milestone 2 — Messaging Abstraction** | | | | | |
-| [US-14], [US-15], [US-16] | [REQ-MA-01] | Pending | P0 | M2 | Pending Spec |
-| [US-14] | [REQ-MA-02] | Pending | P0 | M2 | Pending Spec |
-| [US-14] | [REQ-MA-03] | Pending | P0 | M2 | Pending Spec |
-| [US-16] | [REQ-MA-04] | Pending | P1 | M2 | Pending Spec |
-| [US-15] | [REQ-MA-05] | Pending | P1 | M2 | Pending Spec |
-| [US-14], [US-15], [US-16] | [REQ-MA-06] | Pending | P0 | M2 | Pending Spec |
-| [US-14], [US-15] | [REQ-MA-07] | Pending | P0 | M2 | Pending Spec |
-| **v5.0 Milestone 3 — Framework Extensibility & Distribution** | | | | | |
-| [US-18] | [REQ-FX-01] | Pending | P0 | M3 | Pending Spec |
-| [US-18] | [REQ-FX-02] | Pending | P0 | M3 | Pending Spec |
-| [US-17] | [REQ-FX-03] | Pending | P0 | M3 | Pending Spec |
-| [US-20] | [REQ-FX-04] | Pending | P0 | M3 | Pending Spec |
-| [US-19] | [REQ-FX-05] | Pending | P1 | M3 | Pending Spec |
-| [US-19] | [REQ-FX-06] | Pending | P2 | M3 | Pending Spec |
-| [US-17], [US-18] | [REQ-FX-07] | Pending | P2 | M3 | Pending Spec |
 
 ---
 
@@ -604,9 +567,6 @@ This matrix provides full traceability from user scenarios through requirements 
 | Requirements — Phase 11 | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) | Phase 11 (Orchestrator PDLC State Machine) requirements — 45 requirements (v1.2 approved by eng + qa) |
 | FSPEC — Phase 11 | [011-FSPEC-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Functional specification for Phase 11 — 7 FSPECs (SM-01, SM-02, RT-01, RT-02, AI-01, FC-01, CA-01) |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
-| **v5.0 Milestone 1** | [015-REQ-temporal-foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) | Milestone 1 (Temporal Foundation + Config-Driven Workflow) — 20 requirements (TF, CD, MG, NF) |
-| **v5.0 Milestone 2** | [016-REQ-messaging-abstraction](../016-messaging-abstraction/016-REQ-messaging-abstraction.md) | Milestone 2 (Messaging Abstraction) — 7 requirements (MA) |
-| **v5.0 Milestone 3** | [017-REQ-framework-extensibility](../017-framework-extensibility/017-REQ-framework-extensibility.md) | Milestone 3 (Framework Extensibility & Distribution) — 7 requirements (FX) |
 
 ---
 
@@ -634,7 +594,6 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.7 | March 15, 2026 | Product Manager | Added FSPEC mappings for Phase 7 (Polish). 2 FSPECs created: FSPEC-DI-02 (thread archiving on resolution), FSPEC-EX-01 (configuration-driven agent extensibility). Phase 7 view updated with FSPEC column. Both Phase 7 requirements now FSPEC'd; pending TSPEC. |
 | 2.9 | March 19, 2026 | Product Manager | Phase 14 FSPEC complete. Added REQ-NF-14-05 (pre-flight infrastructure check) to REQ v1.4 (28 requirements total for Phase 14). Added REQ-PD-06 (cycle detection) row — previously missing from matrix. Updated all Phase 14 requirement rows: 22 of 29 requirements FSPEC'd (FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03 in 014-FSPEC-tech-lead-orchestration.md); 7 pending TSPEC (REQ-TL-01, REQ-TL-03, REQ-PR-04, REQ-NF-14-03, REQ-NF-14-04 and supporting). Total requirements: 164. |
 | 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
-| 3.0 | April 1, 2026 | Product Manager | **Ptah v5.0 milestones added.** 11 new user stories (US-10 through US-20, reusing US-10/11/12 IDs from v5 scope). 34 requirements across 3 milestones: M1 Temporal Foundation (20 reqs: TF-01..08, CD-01..07, MG-01..02, NF-09..11), M2 Messaging Abstraction (7 reqs: MA-01..07), M3 Framework Extensibility (7 reqs: FX-01..07). 5 new domain codes added (TF, CD, MG, MA, FX). Total requirements: 198 (164 v4.0 + 34 v5.0). All v5.0 requirements pending specification. |
 
 ---
 
