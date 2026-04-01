@@ -6,8 +6,8 @@
 |-------|--------|
 | **Document ID** | REQ-015 |
 | **Parent Document** | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 1.0 |
-| **Date** | April 1, 2026 |
+| **Version** | 1.1 |
+| **Date** | April 2, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 | **Approval Date** | Pending |
@@ -225,8 +225,8 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | Workflow phases are defined in a `workflow` section of `ptah.config.json` (or a separate `ptah.workflow.yaml`). Each phase has: a unique ID, display name, type (`creation`, `review`, `approved`, `implementation`), and optional properties (fork_join, skip conditions). The Orchestrator reads this config at startup and constructs the workflow graph dynamically. |
-| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with a `workflow.phases` array defining 5 custom phases **When:** The Orchestrator starts **Then:** It constructs a workflow graph with exactly those 5 phases. No hardcoded phase enum is referenced. |
+| **Description** | Workflow phases are defined in a dedicated `ptah.workflow.yaml` file (separate from `ptah.config.json` for clarity). Each phase has: a unique ID, display name, type (`creation`, `review`, `approved`, `implementation`), and optional properties (fork_join, skip conditions). The Orchestrator reads this file at startup and constructs the workflow graph dynamically. `ptah init` generates a default `ptah.workflow.yaml` alongside `ptah.config.json`. |
+| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.workflow.yaml` with a `phases` array defining 5 custom phases **When:** The Orchestrator starts **Then:** It constructs a workflow graph with exactly those 5 phases. No hardcoded phase enum is referenced. |
 | **Priority** | P0 |
 | **Source Stories** | US-27 |
 | **Dependencies** | None |
@@ -266,7 +266,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 | Attribute | Detail |
 |-----------|--------|
 | **Description** | The Orchestrator validates the workflow configuration at startup. Checks: all phase IDs are unique, all agent references resolve to registered agents, all transitions reference valid phases, no cycles in the phase graph (unless configured as review loops), required fields are present. Invalid config halts startup with a descriptive error. |
-| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with a phase referencing agent `"security"` that is not registered **When:** The Orchestrator starts **Then:** It halts with error: `Workflow validation failed: phase "security-review" references unknown agent "security". Register it in agents.definitions.` |
+| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.workflow.yaml` with a phase referencing agent `"security"` that is not registered in `ptah.config.json` **When:** The Orchestrator starts **Then:** It halts with error: `Workflow validation failed: phase "security-review" references unknown agent "security". Register it in agents.definitions.` |
 | **Priority** | P0 |
 | **Source Stories** | US-27 |
 | **Dependencies** | REQ-CD-01, REQ-CD-02, REQ-CD-04 |
@@ -319,8 +319,8 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | Ptah supports connecting to: (1) Temporal Cloud (SaaS), (2) a self-hosted Temporal server, or (3) a local development server started via `temporal server start-dev`. Connection configured via `temporal.address`, `temporal.namespace`, and optional `temporal.tls` in `ptah.config.json`. `ptah init` includes a `temporal` section with localhost defaults. |
-| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with `temporal.address: "localhost:7233"` and `temporal.namespace: "default"` **When:** The Orchestrator starts **Then:** It connects to the local Temporal server. Changing to a Temporal Cloud endpoint with TLS requires only config changes. |
+| **Description** | Ptah supports connecting to: (1) a local development server started via `temporal server start-dev` (default), (2) Temporal Cloud (SaaS), or (3) a self-hosted Temporal server. Connection configured via `temporal.address`, `temporal.namespace`, and optional `temporal.tls` in `ptah.config.json`. `ptah init` generates a `temporal` section defaulting to `localhost:7233` (`temporal server start-dev`). Docker Compose-based deployment is a separate feature — see [REQ-018](../018-temporal-docker-compose/018-REQ-temporal-docker-compose.md). |
+| **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with default `temporal.address: "localhost:7233"` and `temporal.namespace: "default"` **When:** The developer runs `temporal server start-dev` and then `ptah start` **Then:** The Orchestrator connects to the local Temporal dev server. Changing to a Temporal Cloud endpoint with TLS requires only config changes. |
 | **Priority** | P0 |
 | **Source Stories** | US-26, US-28 |
 | **Dependencies** | REQ-TF-01 |
@@ -393,6 +393,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 1, 2026 | Product Manager | Initial requirements document. 20 requirements across 4 domains. |
+| 1.1 | April 2, 2026 | Product Manager | Applied user decisions: (1) workflow phases defined in `ptah.workflow.yaml` (separate from `ptah.config.json`), (2) `temporal server start-dev` is the default deployment, Docker Compose deferred to REQ-018, (3) REQ-CD-07 confirmed as P0. Updated REQ-CD-01, REQ-CD-05, REQ-NF-15-01. |
 
 ---
 
