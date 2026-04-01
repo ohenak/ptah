@@ -4,7 +4,12 @@
       "Bash(npm install)",
       "Bash(npx vitest:*)",
       "Read(//tmp/**)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Edit(/.claude/skills/backend-engineer/**)",
+      "Edit(/.claude/skills/frontend-engineer/**)",
+      "Edit(/.claude/skills/product-manager/**)",
+      "Edit(/.claude/skills/test-engineer/**)",
+      "Edit(/.claude/skills/tech-lead/**)"
     ]
   }
 }
