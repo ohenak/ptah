@@ -50,20 +50,20 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| D1 | Implement phase graph walker — resolveNextPhase with explicit transitions, array ordering, skip_if evaluation | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D2 | Implement main workflow loop — phase iteration, approved auto-transition, config snapshot for versioning | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D3 | Implement single-agent dispatch — invoke skill, handle LGTM/TASK_COMPLETE, advance to next phase | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D4 | Implement question flow — ROUTE_TO_USER → record question → sendNotification → waitForSignal("user-answer") → re-invoke agent → nested questions | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D5 | Implement fork/join dispatch — parallel Activities, wait_for_all policy, no-partial-merge, discard worktrees on failure | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D6 | Implement fork/join dispatch — fail_fast policy with cooperative cancellation | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D7 | Implement fork/join ROUTE_TO_USER — hold worktrees, question flow for ROUTE_TO_USER agents, re-invoke only those agents, merge all on final LGTM | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D8 | Implement fork/join merge — sequential merge in config order, conflict detection with rollback | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D9 | Implement review cycle — compute reviewer manifest by discipline, dispatch reviewers in parallel, collect recommendations | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D10 | Implement review cycle — revision loop (increment count, check bound, transition to creation with Revise task, re-enter review) | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D11 | Implement review cycle — revision bound exceeded → notify user → waitForSignal("resume-or-cancel") | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D12 | Implement failure flow — record failure info, sendNotification, waitForSignal("retry-or-cancel"), full re-dispatch for fork/join (BR-14) | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D13 | Implement workflow state Query handler — return FeatureWorkflowState for current phase, agents, reviewers, config | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D14 | Implement context document resolution — resolve `{feature}/REQ` etc. to file paths from phase config context_documents | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| D1 | Implement phase graph walker — resolveNextPhase with explicit transitions, array ordering, skip_if evaluation | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D2 | Implement main workflow loop — phase iteration, approved auto-transition, config snapshot for versioning | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D3 | Implement single-agent dispatch — invoke skill, handle LGTM/TASK_COMPLETE, advance to next phase | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D4 | Implement question flow — ROUTE_TO_USER → record question → sendNotification → waitForSignal("user-answer") → re-invoke agent → nested questions | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D5 | Implement fork/join dispatch — parallel Activities, wait_for_all policy, no-partial-merge, discard worktrees on failure | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D6 | Implement fork/join dispatch — fail_fast policy with cooperative cancellation | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D7 | Implement fork/join ROUTE_TO_USER — hold worktrees, question flow for ROUTE_TO_USER agents, re-invoke only those agents, merge all on final LGTM | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D8 | Implement fork/join merge — sequential merge in config order, conflict detection with rollback | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D9 | Implement review cycle — compute reviewer manifest by discipline, dispatch reviewers in parallel, collect recommendations | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D10 | Implement review cycle — revision loop (increment count, check bound, transition to creation with Revise task, re-enter review) | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D11 | Implement review cycle — revision bound exceeded → notify user → waitForSignal("resume-or-cancel") | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D12 | Implement failure flow — record failure info, sendNotification, waitForSignal("retry-or-cancel"), full re-dispatch for fork/join (BR-14) | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D13 | Implement workflow state Query handler — return FeatureWorkflowState for current phase, agents, reviewers, config | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D14 | Implement context document resolution — resolve `{feature}/REQ` etc. to file paths from phase config context_documents | `tests/unit/temporal/feature-lifecycle.test.ts` | `src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase E: Orchestrator Integration
 

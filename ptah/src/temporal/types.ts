@@ -81,6 +81,8 @@ export interface FailureInfo {
 export interface FeatureWorkflowState {
   featureSlug: string;
   featureConfig: FeatureConfig;
+  /** Snapshotted at workflow start for versioning (REQ-CD-04). */
+  workflowConfig: WorkflowConfig;
   currentPhaseId: string;
   completedPhaseIds: string[];
   activeAgentIds: string[];

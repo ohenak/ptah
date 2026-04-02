@@ -1624,6 +1624,7 @@ export function defaultFeatureWorkflowState(
   return {
     featureSlug: "test-feature",
     featureConfig: { discipline: "backend-only", skipFspec: false },
+    workflowConfig: defaultTestWorkflowConfig(),
     currentPhaseId: "req-creation",
     completedPhaseIds: [],
     activeAgentIds: ["pm"],
