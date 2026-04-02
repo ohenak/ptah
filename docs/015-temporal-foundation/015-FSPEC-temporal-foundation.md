@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-015 |
 | **Parent Document** | [REQ-015](015-REQ-temporal-foundation.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 2, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -65,9 +65,8 @@ Specifies the complete lifecycle of a skill invocation Activity — from dispatc
 9. **If routing signal is `LGTM` or `TASK_COMPLETE`:**
    a. Detect artifact changes in worktree (including untracked files).
    b. Commit changes in worktree.
-   c. Merge worktree to feature branch (`git merge --no-ff`).
-   d. Clean up worktree.
-   e. Return routing signal + artifact list to the Workflow.
+   c. **If single-agent dispatch (not fork/join):** Merge worktree to feature branch (`git merge --no-ff`), clean up worktree. Return routing signal + artifact list.
+   d. **If fork/join dispatch:** Do NOT merge. Return routing signal + artifact list + worktree path. The Workflow orchestrates merges after collecting all Activity results (see FSPEC-TF-04). The worktree remains on disk until the Workflow merges or discards it.
 10. **If skill invocation throws an error:**
     a. Clean up worktree (finally block).
     b. Throw error. Temporal's retry policy handles re-execution (FSPEC-TF-03).
@@ -78,6 +77,7 @@ Specifies the complete lifecycle of a skill invocation Activity — from dispatc
 - **BR-02:** Idempotency check (step 2) uses worktree existence + commit status, not Temporal's built-in idempotency tokens. This is because the Claude Agent SDK subprocess is not deterministic — re-running the same prompt may produce different output.
 - **BR-03:** `ROUTE_TO_USER` is NOT an error. The Activity returns normally; the Workflow decides what to do.
 - **BR-04:** Worktree cleanup happens in a finally block — even if the process crashes, the next startup prunes orphans.
+- **BR-04a:** In fork/join phases, Activities return results WITHOUT merging. The Workflow is responsible for orchestrating merges after all Activities complete. This is because the no-partial-merge invariant (BR-12) requires the Workflow to decide whether to merge based on all Activity outcomes. The Activity receives a `forkJoin: boolean` flag in its dispatch parameters to determine its merge behavior.
 
 ### Edge Cases
 
@@ -194,7 +194,7 @@ Specifies how the system classifies Activity errors as retryable or non-retryabl
 
 | Error Type | Retryable? | Examples |
 |-----------|:----------:|---------|
-| API rate limit (429) | Yes | Claude API rate limit, Discord rate limit |
+| API rate limit (429) | Internal | Claude API rate limit, Discord rate limit (handled inside Activity — see BR-26) |
 | API timeout | Yes | Claude API timeout, network timeout |
 | Subprocess crash (non-zero exit) | Yes | OOM, segfault, unexpected exit |
 | Heartbeat timeout | Yes | Subprocess hung, Worker overloaded |
@@ -222,11 +222,12 @@ Specifies how the system classifies Activity errors as retryable or non-retryabl
 - **BR-09:** Non-retryable errors are marked with `ApplicationFailure.nonRetryable()` in the Temporal SDK. This prevents Temporal from retrying.
 - **BR-10:** The retry policy is per-Activity, not per-Workflow. Different phases can have different retry configurations if specified in `ptah.workflow.yaml`.
 - **BR-11:** Worktree cleanup happens regardless of retryability — the retry creates a fresh worktree.
+- **BR-26:** API rate limit (429) errors are retried **inside the Activity**, not via Temporal's retry mechanism. The Activity catches 429 responses, reads the `Retry-After` header (or uses a default backoff), sleeps internally, and retries the API call. This is because Temporal's retry policy does not support per-attempt interval overrides based on error metadata. Only if the Activity's internal retries are exhausted does it throw an error to Temporal for Activity-level retry. This matches the current `InvocationGuard` behavior in v4.
 
 ### Edge Cases
 
 - **First attempt is non-retryable, second Activity in fork/join is still running:** The non-retryable failure is recorded. The fork/join policy (FSPEC-TF-04) determines whether to cancel or wait for the other Activity.
-- **Rate limit with specific retry-after header:** The retry interval should respect the API's `Retry-After` header if present, overriding the backoff coefficient for that single retry.
+- **Rate limit with specific retry-after header:** Handled inside the Activity (BR-26). The Activity catches the 429, sleeps for the `Retry-After` duration, and retries internally. Temporal's Activity-level retry is not involved for rate limits.
 
 ### Acceptance Tests
 
@@ -295,12 +296,17 @@ Specifies the parallel dispatch, completion tracking, failure policy, and merge 
 
 #### ROUTE_TO_USER in Fork/Join
 
-1. Activity `eng` returns `ROUTE_TO_USER`.
+1. Activity `eng` returns `ROUTE_TO_USER`. Its worktree is preserved (not merged — fork/join Activities never self-merge per BR-04a).
 2. Activity `fe` is still running.
 3. **Workflow waits for `fe` to complete** (do not cancel).
-4. Once all Activities have either completed or returned `ROUTE_TO_USER`:
+4. Once all Activities have either completed (`LGTM`) or returned `ROUTE_TO_USER`:
+   - **No worktrees are merged yet** — regardless of which agents succeeded.
    - If any returned `ROUTE_TO_USER`: enter question flow (FSPEC-TF-02) for each, sequentially.
-   - After all questions are answered, re-invoke only the agents that returned `ROUTE_TO_USER`.
+   - After all questions are answered, re-invoke **only** the agents that returned `ROUTE_TO_USER`. Successful agents' worktrees are held.
+5. Once all agents have returned `LGTM`:
+   - **Merge all worktrees** sequentially in config order (same as happy path step 5).
+   - Clean up all worktrees.
+   - Advance to next phase.
 
 #### Merge Conflict (FSPEC-TF-04-CONFLICT)
 
@@ -322,7 +328,7 @@ Specifies the parallel dispatch, completion tracking, failure policy, and merge 
 ### Edge Cases
 
 - **Both agents fail:** Both failures are collected and reported. Same behavior as single failure.
-- **One agent succeeds, one returns ROUTE_TO_USER:** Not a failure. The succeeded agent's worktree is held (not merged yet). After the question is answered and the agent re-completes, both worktrees merge.
+- **One agent succeeds, one returns ROUTE_TO_USER:** Not a failure. No worktrees merge yet (per BR-04a, fork/join Activities never self-merge). After the question is answered and the ROUTE_TO_USER agent re-completes with LGTM, the Workflow merges both worktrees in config order.
 - **Fork/join with >2 agents:** Same behavior — dispatch all, wait for all, merge in config order.
 
 ### Acceptance Tests
@@ -487,7 +493,7 @@ Specifies the behavioral flow for the `ptah migrate` CLI command that migrates v
 ### Edge Cases
 
 - **Empty state file (no features):** Success with summary showing 0 created.
-- **Feature with `forkJoin` state partially completed:** Transfer the subtask statuses. On Temporal resume, the workflow checks which subtasks are already complete and only dispatches pending ones.
+- **Feature with `forkJoin` state partially completed:** All subtasks are reset to `pending`. The migrated workflow re-dispatches all agents in the fork/join phase, discarding any partial completion from v4. This is consistent with BR-14 (all agents re-dispatched on retry) and avoids stale worktree state from v4. A warning is emitted: `Feature '{slug}' was mid fork/join with partial completion. All subtasks reset to pending — all agents will be re-dispatched.`
 - **Feature paused on a question (ROUTE_TO_USER):** The migration creates the workflow in the appropriate phase. The pending question is NOT automatically transferred (questions are in `pending.md`, not `pdlc-state.json`). The user must re-submit the question. A warning is emitted: `Feature '{slug}' was paused on a question. The pending question was not migrated — the agent will re-ask when resumed.`
 
 ### Error Scenarios
@@ -549,6 +555,7 @@ None. All behavioral ambiguities from the REQ (heartbeat mechanism, fork/join fa
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 2, 2026 | Product Manager | Initial FSPEC. 6 specifications: FSPEC-TF-01..05, FSPEC-MG-01. 19 acceptance tests. 25 business rules. |
+| 1.1 | April 2, 2026 | Product Manager | Addressed engineer cross-review (CROSS-REVIEW-engineer-FSPEC.md). **F-01:** Resolved fork/join merge timing — Activities in fork/join context return without merging; Workflow orchestrates merges after all Activities complete (new BR-04a). Updated FSPEC-TF-01 step 9, FSPEC-TF-04 ROUTE_TO_USER section. **F-03:** Migration at fork/join phases resets all subtasks to pending (consistent with BR-14). Updated FSPEC-MG-01 edge case. **F-05:** Clarified rate-limit retries happen inside the Activity (new BR-26), not via Temporal's retry mechanism. Updated FSPEC-TF-03 classification table and edge case. F-02/F-04 acknowledged as TSPEC concerns. |
 
 ---
 
