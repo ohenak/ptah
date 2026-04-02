@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-015 |
 | **Parent Document** | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 2, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -128,7 +128,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | ID | Assumption | Impact if Wrong |
 |----|-----------|-----------------|
-| A-08 | Temporal TypeScript SDK (v1.x) is stable and supports all required primitives (Workflows, Activities, Signals, Queries) | Core architecture may need adjustment; mitigated by SDK maturity |
+| A-08 | Temporal TypeScript SDK (latest v1.x, currently v1.11.x) is stable and supports all required primitives (Workflows, Activities, Signals, Queries). The TSPEC should target the latest v1.x release at implementation time, not a specific minimum version. | Core architecture may need adjustment; mitigated by SDK maturity |
 | A-09 | `temporal server start-dev` provides a sufficient local development experience | Developers may need Docker Compose for local Temporal; document alternatives |
 | A-10 | The existing Claude Agent SDK invocation pattern fits within Temporal's Activity model (long-running Activities with heartbeat) | May need to use Temporal's async Activity completion pattern for very long agent runs |
 | A-11 | Temporal's event-sourced workflow state is sufficient for all PDLC state needs — no additional database required | If complex queries are needed beyond what Temporal provides, may need a read-side projection |
@@ -143,7 +143,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | Each feature managed by Ptah runs as a single Temporal Workflow. The workflow progresses through phases defined in configuration, dispatching Activities for agent invocations and waiting for Signals for human input. The workflow ID is `ptah-feature-{feature-slug}`. |
+| **Description** | Each feature managed by Ptah runs as a single Temporal Workflow. The workflow progresses through phases defined in configuration, dispatching Activities for agent invocations and waiting for Signals for human input. The workflow ID is `ptah-feature-{feature-slug}-{sequence}`, where `{sequence}` is an incrementing integer (starting at 1) to avoid Workflow ID collision when a feature with the same slug is re-initiated after a previous workflow completes. The Orchestrator checks for existing workflows with the slug prefix before assigning the sequence number. |
 | **Acceptance Criteria** | **Who:** Orchestrator **Given:** A new feature is initiated (via Discord thread or CLI) **When:** The Orchestrator creates a Temporal Workflow with ID `ptah-feature-{slug}` **Then:** The workflow begins at the first configured phase and progresses through the phase graph until completion or pause. |
 | **Priority** | P0 |
 | **Source Stories** | US-26, US-27 |
@@ -153,8 +153,8 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | Each agent invocation (skill call) is a Temporal Activity. The Activity wraps the existing `SkillInvoker.invoke()` call with Temporal's retry, timeout, and heartbeat mechanisms. Activities are idempotent — re-execution after a crash produces the same result or safely skips already-completed work. |
-| **Acceptance Criteria** | **Who:** Orchestrator **Given:** A workflow reaches a phase that requires agent dispatch **When:** The workflow executes a Temporal Activity for the assigned agent **Then:** The Activity invokes the Claude Agent SDK via `SkillInvoker`, returns the routing signal and artifact changes, and the workflow advances based on the result. |
+| **Description** | Each agent invocation (skill call) is a Temporal Activity. The Activity wraps the existing `SkillInvoker.invoke()` call with Temporal's retry, timeout, and heartbeat mechanisms. Activities use `startToCloseTimeout` (configurable, default 30 minutes) to accommodate long-running agent invocations. Activities emit heartbeats at a configurable interval (default 30 seconds) by polling the subprocess for liveness (process.alive check). If heartbeats stop for longer than `heartbeatTimeout` (configurable, default 120 seconds), Temporal considers the Activity failed and may retry it. Activities are idempotent — re-execution after a crash produces the same result or safely skips already-completed work (checked via git worktree existence and commit status). |
+| **Acceptance Criteria** | **Who:** Orchestrator **Given:** A workflow reaches a phase that requires agent dispatch **When:** The workflow executes a Temporal Activity for the assigned agent **Then:** The Activity invokes the Claude Agent SDK via `SkillInvoker`, emits heartbeats every 30 seconds via subprocess liveness polling, returns the routing signal and artifact changes, and the workflow advances based on the result. If heartbeats cease for >120 seconds, the Activity is considered failed. |
 | **Priority** | P0 |
 | **Source Stories** | US-26 |
 | **Dependencies** | REQ-TF-01 |
@@ -163,7 +163,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | When an agent returns `ROUTE_TO_USER`, the workflow pauses and waits for a Temporal Signal containing the user's answer. The Signal is sent by the messaging layer (Discord listener, CLI prompt, webhook handler). This replaces the file-based `pending.md` polling mechanism. |
+| **Description** | When an agent returns `ROUTE_TO_USER`, the workflow pauses and waits for a Temporal Signal containing the user's answer. The Signal is sent by the messaging layer (Discord listener, CLI prompt, webhook handler). This replaces the file-based `pending.md` polling mechanism. Temporal buffers Signals sent before the workflow reaches the wait point, so out-of-order delivery is safe. Note: Signal delivery depends on the messaging layer's reliability — if the messaging layer crashes after receiving the user's answer but before sending the Signal, the answer is lost. The messaging layer should implement at-least-once delivery (e.g., retry Signal send on failure) to match the durability of the previous file-based approach. |
 | **Acceptance Criteria** | **Who:** Orchestrator **Given:** An agent returns `ROUTE_TO_USER` with a question **When:** The workflow emits a notification (via the messaging provider) and waits for a `user-answer` Signal **Then:** The workflow resumes with the user's answer injected into the next agent's context. The workflow can wait indefinitely without consuming resources. |
 | **Priority** | P0 |
 | **Source Stories** | US-26 |
@@ -193,8 +193,8 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | For phases configured as fork/join (e.g., fullstack features where both `eng` and `fe` work in parallel), the workflow dispatches multiple Activities concurrently and waits for all to complete before advancing. Partial completion is tracked. If any agent fails, the workflow follows the configured failure policy (wait-for-all or fail-fast). |
-| **Acceptance Criteria** | **Who:** Orchestrator **Given:** A workflow reaches a fork/join phase with agents `[eng, fe]` **When:** The workflow dispatches both Activities concurrently **Then:** The workflow waits for both to complete. If both succeed, it advances to the next phase. If one fails, the behavior follows the configured failure policy. Partial completion state is visible via Queries. |
+| **Description** | For phases configured as fork/join (e.g., fullstack features where both `eng` and `fe` work in parallel), the workflow dispatches multiple Activities concurrently and waits for all to complete before advancing. Partial completion is tracked. The default failure policy is **wait-for-all**: if one Activity fails, the workflow waits for all remaining Activities to complete (or fail) before evaluating the result. No partial merges occur — the feature branch stays at its pre-batch state (preserving the existing no-partial-merge invariant from v4). Fork/join failure policies are configurable per phase in `ptah.workflow.yaml` with two options: `wait_for_all` (default) — let all Activities finish, then report all failures together; `fail_fast` — request cancellation of surviving Activities via Temporal's cooperative cancellation (Activities check for cancellation at heartbeat boundaries and clean up). In both policies, partial results (worktree changes from successful Activities) are **discarded** — no worktrees are merged when any Activity in the batch fails. To resume after failure, the workflow re-dispatches **all** agents in the fork/join phase (not just the failed one), ensuring a clean slate. |
+| **Acceptance Criteria** | **Who:** Orchestrator **Given:** A workflow reaches a fork/join phase with agents `[eng, fe]` using `wait_for_all` policy **When:** Agent `eng` succeeds but agent `fe` fails after retries **Then:** The workflow waits for `eng` to complete, does NOT merge any worktrees, reports both results (eng: success, fe: failure) to the user, and enters a failed state. On retry, both `eng` and `fe` are re-dispatched. Partial completion state (which agents succeeded/failed) is visible via Queries. |
 | **Priority** | P0 |
 | **Source Stories** | US-26, US-27 |
 | **Dependencies** | REQ-TF-02, REQ-CD-01 |
@@ -255,7 +255,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | The workflow graph (which phase follows which) is defined in configuration via `transitions` or implicit ordering. Supports: linear chains (`A → B → C`), conditional transitions (`skip_if` predicates), and the creation → review → approved → next-creation pattern as a configurable template. The `transition()` function in `state-machine.ts` is replaced by a generic graph walker that reads the config. |
+| **Description** | The workflow graph (which phase follows which) is defined in configuration via `transitions` or implicit ordering. Supports: linear chains (`A → B → C`), conditional transitions (`skip_if` predicates), and the creation → review → approved → next-creation pattern as a configurable template. The `transition()` function in `state-machine.ts` is replaced by a generic graph walker that reads the config. **Workflow versioning:** Running workflows complete using the workflow config that was active when they started. Changes to `ptah.workflow.yaml` apply only to newly started workflows. The workflow stores its config snapshot at creation time; this ensures deterministic replay even if the config file changes mid-execution. |
 | **Acceptance Criteria** | **Who:** Developer **Given:** A workflow config with transitions `req_creation → req_review → req_approved → spec_creation` **When:** The workflow completes `req_creation` **Then:** It advances to `req_review` as defined in the config. Adding a new phase between them requires only a config change. |
 | **Priority** | P0 |
 | **Source Stories** | US-27 |
@@ -297,8 +297,8 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A `ptah migrate` CLI command reads the existing `pdlc-state.json` file and creates a Temporal Workflow for each in-progress feature, positioned at its current phase. Completed features are optionally imported as completed workflows (for history). The migration tool validates that all features were imported successfully. |
-| **Acceptance Criteria** | **Who:** Developer **Given:** A `pdlc-state.json` with 3 features: one at `TSPEC_REVIEW`, one at `IMPLEMENTATION`, one at `DONE` **When:** The developer runs `ptah migrate` **Then:** Two active Temporal Workflows are created (at TSPEC_REVIEW and IMPLEMENTATION). The DONE feature is optionally imported as a completed workflow. A summary report confirms all 3 features were processed. |
+| **Description** | A `ptah migrate` CLI command reads the existing `pdlc-state.json` file and creates a Temporal Workflow for each in-progress feature, positioned at its current phase. Migration uses a built-in mapping from v4 `PdlcPhase` enum values to the default PDLC preset's phase IDs (e.g., `TSPEC_CREATION` → `tspec-creation`). The tool reads `ptah.workflow.yaml` and validates that every v4 phase in the state file has a corresponding phase in the target workflow config. If any v4 phase cannot be mapped (e.g., the user has a custom workflow that omits `fspec-creation`), the migration aborts with a clear error listing the unmapped phases. Custom workflows require a `--phase-map` flag pointing to a JSON mapping file (`{"TSPEC_CREATION": "my-spec-phase"}`). Completed features are optionally imported as completed workflows (for history). The migration tool validates that all features were imported successfully. |
+| **Acceptance Criteria** | **Who:** Developer **Given:** A `pdlc-state.json` with 3 features: one at `TSPEC_REVIEW`, one at `IMPLEMENTATION`, one at `DONE`, and the default `ptah.workflow.yaml` **When:** The developer runs `ptah migrate` **Then:** Two active Temporal Workflows are created (at `tspec-review` and `implementation` phases). The DONE feature is optionally imported as a completed workflow. A summary report confirms all 3 features were processed. **Given:** A custom `ptah.workflow.yaml` missing the `fspec-creation` phase, and a feature at `FSPEC_CREATION` in the state file **When:** The developer runs `ptah migrate` without `--phase-map` **Then:** The tool aborts with: `Migration failed: v4 phase FSPEC_CREATION has no matching phase in ptah.workflow.yaml. Use --phase-map to provide a custom mapping.` |
 | **Priority** | P0 |
 | **Source Stories** | US-29 |
 | **Dependencies** | REQ-TF-01, REQ-CD-01 |
@@ -339,7 +339,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | The Temporal Worker is configurable via `ptah.config.json`: task queue name, max concurrent workflow tasks, max concurrent activity tasks, and Activity timeouts. Defaults provided for single-machine operation. |
+| **Description** | The Temporal Worker runs **in-process** with the Orchestrator (matching the current single-process model). The Worker is configurable via `ptah.config.json`: task queue name, max concurrent workflow tasks, max concurrent activity tasks, and Activity timeouts. Defaults provided for single-machine operation. Separate Worker deployment (out-of-process) is a future option but out of scope for v5.0. |
 | **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with `temporal.worker.max_concurrent_activities: 3` **When:** The Orchestrator starts **Then:** The Temporal Worker processes at most 3 Activities concurrently. |
 | **Priority** | P1 |
 | **Source Stories** | US-26 |
@@ -394,6 +394,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 |---------|------|--------|---------|
 | 1.0 | April 1, 2026 | Product Manager | Initial requirements document. 20 requirements across 4 domains. |
 | 1.1 | April 2, 2026 | Product Manager | Applied user decisions: (1) workflow phases defined in `ptah.workflow.yaml` (separate from `ptah.config.json`), (2) `temporal server start-dev` is the default deployment, Docker Compose deferred to REQ-018, (3) REQ-CD-07 confirmed as P0. Updated REQ-CD-01, REQ-CD-05, REQ-NF-15-01. |
+| 1.2 | April 2, 2026 | Product Manager | Addressed engineer cross-review (CROSS-REVIEW-engineer-REQ.md). **F-01:** Added heartbeat mechanism to REQ-TF-02 (30s interval, subprocess liveness polling, 120s heartbeat timeout). **F-02:** Specified fork/join failure policy in REQ-TF-06 (wait-for-all default, fail-fast via cooperative cancellation, no partial merges, full re-dispatch on retry). **F-03:** Defined migration phase-mapping strategy in REQ-MG-01 (built-in v4→default-preset mapping, `--phase-map` for custom workflows, abort on unmapped phases). **F-04:** Added Signal reliability note to REQ-TF-03. **F-05:** Added workflow versioning policy to REQ-CD-04 (config snapshot at workflow creation, changes apply to new workflows only). **Q-01:** Updated A-08 to target latest v1.x. **Q-02:** Specified in-process Worker topology in REQ-NF-15-03. **Q-03:** Added sequence number to workflow IDs in REQ-TF-01 to prevent collision. |
 
 ---
 
