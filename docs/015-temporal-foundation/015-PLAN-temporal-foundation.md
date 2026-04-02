@@ -37,14 +37,14 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | Implement invokeSkill Activity — idempotency check (worktree exists with committed changes → skip) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C2 | Implement invokeSkill Activity — worktree creation, context assembly, skill invocation | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C3 | Implement invokeSkill Activity — heartbeat loop (subprocess liveness polling, cancellation check) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C4 | Implement invokeSkill Activity — LGTM/TASK_COMPLETE handling: commit, merge (single-agent) or return worktree (fork/join) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C5 | Implement invokeSkill Activity — ROUTE_TO_USER handling: no merge, return question | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C6 | Implement invokeSkill Activity — error classification (retryable vs non-retryable, ApplicationFailure.nonRetryable, internal 429 retry per BR-26) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C7 | Implement mergeWorktree Activity — merge worktree to feature branch, conflict detection, pre-merge SHA rollback for fork/join | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| C8 | Implement sendNotification Activity — question, failure, status, revision-bound notification types | `tests/unit/temporal/notification-activity.test.ts` | `src/temporal/activities/notification-activity.ts` | ⬚ Not Started |
+| C1 | Implement invokeSkill Activity — idempotency check (worktree exists with committed changes → skip) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C2 | Implement invokeSkill Activity — worktree creation, context assembly, skill invocation | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C3 | Implement invokeSkill Activity — heartbeat loop (subprocess liveness polling, cancellation check) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C4 | Implement invokeSkill Activity — LGTM/TASK_COMPLETE handling: commit, merge (single-agent) or return worktree (fork/join) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C5 | Implement invokeSkill Activity — ROUTE_TO_USER handling: no merge, return question | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C6 | Implement invokeSkill Activity — error classification (retryable vs non-retryable, ApplicationFailure.nonRetryable, internal 429 retry per BR-26) | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C7 | Implement mergeWorktree Activity — merge worktree to feature branch, conflict detection, pre-merge SHA rollback for fork/join | `tests/unit/temporal/skill-activity.test.ts` | `src/temporal/activities/skill-activity.ts` | ✅ Done |
+| C8 | Implement sendNotification Activity — question, failure, status, revision-bound notification types | `tests/unit/temporal/notification-activity.test.ts` | `src/temporal/activities/notification-activity.ts` | ✅ Done |
 
 ### Phase D: Workflow Logic
 
