@@ -2889,3 +2889,210 @@ async function waitForQueue(queue: InMemoryThreadQueue, threadId: string, maxWai
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase E: TemporalOrchestrator tests (E1–E5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { TemporalOrchestrator } from "../../../src/orchestrator/temporal-orchestrator.js";
+import {
+  FakeTemporalClient,
+  FakeTemporalWorker,
+} from "../../fixtures/factories.js";
+import type { WorkflowConfig } from "../../../src/config/workflow-config.js";
+
+function makeMinimalWorkflowConfig(): WorkflowConfig {
+  return {
+    version: 1,
+    phases: [
+      {
+        id: "req-creation",
+        name: "Requirements Creation",
+        type: "creation",
+        agent: "pm-agent",
+      },
+    ],
+  };
+}
+
+describe("TemporalOrchestrator (Phase E)", () => {
+  let temporalClient: FakeTemporalClient;
+  let temporalWorker: FakeTemporalWorker;
+  let discord: FakeDiscordClient;
+  let logger: FakeLogger;
+  let skillInvoker: FakeSkillInvoker;
+  let agentRegistry: FakeAgentRegistry;
+  let workflowConfig: WorkflowConfig;
+  let temporalOrchestrator: TemporalOrchestrator;
+
+  beforeEach(() => {
+    temporalClient = new FakeTemporalClient();
+    temporalWorker = new FakeTemporalWorker();
+    discord = new FakeDiscordClient();
+    logger = new FakeLogger();
+    skillInvoker = new FakeSkillInvoker();
+    agentRegistry = new FakeAgentRegistry([
+      makeRegisteredAgent({ id: "pm-agent", mention_id: "111222333", display_name: "PM Agent" }),
+    ]);
+    workflowConfig = makeMinimalWorkflowConfig();
+
+    temporalOrchestrator = new TemporalOrchestrator({
+      temporalClient,
+      worker: temporalWorker as unknown as import("@temporalio/worker").Worker,
+      discordClient: discord,
+      logger,
+      config: defaultTestConfig(),
+      workflowConfig,
+      agentRegistry,
+      skillInvoker,
+    });
+  });
+
+  // E4: Startup — connect Temporal, start Worker
+  describe("startup (E4)", () => {
+    it("connects Temporal client and starts worker on startup", async () => {
+      await temporalOrchestrator.startup();
+      expect(temporalClient.connectCalls).toBe(1);
+      expect(temporalClient.connected).toBe(true);
+    });
+
+    it("prunes orphaned worktrees on startup", async () => {
+      await temporalOrchestrator.startup();
+      expect(skillInvoker.pruned).toBe(true);
+    });
+
+    it("resolves discord debug channel on startup", async () => {
+      discord.channels.set("agent-debug", "debug-channel-id");
+      await temporalOrchestrator.startup();
+      // No error thrown — channel resolved successfully
+    });
+
+    it("continues startup even if pruning fails", async () => {
+      skillInvoker.invokeError = new Error("prune failed");
+      // Should not throw
+      await expect(temporalOrchestrator.startup()).resolves.not.toThrow();
+    });
+  });
+
+  // E5: Shutdown — shut down Worker, disconnect Temporal client
+  describe("shutdown (E5)", () => {
+    it("shuts down worker and disconnects Temporal client", async () => {
+      await temporalOrchestrator.startup();
+      await temporalOrchestrator.shutdown();
+      expect(temporalWorker.shutdownCalled).toBe(true);
+      expect(temporalClient.disconnectCalls).toBe(1);
+    });
+
+    it("disconnects Temporal client even if worker shutdown throws", async () => {
+      temporalWorker.shutdownError = new Error("worker shutdown failed");
+      await temporalOrchestrator.startup();
+      // Should not throw — continues to disconnect even on worker failure
+      await temporalOrchestrator.shutdown();
+      expect(temporalClient.disconnectCalls).toBe(1);
+    });
+  });
+
+  // E1: Start workflow on new feature
+  describe("start workflow on new feature (E1)", () => {
+    it("starts a Temporal workflow when a new feature is initiated via Discord", async () => {
+      await temporalOrchestrator.startup();
+      const message = createThreadMessage({
+        content: "start new feature: auth-service",
+        threadId: "thread-new-feature",
+        threadName: "auth-service",
+      });
+
+      await temporalOrchestrator.startWorkflowForFeature({
+        featureSlug: "auth-service",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+      });
+
+      expect(temporalClient.startedWorkflows).toHaveLength(1);
+      expect(temporalClient.startedWorkflows[0].featureSlug).toBe("auth-service");
+    });
+
+    it("workflow ID follows ptah-feature-{slug}-{sequence} convention", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = await temporalOrchestrator.startWorkflowForFeature({
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "fullstack", skipFspec: true },
+      });
+      expect(workflowId).toMatch(/^ptah-feature-my-feature-\d+$/);
+    });
+
+    it("passes workflowConfig snapshot when starting workflow", async () => {
+      await temporalOrchestrator.startup();
+      await temporalOrchestrator.startWorkflowForFeature({
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+      });
+      expect(temporalClient.startedWorkflows[0].workflowConfig).toEqual(workflowConfig);
+    });
+  });
+
+  // E2: Route Discord user answers as Temporal Signals (user-answer)
+  describe("route user answers as Signals (E2)", () => {
+    it("sends user-answer Signal to the workflow when user answers a question", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = "ptah-feature-my-feature-1";
+
+      await temporalOrchestrator.routeUserAnswer({
+        workflowId,
+        answer: "Use PostgreSQL",
+        answeredBy: "user-123",
+        answeredAt: "2026-04-02T10:00:00Z",
+      });
+
+      const signal = temporalClient.sentSignals.find(s => s.signal === "user-answer");
+      expect(signal).toBeDefined();
+      expect(signal!.workflowId).toBe(workflowId);
+      expect((signal!.payload as { answer: string }).answer).toBe("Use PostgreSQL");
+    });
+  });
+
+  // E3: Route retry/cancel and resume/cancel Signals from Discord
+  describe("route retry/cancel and resume/cancel Signals (E3)", () => {
+    it("sends retry-or-cancel Signal with retry action", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = "ptah-feature-my-feature-1";
+
+      await temporalOrchestrator.routeRetryOrCancel({ workflowId, action: "retry" });
+
+      const signal = temporalClient.sentSignals.find(s => s.signal === "retry-or-cancel");
+      expect(signal).toBeDefined();
+      expect(signal!.workflowId).toBe(workflowId);
+      expect(signal!.payload).toBe("retry");
+    });
+
+    it("sends retry-or-cancel Signal with cancel action", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = "ptah-feature-my-feature-1";
+
+      await temporalOrchestrator.routeRetryOrCancel({ workflowId, action: "cancel" });
+
+      const signal = temporalClient.sentSignals.find(s => s.signal === "retry-or-cancel");
+      expect(signal!.payload).toBe("cancel");
+    });
+
+    it("sends resume-or-cancel Signal with resume action", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = "ptah-feature-my-feature-1";
+
+      await temporalOrchestrator.routeResumeOrCancel({ workflowId, action: "resume" });
+
+      const signal = temporalClient.sentSignals.find(s => s.signal === "resume-or-cancel");
+      expect(signal).toBeDefined();
+      expect(signal!.payload).toBe("resume");
+    });
+
+    it("sends resume-or-cancel Signal with cancel action", async () => {
+      await temporalOrchestrator.startup();
+      const workflowId = "ptah-feature-my-feature-1";
+
+      await temporalOrchestrator.routeResumeOrCancel({ workflowId, action: "cancel" });
+
+      const signal = temporalClient.sentSignals.find(s => s.signal === "resume-or-cancel");
+      expect(signal!.payload).toBe("cancel");
+    });
+  });
+});

@@ -35,8 +35,15 @@ describe("DIRECTORY_MANIFEST", () => {
 
 // Task 10: FILE_MANIFEST
 describe("FILE_MANIFEST", () => {
-  it("contains exactly 17 entries (14 content + 3 .gitkeep)", () => {
-    expect(Object.keys(FILE_MANIFEST)).toHaveLength(17);
+  it("contains exactly 18 entries (14 content + 3 .gitkeep + ptah.workflow.yaml)", () => {
+    expect(Object.keys(FILE_MANIFEST)).toHaveLength(18);
+  });
+
+  it("contains ptah.workflow.yaml with workflow configuration", () => {
+    expect(FILE_MANIFEST).toHaveProperty("ptah.workflow.yaml");
+    expect(FILE_MANIFEST["ptah.workflow.yaml"]).toContain("version: 1");
+    expect(FILE_MANIFEST["ptah.workflow.yaml"]).toContain("phases:");
+    expect(FILE_MANIFEST["ptah.workflow.yaml"]).toContain("req-creation");
   });
 
   it("contains all 14 content files", () => {

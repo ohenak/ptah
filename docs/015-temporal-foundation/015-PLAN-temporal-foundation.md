@@ -69,13 +69,13 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E1 | Update Orchestrator — replace PdlcDispatcher dependency with TemporalClientWrapper; start workflow on new feature | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E2 | Update Orchestrator — route Discord user answers as Temporal Signals (user-answer) | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E3 | Update Orchestrator — route retry/cancel and resume/cancel Signals from Discord | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E4 | Update Orchestrator startup — validate workflow config, connect Temporal, start in-process Worker | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E5 | Update Orchestrator shutdown — shut down Worker, disconnect Temporal client | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/orchestrator.ts` | ⬚ Not Started |
-| E6 | Update ContextAssembler — accept contextDocumentRefs from config instead of calling getContextDocuments() | `tests/unit/orchestrator/context-assembler.test.ts` | `src/orchestrator/context-assembler.ts` | ⬚ Not Started |
-| E7 | Update `ptah init` — generate default `ptah.workflow.yaml` and `temporal` section in `ptah.config.json` | `tests/unit/commands/init.test.ts` | `src/commands/init.ts` (or bin/ptah.ts) | ⬚ Not Started |
+| E1 | Update Orchestrator — replace PdlcDispatcher dependency with TemporalClientWrapper; start workflow on new feature | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| E2 | Update Orchestrator — route Discord user answers as Temporal Signals (user-answer) | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| E3 | Update Orchestrator — route retry/cancel and resume/cancel Signals from Discord | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| E4 | Update Orchestrator startup — validate workflow config, connect Temporal, start in-process Worker | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| E5 | Update Orchestrator shutdown — shut down Worker, disconnect Temporal client | `tests/unit/orchestrator/orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| E6 | Update ContextAssembler — accept contextDocumentRefs from config instead of calling getContextDocuments() | `tests/unit/orchestrator/context-assembler.test.ts` | `src/orchestrator/context-assembler.ts` | ✅ Done |
+| E7 | Update `ptah init` — generate default `ptah.workflow.yaml` and `temporal` section in `ptah.config.json` | `tests/unit/commands/init.test.ts` | `src/config/defaults.ts` | ✅ Done |
 
 ### Phase F: Migration Tool
 

@@ -68,12 +68,12 @@ describe("InitCommand", () => {
     });
   });
 
-  // Task 16: Creates all 17 files with correct content
+  // Task 16: Creates all files with correct content (was 17, now 18 with ptah.workflow.yaml)
   describe("file creation", () => {
-    it("creates all 17 files from FILE_MANIFEST", async () => {
+    it("creates all 18 files from FILE_MANIFEST", async () => {
       const result = await command.execute();
       const allFileKeys = Object.keys(FILE_MANIFEST);
-      expect(allFileKeys).toHaveLength(17);
+      expect(allFileKeys).toHaveLength(18);
 
       for (const filePath of allFileKeys) {
         if (filePath === "ptah.config.json") {
@@ -163,7 +163,7 @@ describe("InitCommand", () => {
       // Second run on same fs state
       const result2 = await command.execute();
       expect(result2.created).toHaveLength(0);
-      expect(result2.skipped).toHaveLength(17); // all 17 files
+      expect(result2.skipped).toHaveLength(18); // all 18 files
       expect(result2.committed).toBe(false);
 
       // No git calls made during second run
@@ -220,6 +220,8 @@ describe("InitCommand", () => {
       for (const [path, content] of Object.entries(FILE_MANIFEST)) {
         if (path === "ptah.config.json") {
           fs.addExisting(path, buildConfig("project"));
+        } else if (path === "ptah.workflow.yaml") {
+          fs.addExisting(path, content as string);
         } else {
           fs.addExisting(path, content);
         }
@@ -238,8 +240,8 @@ describe("InitCommand", () => {
     it("reports correct created, skipped, and committed on fresh repo", async () => {
       const result = await command.execute();
 
-      // All 17 files should be created (directories aren't in created[])
-      expect(result.created).toHaveLength(17);
+      // All 18 files should be created (directories aren't in created[])
+      expect(result.created).toHaveLength(18);
       expect(result.skipped).toHaveLength(0);
       expect(result.committed).toBe(true);
     });
@@ -250,7 +252,7 @@ describe("InitCommand", () => {
 
       const result = await command.execute();
 
-      expect(result.created).toHaveLength(15); // 17 - 2 existing
+      expect(result.created).toHaveLength(16); // 18 - 2 existing
       expect(result.skipped).toHaveLength(2);
       expect(result.committed).toBe(true);
     });
@@ -309,6 +311,55 @@ describe("InitCommand", () => {
       fs.addExisting("docs/overview.md", "existing");
       const result = await command.execute();
       expect(result.skipped).toContain("docs/overview.md");
+    });
+  });
+
+  // E7: ptah.workflow.yaml generation and temporal section in ptah.config.json
+  describe("E7: temporal foundation scaffold", () => {
+    it("creates ptah.workflow.yaml with valid YAML content", async () => {
+      const result = await command.execute();
+      expect(result.created).toContain("ptah.workflow.yaml");
+      const content = fs.getFile("ptah.workflow.yaml");
+      expect(content).toBeDefined();
+      expect(content).toContain("version: 1");
+      expect(content).toContain("phases:");
+    });
+
+    it("ptah.workflow.yaml contains req-creation phase", async () => {
+      await command.execute();
+      const content = fs.getFile("ptah.workflow.yaml")!;
+      expect(content).toContain("req-creation");
+    });
+
+    it("ptah.config.json includes temporal section with default values", async () => {
+      await command.execute();
+      const configContent = fs.getFile("ptah.config.json")!;
+      const parsed = JSON.parse(configContent);
+      expect(parsed.temporal).toBeDefined();
+      expect(parsed.temporal.address).toBe("localhost:7233");
+      expect(parsed.temporal.namespace).toBe("default");
+      expect(parsed.temporal.taskQueue).toBe("ptah-main");
+      expect(parsed.temporal.worker).toBeDefined();
+      expect(parsed.temporal.worker.maxConcurrentWorkflowTasks).toBe(10);
+      expect(parsed.temporal.worker.maxConcurrentActivities).toBe(3);
+      expect(parsed.temporal.retry).toBeDefined();
+      expect(parsed.temporal.retry.maxAttempts).toBe(3);
+      expect(parsed.temporal.heartbeat).toBeDefined();
+      expect(parsed.temporal.heartbeat.intervalSeconds).toBe(30);
+      expect(parsed.temporal.heartbeat.timeoutSeconds).toBe(120);
+    });
+
+    it("ptah.workflow.yaml is skipped if it already exists", async () => {
+      const existing = "version: 1\nphases: []";
+      fs.addExisting("ptah.workflow.yaml", existing);
+      const result = await command.execute();
+      expect(result.skipped).toContain("ptah.workflow.yaml");
+      expect(fs.getFile("ptah.workflow.yaml")).toBe(existing);
+    });
+
+    it("ptah.workflow.yaml is included in created list on fresh repo", async () => {
+      const result = await command.execute();
+      expect(result.created).toContain("ptah.workflow.yaml");
     });
   });
 });

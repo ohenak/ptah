@@ -1565,31 +1565,43 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   workflowStates: Map<string, FeatureWorkflowState> = new Map();
   workflowIds: Map<string, string[]> = new Map(); // prefix → workflow IDs
   connectionError: Error | null = null;
+  disconnectError: Error | null = null;
+  startWorkflowError: Error | null = null;
+  signalError: Error | null = null;
   connected = false;
+  connectCalls = 0;
+  disconnectCalls = 0;
 
   async connect(): Promise<void> {
+    this.connectCalls++;
     if (this.connectionError) throw this.connectionError;
     this.connected = true;
   }
 
   async disconnect(): Promise<void> {
+    this.disconnectCalls++;
+    if (this.disconnectError) throw this.disconnectError;
     this.connected = false;
   }
 
   async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
+    if (this.startWorkflowError) throw this.startWorkflowError;
     this.startedWorkflows.push(params);
     return `ptah-feature-${params.featureSlug}-1`;
   }
 
   async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {
+    if (this.signalError) throw this.signalError;
     this.sentSignals.push({ workflowId, signal: "user-answer", payload: answer });
   }
 
   async signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void> {
+    if (this.signalError) throw this.signalError;
     this.sentSignals.push({ workflowId, signal: "retry-or-cancel", payload: action });
   }
 
   async signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void> {
+    if (this.signalError) throw this.signalError;
     this.sentSignals.push({ workflowId, signal: "resume-or-cancel", payload: action });
   }
 
@@ -1605,6 +1617,30 @@ export class FakeTemporalClient implements TemporalClientWrapper {
 
   isConnected(): boolean {
     return this.connected;
+  }
+}
+
+/** Minimal fake for the Temporal Worker (from @temporalio/worker) */
+export class FakeTemporalWorker {
+  running = false;
+  shutdownCalled = false;
+  shutdownError: Error | null = null;
+  runError: Error | null = null;
+  private runResolve: (() => void) | null = null;
+
+  async run(): Promise<void> {
+    if (this.runError) throw this.runError;
+    this.running = true;
+    await new Promise<void>((resolve) => {
+      this.runResolve = resolve;
+    });
+  }
+
+  async shutdown(): Promise<void> {
+    this.shutdownCalled = true;
+    if (this.shutdownError) throw this.shutdownError;
+    this.running = false;
+    this.runResolve?.();
   }
 }
 

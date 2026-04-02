@@ -24,6 +24,9 @@ export interface ContextAssembler {
     contextDocuments?: ContextDocumentSet; // Phase 11: PDLC phase-aware document set
     taskType?: TaskType;       // Phase 11: PDLC task type (Create, Review, Revise, Resubmit, Implement)
     documentType?: string;   // Phase 11: PDLC document type (REQ, FSPEC, TSPEC, PLAN, PROPERTIES, IMPLEMENTATION)
+    /** E6: Config-driven context document paths. When provided, only these files are read
+     * for Layer 2 (overrides the full feature folder scan and contextDocuments). */
+    contextDocumentRefs?: string[];
   }): Promise<ContextBundle>;
 }
 
@@ -64,8 +67,9 @@ export class DefaultContextAssembler implements ContextAssembler {
     contextDocuments?: ContextDocumentSet;
     taskType?: TaskType;
     documentType?: string;
+    contextDocumentRefs?: string[];
   }): Promise<ContextBundle> {
-    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments, taskType, documentType } = params;
+    const { agentId, threadId, threadName, threadHistory, triggerMessage, config, worktreePath, routingMessage, contextDocuments, taskType, documentType, contextDocumentRefs } = params;
 
     const featureName = this.extractFeatureName(threadName);
     const resumePattern = this.detectResumePattern(agentId, threadHistory);
@@ -157,9 +161,12 @@ export class DefaultContextAssembler implements ContextAssembler {
     }
 
     // Read Layer 2: feature folder files (excluding overview.md)
+    // E6: when contextDocumentRefs is provided, read only those paths (config-driven matrix)
     // Phase 11: when contextDocuments is provided, read only specified documents
     let layer2Files: Array<{ name: string; content: string }>;
-    if (contextDocuments) {
+    if (contextDocumentRefs) {
+      layer2Files = await this.readContextDocumentRefs(contextDocumentRefs);
+    } else if (contextDocuments) {
       layer2Files = await this.readContextDocuments(contextDocuments, docsRoot);
     } else {
       layer2Files = await this.readFeatureFilesFromBase(featureName, docsRoot);
@@ -304,6 +311,29 @@ export class DefaultContextAssembler implements ContextAssembler {
 
     const botTurns = threadHistory.filter((m) => m.isBot && m.authorId === agentId);
     return botTurns.length + 1; // +1 for current turn
+  }
+
+  /**
+   * E6: Read files from explicit absolute/relative paths (config-driven context document refs).
+   * Skips overview.md files (already in Layer 1). Silently skips missing files.
+   */
+  private async readContextDocumentRefs(
+    refs: string[],
+  ): Promise<Array<{ name: string; content: string }>> {
+    const files: Array<{ name: string; content: string }> = [];
+    for (const ref of refs) {
+      // Skip overview.md — already in Layer 1
+      const basename = this.fs.basename(ref);
+      if (basename === "overview.md") continue;
+
+      try {
+        const content = await this.fs.readFile(ref);
+        files.push({ name: basename, content });
+      } catch {
+        // Missing files are silently skipped
+      }
+    }
+    return files;
   }
 
   private async readContextDocuments(
