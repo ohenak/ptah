@@ -30,6 +30,8 @@ import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js"
 import { FileStateStore } from "../src/orchestrator/pdlc/state-store.js";
 import { DefaultPdlcDispatcher } from "../src/orchestrator/pdlc/pdlc-dispatcher.js";
 import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
+import { MigrateCommand } from "../src/commands/migrate.js";
+import { TemporalClientWrapperImpl } from "../src/temporal/client.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -37,8 +39,9 @@ function printHelp(): void {
 Usage: ptah <command>
 
 Commands:
-  init    Scaffold the Ptah docs structure into the current Git repository
-  start   Start the Orchestrator as a Discord bot
+  init     Scaffold the Ptah docs structure into the current Git repository
+  start    Start the Orchestrator as a Discord bot
+  migrate  Migrate v4 pdlc-state.json to Temporal Workflows
 
 Options:
   --help  Show this help message`);
@@ -249,6 +252,75 @@ async function main(): Promise<void> {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(message);
+        process.exitCode = 1;
+      }
+      break;
+    }
+
+    case "migrate": {
+      const fs = new NodeFileSystem();
+      const logger = new ConsoleLogger();
+
+      // Parse flags
+      const dryRun = args.includes("--dry-run");
+      const includeCompleted = args.includes("--include-completed");
+      const phaseMapIdx = args.indexOf("--phase-map");
+      const phaseMapPath = phaseMapIdx !== -1 ? args[phaseMapIdx + 1] : undefined;
+
+      // Load config to get Temporal connection params
+      const configLoader = new NodeConfigLoader(fs);
+      let config;
+      try {
+        config = await configLoader.load();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(message);
+        process.exitCode = 1;
+        return;
+      }
+
+      const temporalConfig = config.temporal ?? {
+        address: "localhost:7233",
+        namespace: "default",
+        taskQueue: "ptah-main",
+        worker: { maxConcurrentWorkflowTasks: 10, maxConcurrentActivities: 3 },
+        retry: { maxAttempts: 3, initialIntervalSeconds: 30, backoffCoefficient: 2.0, maxIntervalSeconds: 600 },
+        heartbeat: { intervalSeconds: 30, timeoutSeconds: 120 },
+      };
+
+      const temporalClient = new TemporalClientWrapperImpl(temporalConfig);
+      const command = new MigrateCommand(temporalClient, fs, logger);
+
+      try {
+        const result = await command.execute({ dryRun, includeCompleted, phaseMapPath });
+
+        if (dryRun) {
+          console.log("Dry-run complete. No workflows were created.");
+          console.log(`  Active features that would be migrated: ${result.activeCreated}`);
+          console.log(`  Completed features that would be imported: ${result.completedImported}`);
+        } else {
+          console.log("Migration complete.");
+          console.log(`  Active workflows created: ${result.activeCreated}`);
+          console.log(`  Completed workflows imported: ${result.completedImported}`);
+          console.log(`  Skipped (already migrated): ${result.skipped}`);
+          console.log(`  Warnings: ${result.warnings.length}`);
+          for (const w of result.warnings) {
+            console.warn(`  ⚠  ${w}`);
+          }
+          if (result.errors.length > 0) {
+            console.error(`  Errors: ${result.errors.length}`);
+            for (const e of result.errors) {
+              console.error(`  ✗  ${e}`);
+            }
+          }
+        }
+
+        if (result.errors.length > 0) {
+          process.exitCode = 1;
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error: ${message}`);
         process.exitCode = 1;
       }
       break;

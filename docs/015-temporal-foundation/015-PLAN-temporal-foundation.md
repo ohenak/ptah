@@ -81,13 +81,13 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| F1 | Implement MigrateCommand — read pdlc-state.json, parse features, handle file-not-found and malformed JSON | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F2 | Implement phase mapping — built-in V4_DEFAULT_MAPPING, custom --phase-map file loading and validation | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F3 | Implement migration validation — all features mappable, abort with error listing unmapped phases | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F4 | Implement dry-run mode — print table of features/phases/workflow IDs without creating workflows | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F5 | Implement workflow creation — start workflows at mapped phases, transfer review state, reset fork/join subtasks (BR-14), skip existing (BR-22) | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F6 | Implement import validation — query each workflow to verify phase, emit warnings on mismatch, print summary report | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ⬚ Not Started |
-| F7 | Wire `ptah migrate` CLI command with --dry-run, --include-completed, --phase-map flags | `tests/unit/commands/migrate.test.ts` | `bin/ptah.ts` | ⬚ Not Started |
+| F1 | Implement MigrateCommand — read pdlc-state.json, parse features, handle file-not-found and malformed JSON | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F2 | Implement phase mapping — built-in V4_DEFAULT_MAPPING, custom --phase-map file loading and validation | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F3 | Implement migration validation — all features mappable, abort with error listing unmapped phases | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F4 | Implement dry-run mode — print table of features/phases/workflow IDs without creating workflows | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F5 | Implement workflow creation — start workflows at mapped phases, transfer review state, reset fork/join subtasks (BR-14), skip existing (BR-22) | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F6 | Implement import validation — query each workflow to verify phase, emit warnings on mismatch, print summary report | `tests/unit/commands/migrate.test.ts` | `src/commands/migrate.ts` | ✅ Done |
+| F7 | Wire `ptah migrate` CLI command with --dry-run, --include-completed, --phase-map flags | `tests/unit/commands/migrate.test.ts` | `bin/ptah.ts` | ✅ Done |
 
 ### Phase G: Cleanup and Integration Tests
 
