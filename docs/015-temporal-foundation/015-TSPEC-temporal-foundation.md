@@ -1,0 +1,1010 @@
+# Technical Specification
+
+## Temporal Foundation + Config-Driven Workflow
+
+| Field | Detail |
+|-------|--------|
+| **Document ID** | TSPEC-015 |
+| **Requirements** | [REQ-015](015-REQ-temporal-foundation.md) |
+| **Functional Specification** | [FSPEC-015](015-FSPEC-temporal-foundation.md) |
+| **Date** | April 2, 2026 |
+| **Status** | Draft |
+
+---
+
+## 1. Summary
+
+Replace Ptah's custom orchestration infrastructure (state machine, dispatcher, concurrency primitives, question polling, JSON persistence) with Temporal durable workflows, and make the PDLC workflow configurable via `ptah.workflow.yaml`. The Temporal Workflow manages the feature lifecycle; Activities wrap skill invocations with heartbeat, retry, and idempotency; Signals replace file-based question polling; Queries expose workflow state. A migration tool (`ptah migrate`) transfers v4 state to Temporal.
+
+---
+
+## 2. Technology Stack
+
+| Concern | Choice | Rationale |
+|---------|--------|-----------|
+| Runtime | Node.js 20 LTS | Existing |
+| Language | TypeScript 5.x (ESM) | Existing |
+| Build | `tsc` → `dist/` | Existing |
+| Test | Vitest 2.x | Existing |
+| Temporal SDK | `temporalio` ^1.11.x | Meta-package installs all `@temporalio/*` packages at compatible versions |
+| Workflow Config | `ptah.workflow.yaml` | YAML via `js-yaml` ^4.x (parse only, no dump needed) |
+| Temporal Dev Server | `temporal server start-dev` | CLI tool, not an npm dep; documented in setup |
+
+### New Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `temporalio` | ^1.11.0 | Temporal SDK meta-package (`@temporalio/client`, `@temporalio/worker`, `@temporalio/workflow`, `@temporalio/activity`, `@temporalio/common`) |
+| `js-yaml` | ^4.1.0 | Parse `ptah.workflow.yaml` |
+| `@types/js-yaml` | ^4.0.9 | TypeScript types (devDependency) |
+
+---
+
+## 3. Project Structure
+
+```
+ptah/
+├── src/
+│   ├── config/
+│   │   ├── loader.ts                        # UPDATED — add temporal + workflow config loading
+│   │   ├── workflow-config.ts               # NEW — WorkflowConfig types + YAML parser
+│   │   └── workflow-validator.ts            # NEW — startup validation (REQ-CD-05)
+│   ├── temporal/
+│   │   ├── workflows/
+│   │   │   └── feature-lifecycle.ts         # NEW — Temporal Workflow definition
+│   │   ├── activities/
+│   │   │   ├── skill-activity.ts            # NEW — skill invocation Activity
+│   │   │   └── notification-activity.ts     # NEW — messaging notification Activity
+│   │   ├── worker.ts                        # NEW — Temporal Worker setup
+│   │   ├── client.ts                        # NEW — Temporal Client wrapper
+│   │   └── types.ts                         # NEW — Temporal-specific shared types
+│   ├── orchestrator/
+│   │   ├── orchestrator.ts                  # UPDATED — replace dispatch logic with Temporal Client
+│   │   ├── context-assembler.ts             # UPDATED — accept config-driven context docs
+│   │   ├── skill-invoker.ts                 # KEPT — used inside Activity
+│   │   ├── artifact-committer.ts            # KEPT — used inside Activity
+│   │   ├── router.ts                        # KEPT — signal parsing
+│   │   ├── agent-registry.ts               # KEPT — agent lookup
+│   │   ├── worktree-registry.ts            # KEPT — worktree tracking
+│   │   └── pdlc/
+│   │       ├── context-matrix.ts            # REMOVED — replaced by config-driven matrix
+│   │       ├── state-machine.ts             # REMOVED — replaced by Temporal Workflow
+│   │       ├── pdlc-dispatcher.ts           # REMOVED — replaced by Temporal Workflow
+│   │       ├── review-tracker.ts            # REMOVED — replaced by config-driven reviewers
+│   │       ├── phases.ts                    # REMOVED — replaced by config-driven phases
+│   │       └── state-store.ts              # REMOVED — replaced by Temporal state
+│   ├── commands/
+│   │   └── migrate.ts                       # NEW — `ptah migrate` command
+│   ├── presets/
+│   │   └── default-pdlc.yaml               # NEW — default workflow preset (REQ-CD-06)
+│   ├── services/
+│   │   └── git.ts                           # KEPT
+│   └── types.ts                             # UPDATED — add workflow config types
+├── tests/
+│   ├── unit/
+│   │   ├── config/
+│   │   │   ├── workflow-config.test.ts      # NEW
+│   │   │   └── workflow-validator.test.ts   # NEW
+│   │   ├── temporal/
+│   │   │   ├── feature-lifecycle.test.ts    # NEW — workflow logic tests
+│   │   │   ├── skill-activity.test.ts       # NEW — activity logic tests
+│   │   │   └── notification-activity.test.ts # NEW
+│   │   └── commands/
+│   │       └── migrate.test.ts              # NEW
+│   ├── integration/
+│   │   └── temporal/
+│   │       └── workflow-integration.test.ts # NEW — TestWorkflowEnvironment tests
+│   └── fixtures/
+│       ├── factories.ts                     # UPDATED — add Temporal fakes
+│       └── default-workflow.yaml            # NEW — test fixture
+├── ptah.workflow.yaml                       # NEW — generated by `ptah init`
+└── package.json                             # UPDATED — add temporalio, js-yaml
+```
+
+### Removed Files
+
+| File | Replaced By |
+|------|-------------|
+| `src/orchestrator/pdlc/state-machine.ts` | `src/temporal/workflows/feature-lifecycle.ts` |
+| `src/orchestrator/pdlc/pdlc-dispatcher.ts` | `src/temporal/workflows/feature-lifecycle.ts` + `src/temporal/activities/skill-activity.ts` |
+| `src/orchestrator/pdlc/review-tracker.ts` | Config-driven reviewer manifests in `ptah.workflow.yaml` |
+| `src/orchestrator/pdlc/phases.ts` | Config-driven phases in `ptah.workflow.yaml` |
+| `src/orchestrator/pdlc/context-matrix.ts` | Config-driven `context_documents` in `ptah.workflow.yaml` |
+| `src/orchestrator/pdlc/state-store.ts` | Temporal's durable workflow state |
+| `src/orchestrator/thread-queue.ts` | Temporal's workflow-level concurrency |
+| `src/orchestrator/merge-lock.ts` | Sequential merge in Workflow (Activities run serially for merges) |
+| `src/orchestrator/invocation-guard.ts` | Temporal retry policy + Activity idempotency |
+| `src/orchestrator/question-store.ts` | Temporal Signals |
+| `src/orchestrator/question-poller.ts` | Temporal Signals |
+| `src/orchestrator/thread-state-manager.ts` | Temporal workflow state |
+
+---
+
+## 4. Module Architecture
+
+### 4.1 Dependency Graph
+
+```
+bin/ptah.ts (composition root)
+  ├── ConfigLoader → PtahConfig + WorkflowConfig
+  ├── WorkflowValidator(WorkflowConfig, AgentRegistry)
+  ├── TemporalClient(PtahConfig.temporal)
+  ├── TemporalWorker
+  │     ├── Activities
+  │     │     ├── SkillActivity(SkillInvoker, ContextAssembler, ArtifactCommitter, GitClient, Router, Logger)
+  │     │     └── NotificationActivity(DiscordClient, Logger)
+  │     └── Workflows
+  │           └── featureLifecycleWorkflow (deterministic — uses proxyActivities)
+  ├── Orchestrator(TemporalClient, AgentRegistry, DiscordClient, Router, Logger)
+  └── MigrateCommand(TemporalClient, ConfigLoader, FileSystem, Logger)
+```
+
+### 4.2 Protocols (Interfaces)
+
+#### WorkflowConfigLoader
+
+```typescript
+// src/config/workflow-config.ts
+
+interface WorkflowConfigLoader {
+  load(path?: string): Promise<WorkflowConfig>;
+}
+```
+
+**Behavioral contract:** Reads and parses `ptah.workflow.yaml`. Returns a validated `WorkflowConfig` object. Throws `WorkflowConfigError` if file not found or YAML is malformed.
+
+#### WorkflowValidator
+
+```typescript
+// src/config/workflow-validator.ts
+
+interface WorkflowValidator {
+  validate(config: WorkflowConfig, agentRegistry: AgentRegistry): ValidationResult;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+}
+
+interface ValidationError {
+  phase: string;
+  field: string;
+  message: string;
+}
+```
+
+**Behavioral contract:** Checks all constraints from REQ-CD-05: unique phase IDs, valid agent references, valid transition targets, no cycles (except review loops), required fields present. Returns all errors (does not fail fast).
+
+#### TemporalClientWrapper
+
+```typescript
+// src/temporal/client.ts
+
+interface TemporalClientWrapper {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  startFeatureWorkflow(params: StartWorkflowParams): Promise<string>;
+  signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void>;
+  signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void>;
+  signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void>;
+  queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState>;
+  getWorkflowHandle(workflowId: string): WorkflowHandle;
+  listWorkflowsByPrefix(prefix: string): Promise<string[]>;
+  isConnected(): boolean;
+}
+
+interface StartWorkflowParams {
+  featureSlug: string;
+  featureConfig: FeatureConfig;
+  workflowConfig: WorkflowConfig;
+  startAtPhase?: string; // for migration — start at a specific phase
+  initialReviewState?: Record<string, ReviewPhaseState>; // for migration
+}
+
+interface UserAnswerSignal {
+  answer: string;
+  answeredBy: string;
+  answeredAt: string;
+}
+```
+
+**Behavioral contract:** Wraps `@temporalio/client` WorkflowClient. Manages connection lifecycle. Workflow IDs follow `ptah-feature-{slug}-{sequence}` convention. `listWorkflowsByPrefix` is used for sequence number assignment and migration idempotency.
+
+#### SkillActivityDeps (Activity Dependencies)
+
+```typescript
+// src/temporal/activities/skill-activity.ts
+
+interface SkillActivityDeps {
+  skillInvoker: SkillInvoker;
+  contextAssembler: ContextAssembler;
+  artifactCommitter: ArtifactCommitter;
+  gitClient: GitClient;
+  routingEngine: RoutingEngine;
+  agentRegistry: AgentRegistry;
+  logger: Logger;
+  config: PtahConfig;
+}
+```
+
+**Behavioral contract:** Activities are NOT classes — they are plain async functions that close over `SkillActivityDeps`. This follows the Temporal TypeScript SDK pattern where activities are registered as functions on the Worker. Dependencies are injected via closure at Worker setup time.
+
+#### MigrateCommand
+
+```typescript
+// src/commands/migrate.ts
+
+interface MigrateCommand {
+  execute(options: MigrateOptions): Promise<MigrateResult>;
+}
+
+interface MigrateOptions {
+  dryRun: boolean;
+  includeCompleted: boolean;
+  phaseMapPath?: string;
+}
+
+interface MigrateResult {
+  activeCreated: number;
+  completedImported: number;
+  skipped: number;
+  warnings: string[];
+  errors: string[];
+}
+```
+
+---
+
+### 4.3 Types and Data Models
+
+#### Workflow Configuration Types
+
+```typescript
+// src/config/workflow-config.ts
+
+interface WorkflowConfig {
+  version: number;
+  phases: PhaseDefinition[];
+}
+
+interface PhaseDefinition {
+  id: string;                          // unique, e.g., "req-creation"
+  name: string;                        // display name, e.g., "Requirements Creation"
+  type: PhaseType;                     // "creation" | "review" | "approved" | "implementation"
+  agent?: string;                      // agent ID for single-agent phases
+  agents?: string[];                   // agent IDs for fork/join phases
+  reviewers?: ReviewerManifest;        // for review phases
+  transition?: string;                 // next phase ID (explicit)
+  skip_if?: SkipCondition;             // optional skip predicate
+  failure_policy?: FailurePolicy;      // for fork/join: "wait_for_all" | "fail_fast"
+  context_documents?: string[];        // e.g., ["{feature}/REQ", "{feature}/TSPEC"]
+  revision_bound?: number;             // max revision cycles (default 3)
+  retry?: ActivityRetryConfig;         // per-phase retry override
+}
+
+type PhaseType = "creation" | "review" | "approved" | "implementation";
+type FailurePolicy = "wait_for_all" | "fail_fast";
+
+interface ReviewerManifest {
+  default?: string[];
+  "backend-only"?: string[];
+  "frontend-only"?: string[];
+  fullstack?: string[];
+}
+
+interface SkipCondition {
+  field: string;                       // e.g., "config.skipFspec"
+  equals: boolean;
+}
+
+interface ActivityRetryConfig {
+  maxAttempts?: number;
+  initialIntervalSeconds?: number;
+  backoffCoefficient?: number;
+  maxIntervalSeconds?: number;
+}
+```
+
+#### Temporal Configuration (in PtahConfig)
+
+```typescript
+// Added to src/types.ts → PtahConfig
+
+interface TemporalConfig {
+  address: string;                     // default: "localhost:7233"
+  namespace: string;                   // default: "default"
+  taskQueue: string;                   // default: "ptah-main"
+  tls?: TlsConfig;
+  worker: WorkerConfig;
+  retry: RetryDefaults;
+  heartbeat: HeartbeatConfig;
+}
+
+interface TlsConfig {
+  clientCertPath?: string;
+  clientKeyPath?: string;
+  serverRootCACertPath?: string;
+}
+
+interface WorkerConfig {
+  maxConcurrentWorkflowTasks: number;  // default: 10
+  maxConcurrentActivities: number;     // default: 3
+}
+
+interface RetryDefaults {
+  maxAttempts: number;                 // default: 3
+  initialIntervalSeconds: number;      // default: 30
+  backoffCoefficient: number;          // default: 2.0
+  maxIntervalSeconds: number;          // default: 600
+}
+
+interface HeartbeatConfig {
+  intervalSeconds: number;             // default: 30
+  timeoutSeconds: number;              // default: 120
+}
+```
+
+#### Workflow State Types
+
+```typescript
+// src/temporal/types.ts
+
+interface FeatureWorkflowState {
+  featureSlug: string;
+  featureConfig: FeatureConfig;
+  workflowConfig: WorkflowConfig;
+  currentPhaseId: string;
+  completedPhaseIds: string[];
+  activeAgentIds: string[];
+  phaseStatus: PhaseStatus;
+  reviewStates: Record<string, ReviewState>;
+  forkJoinState: ForkJoinState | null;
+  pendingQuestion: PendingQuestionState | null;
+  failureInfo: FailureInfo | null;
+  startedAt: string;
+  updatedAt: string;
+}
+
+type PhaseStatus =
+  | "running"
+  | "waiting-for-user"
+  | "waiting-for-reviewers"
+  | "failed"
+  | "completed";
+
+interface ReviewState {
+  reviewerStatuses: Record<string, "pending" | "approved" | "revision_requested">;
+  revisionCount: number;
+}
+
+interface ForkJoinState {
+  agentResults: Record<string, ForkJoinAgentResult>;
+  failurePolicy: FailurePolicy;
+}
+
+interface ForkJoinAgentResult {
+  status: "pending" | "success" | "failed" | "cancelled";
+  worktreePath?: string;
+  routingSignal?: string;
+  error?: string;
+}
+
+interface PendingQuestionState {
+  question: string;
+  agentId: string;
+  phaseId: string;
+  askedAt: string;
+}
+
+interface FailureInfo {
+  phaseId: string;
+  agentId: string;
+  errorType: string;
+  errorMessage: string;
+  retryCount: number;
+}
+
+// Signal payloads
+interface UserAnswerSignal {
+  answer: string;
+  answeredBy: string;
+  answeredAt: string;
+}
+
+type RetryOrCancelSignal = "retry" | "cancel";
+type ResumeOrCancelSignal = "resume" | "cancel";
+
+// Activity input/output
+interface SkillActivityInput {
+  agentId: string;
+  featureSlug: string;
+  phaseId: string;
+  taskType: string;
+  documentType: string;
+  contextDocumentRefs: string[];
+  featureConfig: FeatureConfig;
+  forkJoin: boolean;
+  isRevision: boolean;
+  priorQuestion?: string;
+  priorAnswer?: string;
+}
+
+interface SkillActivityResult {
+  routingSignalType: string;           // "LGTM" | "TASK_COMPLETE" | "ROUTE_TO_USER"
+  question?: string;                   // if ROUTE_TO_USER
+  artifactChanges: string[];
+  worktreePath?: string;               // if forkJoin, worktree not yet merged
+  durationMs: number;
+}
+
+interface NotificationInput {
+  type: "question" | "failure" | "status" | "revision-bound";
+  featureSlug: string;
+  phaseId: string;
+  agentId: string;
+  message: string;
+  workflowId: string;
+}
+
+// Phase mapping for migration
+interface V4PhaseMapping {
+  [v4Phase: string]: string;           // e.g., "TSPEC_CREATION" → "tspec-creation"
+}
+```
+
+---
+
+## 5. Algorithm: Feature Lifecycle Workflow
+
+The Temporal Workflow (`featureLifecycleWorkflow`) is the core of the system. It replaces `state-machine.ts`, `pdlc-dispatcher.ts`, and the orchestration loop in `orchestrator.ts`.
+
+### 5.1 Workflow Definition
+
+```typescript
+// src/temporal/workflows/feature-lifecycle.ts
+// NOTE: This is a Temporal Workflow — it MUST be deterministic.
+// No I/O, no Date.now(), no Math.random(). Only Temporal SDK primitives.
+
+import * as wf from "@temporalio/workflow";
+import type { SkillActivityInput, SkillActivityResult, ... } from "../types.js";
+
+// Signal definitions
+const userAnswerSignal = wf.defineSignal<[UserAnswerSignal]>("user-answer");
+const retryOrCancelSignal = wf.defineSignal<[RetryOrCancelSignal]>("retry-or-cancel");
+const resumeOrCancelSignal = wf.defineSignal<[ResumeOrCancelSignal]>("resume-or-cancel");
+
+// Query definitions
+const workflowStateQuery = wf.defineQuery<FeatureWorkflowState>("workflow-state");
+
+// Activity proxies (wired at import time via proxyActivities)
+const { invokeSkill, sendNotification } = wf.proxyActivities<SkillActivities>({
+  startToCloseTimeout: "30 minutes",
+  heartbeatTimeout: "120 seconds",
+  retry: { maximumAttempts: 3, initialInterval: "30 seconds", backoffCoefficient: 2, maximumInterval: "10 minutes" },
+});
+```
+
+### 5.2 Main Workflow Loop
+
+```
+1. Receive featureSlug, featureConfig, workflowConfig, startAtPhase?
+2. Snapshot workflowConfig into workflow state (workflow versioning — REQ-CD-04)
+3. Resolve starting phase (first phase if new, or startAtPhase for migration)
+4. Build phase graph from workflowConfig.phases (transitions, skip conditions)
+5. LOOP over phases:
+   a. Evaluate skip_if condition → skip phase if met
+   b. Determine phase type:
+      - "approved" → auto-transition to next phase (no Activity)
+      - "creation" / "implementation" → dispatch agent Activity (5.3)
+      - "review" → dispatch reviewer Activities (5.5)
+   c. If Activity returns ROUTE_TO_USER → enter question flow (5.4)
+   d. If Activity fails (after retries) → enter failure flow (5.6)
+   e. Advance to next phase per transition config
+6. When final phase completes → workflow completes
+```
+
+### 5.3 Single-Agent and Fork/Join Dispatch
+
+**Single-agent (phase has `agent` field):**
+1. Call `invokeSkill(input)` Activity
+2. If result is `LGTM` or `TASK_COMPLETE` → advance
+3. If result is `ROUTE_TO_USER` → question flow (5.4)
+
+**Fork/join (phase has `agents` field):**
+1. Dispatch `invokeSkill(input)` for each agent concurrently (all with `forkJoin: true`)
+2. Collect results based on failure policy:
+   - `wait_for_all`: `Promise.allSettled()` — wait for all, then evaluate
+   - `fail_fast`: race with cancellation — cancel remaining on first failure
+3. If any returned `ROUTE_TO_USER`:
+   - Process question flows sequentially for each
+   - Re-invoke only the ROUTE_TO_USER agents
+   - Repeat until all agents return LGTM
+4. If all LGTM → merge worktrees sequentially in config order (via Activity)
+5. If any failed → enter failure flow (5.6)
+
+### 5.4 Question Flow (ROUTE_TO_USER)
+
+```
+1. Record question in workflow state
+2. Call sendNotification Activity (notify user via messaging layer)
+3. Set workflow state to "waiting-for-user"
+4. await wf.condition(() => receivedAnswer !== null)
+   — workflow suspends, no resources consumed
+5. On user-answer Signal:
+   a. Validate payload (answer field present)
+   b. If invalid → log warning, re-enter wait
+   c. If valid → re-invoke same agent with question+answer in context
+6. If agent returns ROUTE_TO_USER again → repeat (nested question)
+7. If agent returns LGTM → proceed with normal completion
+```
+
+### 5.5 Review Cycle
+
+```
+1. Compute reviewer manifest from phase config + feature discipline
+2. Initialize reviewerStatuses: all "pending"
+3. Dispatch reviewer Activities in parallel
+4. As each completes:
+   a. Parse cross-review file → extract recommendation
+   b. Map to "approved" or "revision_requested" (BR-17: "Approved with minor changes" → approved)
+5. When all reviewers complete:
+   a. If all approved → transition to approved phase → auto-transition to next creation
+   b. If any revision_requested:
+      i. Increment revisionCount
+      ii. Check revision bound (default 3)
+      iii. If exceeded → notify user, waitForSignal("resume-or-cancel")
+      iv. If within bound → transition to creation phase, dispatch author with "Revise" task
+      v. When author completes → re-enter review (step 1), reset all reviewerStatuses
+```
+
+### 5.6 Failure Flow
+
+```
+1. Workflow records failure info (phase, agent, error, retry count)
+2. Call sendNotification Activity (failure notification)
+3. Set workflow state to "failed"
+4. await wf.condition(() => retryOrCancelAction !== null)
+5. On retry-or-cancel Signal:
+   a. "retry" → re-dispatch Activity from scratch (clean slate)
+   b. "cancel" → workflow completes with cancelled status
+```
+
+### 5.7 Phase Graph Walker
+
+```typescript
+function resolveNextPhase(
+  currentPhaseId: string,
+  phases: PhaseDefinition[],
+  featureConfig: FeatureConfig,
+): string | null {
+  const currentIndex = phases.findIndex(p => p.id === currentPhaseId);
+  const currentPhase = phases[currentIndex];
+
+  // Explicit transition takes precedence
+  if (currentPhase.transition) return currentPhase.transition;
+
+  // Otherwise, next in array order
+  const nextIndex = currentIndex + 1;
+  if (nextIndex >= phases.length) return null; // workflow complete
+
+  const nextPhase = phases[nextIndex];
+
+  // Evaluate skip_if
+  if (nextPhase.skip_if && evaluateSkipCondition(nextPhase.skip_if, featureConfig)) {
+    return resolveNextPhase(nextPhase.id, phases, featureConfig);
+  }
+
+  return nextPhase.id;
+}
+```
+
+---
+
+## 6. Algorithm: Skill Activity Lifecycle
+
+The `invokeSkill` Activity implements FSPEC-TF-01. It runs in the Worker process (in-process with the Orchestrator).
+
+```
+1. Receive SkillActivityInput (agentId, featureSlug, phaseId, forkJoin, ...)
+2. IDEMPOTENCY CHECK:
+   a. Check if worktree exists for {agent}/{feature}/{phase} with committed changes
+   b. If yes → read routing signal from commit message, return SkillActivityResult (skip invocation)
+   c. If no → continue
+3. CREATE WORKTREE on feature branch
+4. ASSEMBLE CONTEXT using contextDocumentRefs (config-driven, resolves {feature}/REQ etc.)
+5. START HEARTBEAT LOOP (concurrent):
+   a. Every heartbeatInterval (30s), check subprocess liveness
+   b. If alive → context.heartbeat({ elapsedMs })
+   c. If not alive → stop loop
+   d. If CancellationScope.current().isCancelled → kill subprocess, cleanup, throw CancellationError
+6. INVOKE SKILL via SkillInvoker.invoke()
+7. PARSE ROUTING SIGNAL via RoutingEngine.parseSignal()
+8. BRANCH ON SIGNAL:
+   a. ROUTE_TO_USER:
+      - Do NOT merge worktree
+      - Return { routingSignalType: "ROUTE_TO_USER", question, worktreePath }
+   b. LGTM / TASK_COMPLETE:
+      - Commit changes in worktree
+      - If NOT forkJoin: merge worktree → feature branch, cleanup
+      - If forkJoin: return worktree path (Workflow orchestrates merge)
+      - Return { routingSignalType, artifactChanges, worktreePath? }
+9. ON ERROR:
+   - Cleanup worktree (finally block)
+   - Classify error (retryable vs non-retryable per FSPEC-TF-03)
+   - If non-retryable → throw ApplicationFailure.create({ nonRetryable: true })
+   - If retryable → throw (Temporal retries automatically)
+   - If 429 rate limit → internal retry with Retry-After (BR-26), only throw to Temporal if internal retries exhausted
+```
+
+---
+
+## 7. Algorithm: Merge Activity
+
+A separate Activity for merging worktrees, called by the Workflow after collecting fork/join results.
+
+```typescript
+// Activity: mergeWorktree
+async function mergeWorktree(input: {
+  worktreePath: string;
+  featureBranch: string;
+  agentId: string;
+}): Promise<MergeResult> {
+  // Uses existing ArtifactCommitter.mergeBranchIntoFeature() pattern
+  // Throws non-retryable ApplicationFailure on merge conflict
+}
+```
+
+For fork/join, the Workflow calls this sequentially in config order:
+1. Record pre-merge commit SHA
+2. Merge first worktree → if conflict, throw non-retryable
+3. Merge second worktree → if conflict, revert first merge (reset to pre-merge SHA), throw non-retryable
+4. Cleanup all worktrees
+
+---
+
+## 8. Workflow Configuration Schema
+
+### 8.1 `ptah.workflow.yaml` Format
+
+```yaml
+version: 1
+phases:
+  - id: req-creation
+    name: Requirements Creation
+    type: creation
+    agent: pm
+    context_documents:
+      - "{feature}/overview"
+    transition: req-review
+
+  - id: req-review
+    name: Requirements Review
+    type: review
+    reviewers:
+      backend-only: [eng, qa]
+      frontend-only: [fe, qa]
+      fullstack: [eng, fe, qa]
+    context_documents:
+      - "{feature}/REQ"
+    transition: req-approved
+
+  - id: req-approved
+    name: Requirements Approved
+    type: approved
+    transition: fspec-creation
+
+  # ... (full default preset in src/presets/default-pdlc.yaml)
+```
+
+### 8.2 Context Document Resolution
+
+The `context_documents` field uses template references resolved at Activity dispatch time:
+
+| Reference | Resolves To |
+|-----------|-------------|
+| `{feature}/overview` | `docs/{slug}/overview.md` |
+| `{feature}/REQ` | `docs/{slug}/{prefix}-REQ-{feature}.md` |
+| `{feature}/FSPEC` | `docs/{slug}/{prefix}-FSPEC-{feature}.md` |
+| `{feature}/TSPEC` | `docs/{slug}/{prefix}-TSPEC-{feature}.md` |
+| `{feature}/PLAN` | `docs/{slug}/{prefix}-PLAN-{feature}.md` |
+| `{feature}/PROPERTIES` | `docs/{slug}/{prefix}-PROPERTIES-{feature}.md` |
+| `{feature}/CROSS-REVIEW-*` | `docs/{slug}/CROSS-REVIEW-*.md` (glob) |
+
+Resolution uses the existing `docs.root` config + feature slug + document numbering prefix.
+
+---
+
+## 9. Temporal Worker Setup
+
+```typescript
+// src/temporal/worker.ts
+
+interface WorkerSetup {
+  start(deps: WorkerDeps): Promise<Worker>;
+  shutdown(): Promise<void>;
+}
+
+interface WorkerDeps {
+  config: PtahConfig;
+  skillInvoker: SkillInvoker;
+  contextAssembler: ContextAssembler;
+  artifactCommitter: ArtifactCommitter;
+  gitClient: GitClient;
+  routingEngine: RoutingEngine;
+  agentRegistry: AgentRegistry;
+  discordClient: DiscordClient;
+  logger: Logger;
+}
+```
+
+The Worker runs **in-process** (REQ-NF-15-03). Activity functions close over `WorkerDeps`:
+
+```typescript
+async function createWorker(deps: WorkerDeps): Promise<Worker> {
+  const activities = createActivities(deps);
+  return Worker.create({
+    connection: await NativeConnection.connect({ address: deps.config.temporal.address }),
+    namespace: deps.config.temporal.namespace,
+    taskQueue: deps.config.temporal.taskQueue,
+    workflowsPath: require.resolve("./workflows/feature-lifecycle"),
+    activities,
+    maxConcurrentWorkflowTaskExecutions: deps.config.temporal.worker.maxConcurrentWorkflowTasks,
+    maxConcurrentActivityTaskExecutions: deps.config.temporal.worker.maxConcurrentActivities,
+  });
+}
+```
+
+---
+
+## 10. Orchestrator Integration
+
+The Orchestrator is **simplified** — it no longer manages state transitions, retry logic, or question polling. Its responsibilities become:
+
+1. **Listen for Discord messages** (kept)
+2. **Start Temporal Workflows** when a new feature is initiated
+3. **Route Signals** from Discord to Temporal (user answers, retry/cancel)
+4. **Query Workflow state** for `ptah status` and status embeds
+5. **Prune orphaned worktrees** on startup (kept)
+
+The Orchestrator depends on `TemporalClientWrapper` instead of `PdlcDispatcher`, `ThreadQueue`, `MergeLock`, `InvocationGuard`, `QuestionStore`, `QuestionPoller`, and `ThreadStateManager`.
+
+---
+
+## 11. Migration Tool
+
+### 11.1 Phase Mapping
+
+Built-in mapping from v4 `PdlcPhase` enum to default preset phase IDs:
+
+```typescript
+const V4_DEFAULT_MAPPING: V4PhaseMapping = {
+  "REQ_CREATION": "req-creation",
+  "REQ_REVIEW": "req-review",
+  "REQ_APPROVED": "req-approved",
+  "FSPEC_CREATION": "fspec-creation",
+  "FSPEC_REVIEW": "fspec-review",
+  "FSPEC_APPROVED": "fspec-approved",
+  "TSPEC_CREATION": "tspec-creation",
+  "TSPEC_REVIEW": "tspec-review",
+  "TSPEC_APPROVED": "tspec-approved",
+  "PLAN_CREATION": "plan-creation",
+  "PLAN_REVIEW": "plan-review",
+  "PLAN_APPROVED": "plan-approved",
+  "PROPERTIES_CREATION": "properties-creation",
+  "PROPERTIES_REVIEW": "properties-review",
+  "PROPERTIES_APPROVED": "properties-approved",
+  "IMPLEMENTATION": "implementation",
+  "IMPLEMENTATION_REVIEW": "implementation-review",
+  "DONE": "done",
+};
+```
+
+### 11.2 Migration Algorithm (per FSPEC-MG-01)
+
+```
+1. Read pdlc-state.json → parse features
+2. Read ptah.workflow.yaml → parse phases
+3. Build phase mapping (built-in or --phase-map)
+4. Validate all features are mappable
+5. If --dry-run → print table, exit
+6. Connect to Temporal
+7. For each feature:
+   a. Compute workflow ID: ptah-feature-{slug}-1
+   b. Check if workflow exists → skip if already migrated (BR-22)
+   c. If fork/join: reset all subtasks to pending (per BR-14)
+   d. Start workflow at mapped phase with transferred review state
+8. Validate imports via Query
+9. Print summary
+```
+
+---
+
+## 12. Error Handling
+
+| Scenario | Error Type | Retryable | Behavior |
+|----------|-----------|-----------|----------|
+| Subprocess exits non-zero | `ActivityFailure` | Yes | Temporal retries per policy |
+| API timeout | `ActivityFailure` | Yes | Temporal retries per policy |
+| API rate limit (429) | Internal | N/A | Activity handles internally (BR-26) |
+| Heartbeat timeout (120s) | `TimeoutFailure` | Yes | Temporal retries per policy |
+| `startToCloseTimeout` exceeded | `TimeoutFailure` | No | Activity cancelled, workflow enters failed state |
+| Routing signal parse failure | `ApplicationFailure` (nonRetryable) | No | Workflow enters failed state |
+| Git merge conflict | `ApplicationFailure` (nonRetryable) | No | Workflow enters failed state, user notified |
+| Revision bound exceeded | Workflow logic | N/A | Workflow pauses, waits for resume-or-cancel Signal |
+| Config validation failure | `WorkflowConfigError` | N/A | Startup halts with descriptive error |
+| `ptah.workflow.yaml` not found | `WorkflowConfigError` | N/A | Startup halts with error |
+| `pdlc-state.json` not found | `MigrationError` | N/A | Migration aborts with error |
+| Temporal connection failure | `TemporalConnectionError` | N/A | Startup/migration aborts |
+| Unmapped v4 phase | `MigrationError` | N/A | Migration aborts listing unmapped phases |
+
+---
+
+## 13. Test Strategy
+
+### 13.1 Approach
+
+Testing spans three levels:
+
+1. **Unit tests** — pure logic with injected fakes (no Temporal server)
+2. **Workflow logic tests** — test workflow decision logic by mocking activities
+3. **Integration tests** — `TestWorkflowEnvironment` with real Temporal test server
+
+### 13.2 Test Doubles
+
+#### FakeTemporalClient
+
+```typescript
+class FakeTemporalClient implements TemporalClientWrapper {
+  startedWorkflows: StartWorkflowParams[] = [];
+  sentSignals: { workflowId: string; signal: string; payload: unknown }[] = [];
+  workflowStates: Map<string, FeatureWorkflowState> = new Map();
+  connectionError: Error | null = null;
+
+  async connect(): Promise<void> {
+    if (this.connectionError) throw this.connectionError;
+  }
+  async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
+    this.startedWorkflows.push(params);
+    return `ptah-feature-${params.featureSlug}-1`;
+  }
+  async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {
+    this.sentSignals.push({ workflowId, signal: "user-answer", payload: answer });
+  }
+  async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
+    const state = this.workflowStates.get(workflowId);
+    if (!state) throw new Error(`Workflow ${workflowId} not found`);
+    return state;
+  }
+  // ... remaining methods
+}
+```
+
+#### FakeSkillActivity
+
+For workflow logic tests, mock activity implementations that return deterministic results:
+
+```typescript
+function createFakeActivities(): SkillActivities {
+  return {
+    invokeSkill: async (input: SkillActivityInput): Promise<SkillActivityResult> => ({
+      routingSignalType: "LGTM",
+      artifactChanges: [`docs/${input.featureSlug}/${input.documentType}.md`],
+      durationMs: 1000,
+    }),
+    sendNotification: async (_input: NotificationInput): Promise<void> => {},
+    mergeWorktree: async (_input): Promise<MergeResult> => "merged",
+  };
+}
+```
+
+### 13.3 Test Categories
+
+| Category | What | How | Where |
+|----------|------|-----|-------|
+| Workflow config parsing | YAML → WorkflowConfig | Unit, FakeFileSystem | `tests/unit/config/workflow-config.test.ts` |
+| Config validation | Phase IDs, agent refs, transitions | Unit, real validator + fake registry | `tests/unit/config/workflow-validator.test.ts` |
+| Phase graph walker | Transition resolution, skip_if | Unit, pure function | `tests/unit/temporal/feature-lifecycle.test.ts` |
+| Review cycle logic | Reviewer dispatch, outcome eval, revision loop | Unit, mock activities | `tests/unit/temporal/feature-lifecycle.test.ts` |
+| Fork/join orchestration | Parallel dispatch, failure policies, merge order | Unit, mock activities | `tests/unit/temporal/feature-lifecycle.test.ts` |
+| Question flow | ROUTE_TO_USER → Signal → resume | Unit, mock activities | `tests/unit/temporal/feature-lifecycle.test.ts` |
+| Failure flow | Error classification, retry-or-cancel | Unit, mock activities | `tests/unit/temporal/feature-lifecycle.test.ts` |
+| Activity lifecycle | Idempotency, heartbeat, merge, cleanup | Unit, fakes for all deps | `tests/unit/temporal/skill-activity.test.ts` |
+| Activity error classification | Retryable vs non-retryable | Unit | `tests/unit/temporal/skill-activity.test.ts` |
+| Migration command | Phase mapping, dry-run, validation | Unit, FakeTemporalClient | `tests/unit/commands/migrate.test.ts` |
+| Default preset | Matches v4 behavior | Unit, compare against v4 state-machine | `tests/unit/config/workflow-config.test.ts` |
+| Workflow integration | Full lifecycle with test server | Integration, TestWorkflowEnvironment | `tests/integration/temporal/workflow-integration.test.ts` |
+| Orchestrator integration | Discord → Temporal Client | Unit, FakeTemporalClient | Existing orchestrator tests updated |
+
+---
+
+## 14. Requirement → Technical Component Mapping
+
+| Requirement | Technical Component(s) | Description |
+|-------------|----------------------|-------------|
+| REQ-TF-01 | `feature-lifecycle.ts`, `TemporalClientWrapper`, `types.ts` | Each feature = one Temporal Workflow with ID `ptah-feature-{slug}-{sequence}` |
+| REQ-TF-02 | `skill-activity.ts`, `SkillActivityDeps` | Activity wraps SkillInvoker with heartbeat, timeout, idempotency |
+| REQ-TF-03 | `feature-lifecycle.ts` (question flow), Signal definitions | `user-answer` Signal replaces file-based polling |
+| REQ-TF-04 | `feature-lifecycle.ts` (Query handler), `FeatureWorkflowState` | Query returns current phase, agents, reviewers, config |
+| REQ-TF-05 | `skill-activity.ts` (error classification), retry policy config | `ApplicationFailure.nonRetryable` for non-retryable errors |
+| REQ-TF-06 | `feature-lifecycle.ts` (fork/join dispatch), `ForkJoinState` | Parallel Activities with wait_for_all / fail_fast policies |
+| REQ-TF-07 | `skill-activity.ts` (worktree lifecycle), existing `GitClient` | Worktree create/merge/cleanup within Activity boundary |
+| REQ-TF-08 | `feature-lifecycle.ts` (review cycle), `ReviewState` | Review → revision loop with configurable bound |
+| REQ-CD-01 | `workflow-config.ts`, `WorkflowConfig`, `PhaseDefinition` | YAML-based phase definitions parsed at startup |
+| REQ-CD-02 | `PhaseDefinition.agent` / `PhaseDefinition.agents` | Agent-to-phase mapping in config |
+| REQ-CD-03 | `PhaseDefinition.reviewers`, `ReviewerManifest` | Discipline-aware reviewer manifests in config |
+| REQ-CD-04 | `PhaseDefinition.transition`, `resolveNextPhase()` | Config-driven transition graph + workflow versioning (config snapshot) |
+| REQ-CD-05 | `workflow-validator.ts`, `WorkflowValidator` | Startup validation of all config constraints |
+| REQ-CD-06 | `src/presets/default-pdlc.yaml` | Default workflow replicating v4 PDLC exactly |
+| REQ-CD-07 | `PhaseDefinition.context_documents`, context resolution | Config-driven context document matrix |
+| REQ-MG-01 | `migrate.ts`, `MigrateCommand`, `V4_DEFAULT_MAPPING` | `ptah migrate` reads state file, creates Temporal workflows |
+| REQ-MG-02 | `migrate.ts` (dry-run branch) | `--dry-run` prints table without creating workflows |
+| REQ-NF-15-01 | `TemporalConfig`, `TemporalClientWrapper.connect()` | Config-driven Temporal connection (local, Cloud, self-hosted) |
+| REQ-NF-15-02 | `StartWorkflowParams`, Activity naming, search attributes | Human-readable IDs, searchable attributes, meaningful Activity names |
+| REQ-NF-15-03 | `WorkerConfig`, `worker.ts` | In-process Worker with configurable concurrency |
+
+---
+
+## 15. Integration Points
+
+### 15.1 Kept Components (Minimal Changes)
+
+| Component | Change | Reason |
+|-----------|--------|--------|
+| `SkillInvoker` | None | Called inside Activity, interface unchanged |
+| `ArtifactCommitter` | None | Called inside Activity for worktree merge |
+| `RoutingEngine` | None | Called inside Activity for signal parsing |
+| `AgentRegistry` | None | Used for agent lookup, extended with config-driven registration |
+| `GitClient` | None | Used inside Activity for worktree ops |
+| `DiscordClient` | None | Used for messaging; Signal routing added |
+| `ContextAssembler` | Minor | Accept `contextDocumentRefs` from config instead of calling `getContextDocuments()` |
+| `WorktreeRegistry` | None | Tracks active worktrees in Worker process |
+
+### 15.2 Orchestrator Changes
+
+The Orchestrator class shrinks significantly:
+
+**Removed dependencies:** `PdlcDispatcher`, `ThreadQueue`, `MergeLock`, `InvocationGuard`, `QuestionStore`, `QuestionPoller`, `PatternBContextBuilder`, `ThreadStateManager`, `StateStore`
+
+**Added dependency:** `TemporalClientWrapper`
+
+**Changed behavior:**
+- `handleMessage()` → starts Temporal Workflow for new features, sends Signals for existing ones
+- `startup()` → validates config, connects to Temporal, starts Worker
+- `shutdown()` → shuts down Worker, disconnects Temporal client
+
+### 15.3 Config Loader Changes
+
+`ConfigLoader.load()` now also:
+- Reads `temporal` section from `ptah.config.json`
+- Applies defaults for missing temporal config fields
+
+A separate `WorkflowConfigLoader` reads `ptah.workflow.yaml`.
+
+### 15.4 CLI Entry Point Changes
+
+`ptah init` → generates `ptah.workflow.yaml` (copies default preset) and adds `temporal` section to `ptah.config.json`
+
+`ptah start` → validates workflow config, connects to Temporal, starts in-process Worker
+
+`ptah migrate` → new command, delegates to `MigrateCommand`
+
+`ptah status` → queries Temporal workflows via `TemporalClientWrapper.queryWorkflowState()`
+
+---
+
+## 16. Open Questions
+
+None. All behavioral questions were resolved in the REQ v1.2 and FSPEC v1.1 reviews.
+
+---
+
+## Change Log
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | April 2, 2026 | eng | Initial TSPEC. Covers all 20 requirements across TF, CD, MG, NF domains. |
+
+---
+
+*End of Document*
