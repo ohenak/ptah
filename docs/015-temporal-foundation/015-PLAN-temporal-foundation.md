@@ -18,12 +18,12 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| A1 | Define Temporal shared types (FeatureWorkflowState, SkillActivityInput/Result, Signal payloads, ForkJoinState, ReviewState, FailureInfo) | `tests/unit/temporal/types.test.ts` | `src/temporal/types.ts` | ⬚ Not Started |
-| A2 | Define WorkflowConfig types and YAML parser (WorkflowConfigLoader, PhaseDefinition, ReviewerManifest, SkipCondition) | `tests/unit/config/workflow-config.test.ts` | `src/config/workflow-config.ts` | ⬚ Not Started |
-| A3 | Add TemporalConfig and HeartbeatConfig types to PtahConfig; update ConfigLoader to parse temporal section with defaults | `tests/unit/config/loader.test.ts` | `src/config/loader.ts`, `src/types.ts` | ⬚ Not Started |
-| A4 | Implement WorkflowValidator — unique phase IDs, valid agent refs, valid transitions, no invalid cycles, required fields | `tests/unit/config/workflow-validator.test.ts` | `src/config/workflow-validator.ts` | ⬚ Not Started |
-| A5 | Create default PDLC workflow preset YAML matching v4 behavior exactly | `tests/unit/config/workflow-config.test.ts` | `src/presets/default-pdlc.yaml` | ⬚ Not Started |
-| A6 | Add test fixture: `tests/fixtures/default-workflow.yaml` and FakeWorkflowConfigLoader, FakeTemporalClient to factories.ts | — | `tests/fixtures/factories.ts`, `tests/fixtures/default-workflow.yaml` | ⬚ Not Started |
+| A1 | Define Temporal shared types (FeatureWorkflowState, SkillActivityInput/Result, Signal payloads, ForkJoinState, ReviewState, FailureInfo) | `tests/unit/temporal/types.test.ts` | `src/temporal/types.ts` | ✅ Done |
+| A2 | Define WorkflowConfig types and YAML parser (WorkflowConfigLoader, PhaseDefinition, ReviewerManifest, SkipCondition) | `tests/unit/config/workflow-config.test.ts` | `src/config/workflow-config.ts` | ✅ Done |
+| A3 | Add TemporalConfig and HeartbeatConfig types to PtahConfig; update ConfigLoader to parse temporal section with defaults | `tests/unit/config/loader.test.ts` | `src/config/loader.ts`, `src/types.ts` | ✅ Done |
+| A4 | Implement WorkflowValidator — unique phase IDs, valid agent refs, valid transitions, no invalid cycles, required fields | `tests/unit/config/workflow-validator.test.ts` | `src/config/workflow-validator.ts` | ✅ Done |
+| A5 | Create default PDLC workflow preset YAML matching v4 behavior exactly | `tests/unit/config/workflow-config.test.ts` | `src/presets/default-pdlc.yaml` | ✅ Done |
+| A6 | Add test fixture: `tests/fixtures/default-workflow.yaml` and FakeWorkflowConfigLoader, FakeTemporalClient to factories.ts | — | `tests/fixtures/factories.ts`, `tests/fixtures/default-workflow.yaml` | ✅ Done |
 
 ### Phase B: Temporal Client and Worker
 

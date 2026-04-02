@@ -1497,3 +1497,154 @@ export function makeMergeBranchParams(overrides?: Partial<MergeBranchParams>): M
     ...overrides,
   };
 }
+
+// --- Phase 15: Temporal Foundation fakes ---
+
+import type { WorkflowConfigLoader, WorkflowConfig, PhaseDefinition } from "../../src/config/workflow-config.js";
+import type {
+  FeatureWorkflowState,
+  StartWorkflowParams,
+  UserAnswerSignal,
+  SkillActivityInput,
+  SkillActivityResult,
+  NotificationInput,
+} from "../../src/temporal/types.js";
+
+/** Interface for TemporalClientWrapper (defined here to avoid circular import with client.ts) */
+export interface TemporalClientWrapper {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  startFeatureWorkflow(params: StartWorkflowParams): Promise<string>;
+  signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void>;
+  signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void>;
+  signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void>;
+  queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState>;
+  listWorkflowsByPrefix(prefix: string): Promise<string[]>;
+  isConnected(): boolean;
+}
+
+/**
+ * FakeWorkflowConfigLoader — returns a pre-configured WorkflowConfig.
+ */
+export class FakeWorkflowConfigLoader implements WorkflowConfigLoader {
+  config: WorkflowConfig;
+  loadError: Error | null = null;
+
+  constructor(config?: Partial<WorkflowConfig>) {
+    this.config = {
+      version: 1,
+      phases: [
+        {
+          id: "req-creation",
+          name: "Requirements Creation",
+          type: "creation",
+          agent: "pm",
+          context_documents: ["{feature}/overview"],
+          transition: "req-review",
+        },
+        {
+          id: "req-review",
+          name: "Requirements Review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          context_documents: ["{feature}/REQ"],
+          transition: "req-approved",
+          revision_bound: 3,
+        },
+        {
+          id: "req-approved",
+          name: "Requirements Approved",
+          type: "approved",
+        },
+      ],
+      ...config,
+    };
+  }
+
+  async load(_path?: string): Promise<WorkflowConfig> {
+    if (this.loadError) throw this.loadError;
+    return this.config;
+  }
+}
+
+/**
+ * FakeTemporalClient — records all calls for assertion.
+ */
+export class FakeTemporalClient implements TemporalClientWrapper {
+  startedWorkflows: StartWorkflowParams[] = [];
+  sentSignals: { workflowId: string; signal: string; payload: unknown }[] = [];
+  workflowStates: Map<string, FeatureWorkflowState> = new Map();
+  workflowIds: Map<string, string[]> = new Map(); // prefix → workflow IDs
+  connectionError: Error | null = null;
+  connected = false;
+
+  async connect(): Promise<void> {
+    if (this.connectionError) throw this.connectionError;
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+  }
+
+  async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
+    this.startedWorkflows.push(params);
+    return `ptah-feature-${params.featureSlug}-1`;
+  }
+
+  async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {
+    this.sentSignals.push({ workflowId, signal: "user-answer", payload: answer });
+  }
+
+  async signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void> {
+    this.sentSignals.push({ workflowId, signal: "retry-or-cancel", payload: action });
+  }
+
+  async signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void> {
+    this.sentSignals.push({ workflowId, signal: "resume-or-cancel", payload: action });
+  }
+
+  async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
+    const state = this.workflowStates.get(workflowId);
+    if (!state) throw new Error(`Workflow ${workflowId} not found`);
+    return state;
+  }
+
+  async listWorkflowsByPrefix(prefix: string): Promise<string[]> {
+    return this.workflowIds.get(prefix) ?? [];
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+}
+
+/**
+ * Factory: default WorkflowConfig for tests (minimal 3-phase pipeline).
+ */
+export function defaultTestWorkflowConfig(overrides?: Partial<WorkflowConfig>): WorkflowConfig {
+  return new FakeWorkflowConfigLoader(overrides).config;
+}
+
+/**
+ * Factory: default FeatureWorkflowState for tests.
+ */
+export function defaultFeatureWorkflowState(
+  overrides?: Partial<FeatureWorkflowState>,
+): FeatureWorkflowState {
+  return {
+    featureSlug: "test-feature",
+    featureConfig: { discipline: "backend-only", skipFspec: false },
+    currentPhaseId: "req-creation",
+    completedPhaseIds: [],
+    activeAgentIds: ["pm"],
+    phaseStatus: "running",
+    reviewStates: {},
+    forkJoinState: null,
+    pendingQuestion: null,
+    failureInfo: null,
+    startedAt: "2026-04-02T00:00:00Z",
+    updatedAt: "2026-04-02T00:00:00Z",
+    ...overrides,
+  };
+}

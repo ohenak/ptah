@@ -37,6 +37,7 @@ export class NodeConfigLoader implements ConfigLoader {
     this.validateStructure(parsed);
     this.validateValues(parsed as PtahConfig);
     this.applyDefaults(parsed as Record<string, unknown>);
+    this.applyTemporalDefaults(parsed as Record<string, unknown>);
     return parsed as PtahConfig;
   }
 
@@ -179,6 +180,49 @@ export class NodeConfigLoader implements ConfigLoader {
     if (config.discord.bot_token_env === "") {
       throw new Error("discord.bot_token_env is empty.");
     }
+  }
+
+  private applyTemporalDefaults(config: Record<string, unknown>): void {
+    // Only apply temporal defaults when the temporal section exists in the config
+    if (config.temporal === undefined || config.temporal === null) {
+      return;
+    }
+
+    const temporal = (typeof config.temporal === "object" && !Array.isArray(config.temporal))
+      ? config.temporal as Record<string, unknown>
+      : {};
+    config.temporal = temporal;
+
+    // Top-level defaults
+    if (temporal.address === undefined) temporal.address = "localhost:7233";
+    if (temporal.namespace === undefined) temporal.namespace = "default";
+    if (temporal.taskQueue === undefined) temporal.taskQueue = "ptah-main";
+
+    // Worker defaults
+    const worker = (typeof temporal.worker === "object" && temporal.worker !== null && !Array.isArray(temporal.worker))
+      ? temporal.worker as Record<string, unknown>
+      : {};
+    temporal.worker = worker;
+    if (worker.maxConcurrentWorkflowTasks === undefined) worker.maxConcurrentWorkflowTasks = 10;
+    if (worker.maxConcurrentActivities === undefined) worker.maxConcurrentActivities = 3;
+
+    // Retry defaults
+    const retry = (typeof temporal.retry === "object" && temporal.retry !== null && !Array.isArray(temporal.retry))
+      ? temporal.retry as Record<string, unknown>
+      : {};
+    temporal.retry = retry;
+    if (retry.maxAttempts === undefined) retry.maxAttempts = 3;
+    if (retry.initialIntervalSeconds === undefined) retry.initialIntervalSeconds = 30;
+    if (retry.backoffCoefficient === undefined) retry.backoffCoefficient = 2.0;
+    if (retry.maxIntervalSeconds === undefined) retry.maxIntervalSeconds = 600;
+
+    // Heartbeat defaults
+    const heartbeat = (typeof temporal.heartbeat === "object" && temporal.heartbeat !== null && !Array.isArray(temporal.heartbeat))
+      ? temporal.heartbeat as Record<string, unknown>
+      : {};
+    temporal.heartbeat = heartbeat;
+    if (heartbeat.intervalSeconds === undefined) heartbeat.intervalSeconds = 30;
+    if (heartbeat.timeoutSeconds === undefined) heartbeat.timeoutSeconds = 120;
   }
 
   private applyDefaults(config: Record<string, unknown>): void {

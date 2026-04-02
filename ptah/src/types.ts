@@ -106,6 +106,41 @@ export interface ThreadStateEntry {
   parentThreadId?: string;
 }
 
+// --- Temporal Configuration (REQ-NF-15-01, REQ-NF-15-03) ---
+
+export interface TlsConfig {
+  clientCertPath?: string;
+  clientKeyPath?: string;
+  serverRootCACertPath?: string;
+}
+
+export interface WorkerConfig {
+  maxConcurrentWorkflowTasks: number;  // default: 10
+  maxConcurrentActivities: number;     // default: 3
+}
+
+export interface RetryDefaults {
+  maxAttempts: number;                 // default: 3
+  initialIntervalSeconds: number;      // default: 30
+  backoffCoefficient: number;          // default: 2.0
+  maxIntervalSeconds: number;          // default: 600
+}
+
+export interface HeartbeatConfig {
+  intervalSeconds: number;             // default: 30
+  timeoutSeconds: number;              // default: 120
+}
+
+export interface TemporalConfig {
+  address: string;                     // default: "localhost:7233"
+  namespace: string;                   // default: "default"
+  taskQueue: string;                   // default: "ptah-main"
+  tls?: TlsConfig;
+  worker: WorkerConfig;
+  retry: RetryDefaults;
+  heartbeat: HeartbeatConfig;
+}
+
 export interface PtahConfig {
   project: {
     name: string;
@@ -114,6 +149,7 @@ export interface PtahConfig {
   agentEntries: AgentEntry[];
   llm?: LlmConfig;
   discord: DiscordConfig;
+  temporal?: TemporalConfig;
   orchestrator: {
     max_turns_per_thread: number;
     pending_poll_seconds: number;
