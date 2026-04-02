@@ -8,6 +8,7 @@
 | **Requirements** | [REQ-015](015-REQ-temporal-foundation.md) |
 | **Functional Specification** | [FSPEC-015](015-FSPEC-temporal-foundation.md) |
 | **Date** | April 2, 2026 |
+| **Version** | 1.1 |
 | **Status** | Draft |
 
 ---
@@ -566,7 +567,10 @@ const { invokeSkill, sendNotification } = wf.proxyActivities<SkillActivities>({
 3. Set workflow state to "failed"
 4. await wf.condition(() => retryOrCancelAction !== null)
 5. On retry-or-cancel Signal:
-   a. "retry" → re-dispatch Activity from scratch (clean slate)
+   a. "retry":
+      - Single-agent phase → re-dispatch the Activity from scratch (clean slate)
+      - Fork/join phase → re-dispatch ALL agents in the fork/join group (per BR-14),
+        not just the failed agent. The workflow re-enters Section 5.3 from step 1.
    b. "cancel" → workflow completes with cancelled status
 ```
 
@@ -1004,6 +1008,7 @@ None. All behavioral questions were resolved in the REQ v1.2 and FSPEC v1.1 revi
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 2, 2026 | eng | Initial TSPEC. Covers all 20 requirements across TF, CD, MG, NF domains. |
+| 1.1 | April 2, 2026 | eng | Addressed PM cross-review (CROSS-REVIEW-product-manager-TSPEC.md). **F-01:** Added fork/join-specific retry behavior to Section 5.6 — "retry" re-dispatches ALL agents per BR-14, not just the failed agent. F-02 is a REQ AC inconsistency (PM to fix). |
 
 ---
 
