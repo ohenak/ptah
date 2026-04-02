@@ -1510,18 +1510,7 @@ import type {
   NotificationInput,
 } from "../../src/temporal/types.js";
 
-/** Interface for TemporalClientWrapper (defined here to avoid circular import with client.ts) */
-export interface TemporalClientWrapper {
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  startFeatureWorkflow(params: StartWorkflowParams): Promise<string>;
-  signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void>;
-  signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void>;
-  signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void>;
-  queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState>;
-  listWorkflowsByPrefix(prefix: string): Promise<string[]>;
-  isConnected(): boolean;
-}
+export type { TemporalClientWrapper } from "../../src/temporal/client.js";
 
 /**
  * FakeWorkflowConfigLoader — returns a pre-configured WorkflowConfig.

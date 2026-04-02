@@ -29,9 +29,9 @@ Replace Ptah's custom orchestration infrastructure with Temporal durable workflo
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| B1 | Implement TemporalClientWrapper — connect, disconnect, startFeatureWorkflow, workflow ID sequencing (`ptah-feature-{slug}-{sequence}`) | `tests/unit/temporal/client.test.ts` | `src/temporal/client.ts` | ⬚ Not Started |
-| B2 | Implement TemporalClientWrapper — signalUserAnswer, signalRetryOrCancel, signalResumeOrCancel, queryWorkflowState, listWorkflowsByPrefix | `tests/unit/temporal/client.test.ts` | `src/temporal/client.ts` | ⬚ Not Started |
-| B3 | Implement Temporal Worker setup — createWorker with activity closure injection, configurable concurrency, task queue | `tests/unit/temporal/worker.test.ts` | `src/temporal/worker.ts` | ⬚ Not Started |
+| B1 | Implement TemporalClientWrapper — connect, disconnect, startFeatureWorkflow, workflow ID sequencing (`ptah-feature-{slug}-{sequence}`) | `tests/unit/temporal/client.test.ts` | `src/temporal/client.ts` | ✅ Done |
+| B2 | Implement TemporalClientWrapper — signalUserAnswer, signalRetryOrCancel, signalResumeOrCancel, queryWorkflowState, listWorkflowsByPrefix | `tests/unit/temporal/client.test.ts` | `src/temporal/client.ts` | ✅ Done |
+| B3 | Implement Temporal Worker setup — createWorker with activity closure injection, configurable concurrency, task queue | `tests/unit/temporal/worker.test.ts` | `src/temporal/worker.ts` | ✅ Done |
 
 ### Phase C: Activities
 
