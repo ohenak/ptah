@@ -8,7 +8,7 @@
 | **Requirements** | [REQ-015](015-REQ-temporal-foundation.md) |
 | **Specifications** | [FSPEC-015](015-FSPEC-temporal-foundation.md), [TSPEC-015](015-TSPEC-temporal-foundation.md) |
 | **Execution Plan** | [PLAN-015](015-PLAN-temporal-foundation.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 2, 2026 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -55,16 +55,16 @@ This document catalogs the testable properties for the Temporal Foundation + Con
 
 | Category | Count | Requirements Covered | Test Level |
 |----------|-------|----------------------|------------|
-| Functional | 42 | REQ-TF-01..08, REQ-CD-01..07, REQ-MG-01..02, REQ-NF-15-01..03 | Unit |
+| Functional | 43 | REQ-TF-01..08, REQ-CD-01..07, REQ-MG-01..02, REQ-NF-15-01..03 | Unit |
 | Contract | 10 | REQ-TF-01, REQ-TF-02, REQ-TF-04, REQ-CD-01, REQ-MG-01 | Unit / Integration |
 | Error Handling | 18 | REQ-TF-02, REQ-TF-05, REQ-TF-06, REQ-CD-05, REQ-MG-01 | Unit |
 | Data Integrity | 8 | REQ-TF-04, REQ-CD-01, REQ-CD-07, REQ-MG-01 | Unit |
 | Integration | 10 | REQ-TF-01..03, REQ-TF-06..08, REQ-NF-15-01 | Integration |
-| Performance | 4 | REQ-TF-02, REQ-NF-15-03 | Integration |
+| Performance | 5 | REQ-TF-02, REQ-NF-15-03 | Integration |
 | Security | 3 | REQ-TF-03, REQ-NF-15-01 | Unit / Integration |
 | Idempotency | 5 | REQ-TF-02, REQ-TF-07, REQ-MG-01 | Unit / Integration |
 | Observability | 5 | REQ-TF-04, REQ-NF-15-02 | Unit |
-| **Total** | **105** | | |
+| **Total** | **107** | | |
 
 ---
 
@@ -133,7 +133,7 @@ Core business logic and behavior.
 | PROP-TF-28 | `featureLifecycleWorkflow` must wait for all remaining Activities before evaluating results under `wait_for_all` policy | REQ-TF-06, FSPEC-TF-04 Failure S3, TSPEC S5.3.2 | Unit | P0 |
 | PROP-TF-29 | `featureLifecycleWorkflow` must request cancellation of surviving Activities under `fail_fast` policy when one fails | FSPEC-TF-04 Failure-fast S3, BR-15, TSPEC S5.3.2 | Unit | P0 |
 | PROP-TF-30 | `featureLifecycleWorkflow` must re-dispatch ALL agents (not just failed ones) on retry of a failed fork/join phase | REQ-TF-06, FSPEC-TF-04 Failure S10, BR-14, TSPEC S5.6.5a | Unit | P0 |
-| PROP-TF-31 | `featureLifecycleWorkflow` must handle `ROUTE_TO_USER` in fork/join by processing question flows sequentially, then re-invoking only the ROUTE_TO_USER agents | FSPEC-TF-04 ROUTE_TO_USER S1-5, TSPEC S5.3.3 | Unit | P0 |
+| PROP-TF-31 | `featureLifecycleWorkflow` must handle `ROUTE_TO_USER` in fork/join by processing question flows sequentially in config-defined agent order (same ordering as `agents` array in phase config), then re-invoking only the ROUTE_TO_USER agents | FSPEC-TF-04 ROUTE_TO_USER S1-5, BR-13, TSPEC S5.3.3 | Unit | P0 |
 
 #### 3.1.7 Worktree Management (REQ-TF-07)
 
@@ -154,6 +154,7 @@ Core business logic and behavior.
 | PROP-TF-39 | `featureLifecycleWorkflow` must require ALL reviewers to re-review after revision (not just those who requested changes) | FSPEC-TF-05 S8f, BR-18, TSPEC S5.5.5v | Unit | P0 |
 | PROP-TF-40 | `featureLifecycleWorkflow` must pause and notify user when revision count exceeds the configured bound (default 3) | REQ-TF-08, FSPEC-TF-05 S8b-c, TSPEC S5.5.5biii | Unit | P0 |
 | PROP-TF-41 | `featureLifecycleWorkflow` must track revision count per review phase, not globally | FSPEC-TF-05, BR-19, TSPEC S5.5 | Unit | P0 |
+| PROP-TF-91 | `featureLifecycleWorkflow` must populate `SkillActivityInput.taskType` as `"Create"` for initial dispatches and `"Revise"` for post-revision dispatches, and derive `documentType` from the phase config | FSPEC-TF-05 S8e, TSPEC S4.3, S5.3 | Unit | P0 |
 
 #### 3.1.9 Config-Driven Phase Definitions (REQ-CD-01..07)
 
@@ -208,7 +209,7 @@ API request/response shape, protocol compliance, and type conformance.
 | PROP-CD-13 | `PhaseDefinition` must support all optional fields: `agent`, `agents`, `reviewers`, `transition`, `skip_if`, `failure_policy`, `context_documents`, `revision_bound`, `retry` | TSPEC S4.3 | Unit | P0 |
 | PROP-MG-06 | `MigrateCommand.execute` must accept `MigrateOptions` and return `MigrateResult` matching the defined interfaces | TSPEC S4.2 | Unit | P0 |
 | PROP-TF-47 | Signal payloads must conform to defined interfaces: `UserAnswerSignal`, `RetryOrCancelSignal`, `ResumeOrCancelSignal` | TSPEC S4.3 | Unit | P0 |
-| PROP-TF-48 | `FeatureWorkflowState` must include all required fields: `featureSlug`, `currentPhaseId`, `completedPhaseIds`, `activeAgentIds`, `phaseStatus`, `reviewStates`, `forkJoinState`, `pendingQuestion`, `failureInfo` | TSPEC S4.3 | Unit | P0 |
+| PROP-TF-48 | `FeatureWorkflowState` must include all required fields: `featureSlug`, `currentPhaseId`, `completedPhaseIds`, `activeAgentIds`, `phaseStatus`, `reviewStates`, `forkJoinState`, `pendingQuestion`, `failureInfo`, `startedAt`, `updatedAt` | TSPEC S4.3 | Unit | P0 |
 
 ### 3.3 Error Handling Properties
 
@@ -219,11 +220,11 @@ Failure modes, error propagation, and graceful degradation.
 | PROP-TF-49 | `invokeSkill` Activity must throw `ApplicationFailure.nonRetryable()` for git merge conflicts | FSPEC-TF-03, BR-09, TSPEC S12 | Unit | P0 |
 | PROP-TF-50 | `invokeSkill` Activity must throw `ApplicationFailure.nonRetryable()` for routing signal parse failures | FSPEC-TF-03, BR-09, TSPEC S12 | Unit | P0 |
 | PROP-TF-51 | `invokeSkill` Activity must throw a retryable error for subprocess crash (non-zero exit) | FSPEC-TF-03, TSPEC S12 | Unit | P0 |
-| PROP-TF-52 | `invokeSkill` Activity must throw a retryable error for heartbeat timeout | FSPEC-TF-03, TSPEC S12 | Unit | P0 |
+| PROP-TF-52 | `invokeSkill` Activity must call `context.heartbeat()` within `heartbeatInterval` (default 30s) so that Temporal does not detect a heartbeat timeout; when the Activity stops heartbeating, Temporal externally cancels and retries per the retry policy | FSPEC-TF-03, FSPEC-TF-01 S6, TSPEC S6.5, S12 | Unit / Integration | P0 |
 | PROP-TF-53 | `invokeSkill` Activity must handle 429 errors internally: read `Retry-After`, sleep, retry; only throw to Temporal when internal retries are exhausted | FSPEC-TF-03, BR-26, TSPEC S6.9 | Unit | P0 |
 | PROP-TF-54 | `featureLifecycleWorkflow` must send a failure notification with error type, message, phase, agent, and retry count before entering failed state | FSPEC-TF-03 S5b, TSPEC S5.6.2 | Unit | P0 |
-| PROP-TF-55 | `featureLifecycleWorkflow` must enter failed state and notify user when a non-retryable error occurs (no retry-or-cancel, immediate failure) | FSPEC-TF-03 S5, TSPEC S5.6 | Unit | P0 |
-| PROP-TF-56 | `mergeWorktree` Activity must revert the first merge and throw non-retryable error when the second worktree in fork/join produces a merge conflict | FSPEC-TF-04 CONFLICT S1-6, TSPEC S7 | Unit | P0 |
+| PROP-TF-55 | `featureLifecycleWorkflow` must enter failed state, notify user, and enter `waitForSignal("retry-or-cancel")` when a non-retryable error occurs, allowing the user to retry (after manual resolution) or cancel | FSPEC-TF-03 S5a-d, TSPEC S5.6 | Unit | P0 |
+| PROP-TF-56 | `mergeWorktree` Activity must throw non-retryable error when a merge conflict is detected; the Workflow must orchestrate the sequential merge rollback (revert first merge, clean up all worktrees) when the second worktree conflicts | FSPEC-TF-04 CONFLICT S1-6, TSPEC S7 | Integration | P0 |
 | PROP-CD-14 | `WorkflowConfigLoader` must throw `WorkflowConfigError` when `ptah.workflow.yaml` is not found | TSPEC S4.2, S12 | Unit | P0 |
 | PROP-CD-15 | `WorkflowConfigLoader` must throw `WorkflowConfigError` when YAML content is malformed | TSPEC S4.2, S12 | Unit | P0 |
 | PROP-TF-57 | `featureLifecycleWorkflow` must handle reviewer Activity that returns `ROUTE_TO_USER` via the standard question flow (FSPEC-TF-02), re-invoking the reviewer after the answer | FSPEC-TF-05, BR-21 | Unit | P0 |
@@ -245,7 +246,7 @@ Data transformations, mapping correctness, and data preservation.
 | PROP-TF-61 | `featureLifecycleWorkflow` must preserve `reviewerStatuses` and `revisionCount` across review loop iterations | FSPEC-TF-05, BR-19, TSPEC S5.5 | Unit | P0 |
 | PROP-CD-16 | `WorkflowConfigLoader` must preserve all fields from `ptah.workflow.yaml` without data loss during YAML→TypeScript deserialization | REQ-CD-01, TSPEC S4.2, S8.1 | Unit | P0 |
 | PROP-CD-17 | Context document resolver must correctly substitute `{feature}` placeholder with the feature slug and document numbering prefix | REQ-CD-07, TSPEC S8.2 | Unit | P0 |
-| PROP-MG-12 | `V4_DEFAULT_MAPPING` must map all 15 v4 `PdlcPhase` enum values plus `IMPLEMENTATION`, `IMPLEMENTATION_REVIEW`, and `DONE` to corresponding default preset phase IDs | FSPEC-MG-01, BR-24, TSPEC S11.1 | Unit | P0 |
+| PROP-MG-12 | `V4_DEFAULT_MAPPING` must map all 15 v4 `PdlcPhase` enum values (including `IMPLEMENTATION`, `IMPLEMENTATION_REVIEW`, and `DONE`) to corresponding default preset phase IDs | FSPEC-MG-01, BR-24, TSPEC S11.1 | Unit | P0 |
 | PROP-MG-13 | `MigrateCommand` must transfer reviewer statuses faithfully for features mid-review (pending/approved/revision_requested) | FSPEC-MG-01 S7c, BR-23 | Unit | P0 |
 | PROP-MG-14 | `MigrateCommand` must compute workflow IDs as `ptah-feature-{slug}-1` for migrated features | FSPEC-MG-01 S7a, TSPEC S11.2 | Unit | P0 |
 | PROP-MG-15 | `MigrateCommand` must validate imports by querying each created workflow and reporting any phase mismatches as warnings | FSPEC-MG-01 S8 | Unit | P0 |
@@ -275,6 +276,7 @@ Response times, resource limits, and timeout behavior.
 |----|----------|--------|------------|----------|
 | PROP-TF-72 | `invokeSkill` Activity must use `startToCloseTimeout` (configurable, default 30 minutes) to bound execution time | REQ-TF-02, TSPEC S5.1 | Integration | P0 |
 | PROP-TF-73 | `invokeSkill` Activity must be considered failed when heartbeats stop for longer than `heartbeatTimeout` (configurable, default 120 seconds) | REQ-TF-02, FSPEC-TF-01 Error, TSPEC S5.1 | Integration | P0 |
+| PROP-TF-90 | `invokeSkill` Activity must be cancelled and the workflow must enter the failure flow when `startToCloseTimeout` (configurable, default 30 minutes) expires, covering long agent runs that approach the timeout boundary | REQ-TF-02, FSPEC-TF-01 Edge Cases, TSPEC S5.1, R-09 | Integration | P0 |
 | PROP-NF-03 | Temporal Worker must respect `maxConcurrentActivities` configuration to limit parallel Activity execution | REQ-NF-15-03, TSPEC S9 | Integration | P1 |
 | PROP-NF-04 | `featureLifecycleWorkflow` must consume no resources while waiting for a Signal (suspended state) | REQ-TF-03, FSPEC-TF-02 S4 | Integration | P0 |
 
@@ -324,12 +326,12 @@ Properties that define what the system must NOT do.
 | PROP-TF-81 | `invokeSkill` Activity must NOT merge worktrees when routing signal is `ROUTE_TO_USER` | FSPEC-TF-01 S8, BR-03 | Unit | P0 |
 | PROP-TF-82 | `invokeSkill` Activity in fork/join context must NOT self-merge — only the Workflow orchestrates merges | FSPEC-TF-01 S9d, BR-04a | Unit | P0 |
 | PROP-TF-83 | `featureLifecycleWorkflow` must NOT merge any worktrees when any Activity in a fork/join batch fails (no-partial-merge) | REQ-TF-06, FSPEC-TF-04 Failure S5, BR-12 | Unit | P0 |
-| PROP-TF-84 | `featureLifecycleWorkflow` must NOT retry non-retryable errors (git merge conflict, routing signal parse failure, revision bound exceeded) | FSPEC-TF-03, BR-09 | Unit | P0 |
+| PROP-TF-84 | Temporal must NOT automatically retry non-retryable errors (git merge conflict, routing signal parse failure) — these bypass the retry policy via `ApplicationFailure.nonRetryable()`; the workflow may still offer manual retry via `retry-or-cancel` Signal | FSPEC-TF-03, BR-09 | Unit | P0 |
 | PROP-TF-85 | `featureLifecycleWorkflow` must NOT re-dispatch only failed agents on fork/join retry — ALL agents must be re-dispatched | REQ-TF-06, BR-14 | Unit | P0 |
 | PROP-TF-86 | `featureLifecycleWorkflow` must NOT skip re-review of approving reviewers after a revision — ALL reviewers must re-review | FSPEC-TF-05, BR-18 | Unit | P0 |
 | PROP-TF-87 | `featureLifecycleWorkflow` must NOT dispatch an Activity for `approved` phase types — they auto-transition | TSPEC S5.2.b | Unit | P0 |
 | PROP-TF-88 | Temporal retry mechanism must NOT handle 429 rate limit errors — these must be handled internally by the Activity | FSPEC-TF-03, BR-26 | Unit | P0 |
-| PROP-TF-89 | `featureLifecycleWorkflow` must NOT use `Date.now()`, `Math.random()`, or direct I/O — it must remain deterministic per Temporal requirements | TSPEC S5.1 comment | Unit | P0 |
+| PROP-TF-89 | `featureLifecycleWorkflow` must NOT use `Date.now()`, `Math.random()`, or direct I/O — it must remain deterministic per Temporal requirements; enforced via static analysis (ESLint rule banning non-deterministic APIs in workflow files) and validated by Temporal replay in integration tests | TSPEC S5.1 comment | Unit | P0 |
 | PROP-MG-18 | `MigrateCommand` in `--dry-run` mode must NOT connect to Temporal or create any workflows | REQ-MG-02, FSPEC-MG-01 S5 | Unit | P1 |
 | PROP-MG-19 | `MigrateCommand` must NOT transfer pending questions from v4 — the agent will re-ask when resumed | FSPEC-MG-01 Edge Cases | Unit | P0 |
 | PROP-CD-18 | `WorkflowValidator` must NOT allow duplicate phase IDs in configuration | REQ-CD-05 | Unit | P0 |
@@ -391,18 +393,18 @@ Properties that define what the system must NOT do.
 ```
         /  E2E  \          0 -- not needed; integration tests with TestWorkflowEnvironment cover critical paths
        /----------\
-      / Integration \      10 (9.5%) -- cross-module boundaries, Temporal server interaction
+      / Integration \      12 (11.2%) -- cross-module boundaries, Temporal server interaction
      /----------------\
-    /    Unit Tests     \  95 (90.5%) -- fast, isolated, comprehensive
+    /    Unit Tests     \  95 (88.8%) -- fast, isolated, comprehensive
    /____________________\
 ```
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 95 | 90.5% |
-| Integration | 10 | 9.5% |
+| Unit | 95 | 88.8% |
+| Integration | 12 | 11.2% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **105** | **100%** |
+| **Total** | **107** | **100%** |
 
 **E2E test rationale:** No E2E tests are recommended. The Temporal `TestWorkflowEnvironment` provides a real Temporal test server that runs in-process, enabling true integration tests that cover the full workflow lifecycle without requiring external infrastructure. This gives E2E-level confidence at the integration test level. All critical user journeys (crash recovery, fork/join, review loops, migration) can be exercised with `TestWorkflowEnvironment` + mock Activities.
 
@@ -415,7 +417,7 @@ Properties that define what the system must NOT do.
 | 1 | No properties for `ptah init` generating `ptah.workflow.yaml` and `temporal` config section | Init command could produce malformed or incomplete config | Low | Add unit tests for init command's config generation as part of CLI entry point changes (TSPEC S15.4). Covered by existing init tests; add assertions for new config fields. |
 | 2 | No properties for `ptah status` querying Temporal workflows | Status command regression possible | Low | Add unit tests for status command using `FakeTemporalClient`. Straightforward given existing status tests. |
 | 3 | No properties for Orchestrator orphaned worktree pruning on startup | Could leave stale worktrees from crashed Activities | Low | Existing v4 tests cover this behavior. Verify they still pass after refactor. |
-| 4 | No properties for very long agent runs approaching `startToCloseTimeout` boundary | Timeout behavior at boundary not explicitly tested | Med | Add integration test with `TestWorkflowEnvironment` time-skipping to verify timeout expiry triggers proper failure flow. |
+| 4 | ~~Resolved~~ — promoted to PROP-TF-90 (Integration, P0) per PM feedback | — | — | PROP-TF-90 covers `startToCloseTimeout` expiry triggering the failure flow |
 
 ---
 
@@ -433,6 +435,7 @@ Properties that define what the system must NOT do.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 2, 2026 | Test Engineer | Initial properties document. 105 properties across 9 categories covering 20 requirements, 6 FSPECs, and 1 TSPEC. 95 unit-level, 10 integration-level, 0 E2E. Full coverage of all P0 and P1 requirements. |
+| 1.1 | April 2, 2026 | Test Engineer | Addressed engineer and PM cross-reviews. **PM F-01 (High):** Fixed PROP-TF-55 — non-retryable errors now correctly enter `waitForSignal("retry-or-cancel")` per FSPEC-TF-03 S5c-d; updated PROP-TF-84 to clarify Temporal retry bypass vs workflow-level manual retry. **PM F-02:** Fixed PROP-MG-12 phrasing (15 enum values *including* IMPLEMENTATION etc., not *plus*). **PM Q-01:** Promoted Gap 4 to PROP-TF-90 (P0, Integration) — `startToCloseTimeout` expiry triggers failure flow. **Eng F-01 (Medium):** Rewrote PROP-TF-52 — heartbeat timeout is Temporal-detected, not Activity-thrown; split into Activity-side (heartbeat emission) and Temporal-side (timeout detection + retry). **Eng F-02:** Added `startedAt`, `updatedAt` to PROP-TF-48. **Eng F-03:** Moved PROP-TF-56 merge conflict rollback to Integration level. **Eng F-04:** Added PROP-TF-91 for `taskType`/`documentType` derivation. **Eng Q-01:** Clarified PROP-TF-89 determinism enforcement via ESLint + Temporal replay. **Eng Q-02:** Specified config-defined agent order for fork/join question processing in PROP-TF-31. Total: 107 properties (95 unit, 12 integration). |
 
 ---
 
