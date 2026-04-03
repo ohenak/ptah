@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-021 |
 | **Parent Document** | [REQ-015 — Temporal Foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -35,7 +35,9 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 - Merging agent worktree changes back to the shared feature branch after each phase completes
 - Parsing user messages to detect an `@agent-id` directive
 - Dispatching ad-hoc revision requests to the named agent when the feature workflow is active
+- Queuing multiple ad-hoc revision requests so the user can send several before the first completes
 - Acknowledging ad-hoc requests with visible Discord feedback
+- Automatically re-running downstream review phases after an ad-hoc revision completes
 
 ### Out of Scope
 
@@ -50,6 +52,7 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 - The shared feature branch (`feat-{feature-slug}`) is created before the first agent runs
 - Agent worktrees are still in `/tmp` and are ephemeral; only committed + pushed changes persist
 - The `@agent-id` syntax mirrors agent IDs as defined in `workflow.yaml` (e.g. `@pm`, `@eng`, `@qa`)
+- Mapping from human-readable @mention text (e.g. `@product-manager`) to agent ID (e.g. `pm`) is performed by the system at message receipt time and is not a product-level concern
 
 ---
 
@@ -63,6 +66,8 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 | **US-04** | As a user, I want to send `@product-manager address feedback from docs/016-messaging-abstraction/CROSS-REVIEW-engineer-REQ.md` to a feature thread and have the PM agent re-run with that instruction, so that I can trigger ad-hoc revisions without waiting for the sequential workflow to reach the PM phase again. |
 | **US-05** | As a user, I want to receive a Discord acknowledgement when my @-mention message is dispatched to an agent, so that I know Ptah understood my intent and is acting on it. |
 | **US-06** | As a user, I want to receive a Discord error message if my @-mention names an agent that is not part of the current feature's workflow, so that I understand why nothing happened. |
+| **US-07** | As a user, I want to send multiple @-mention revision requests in quick succession and have them processed in order, so that I can queue up several instructions without waiting for each one to complete. |
+| **US-08** | As a user, when I trigger an ad-hoc revision on an upstream agent (e.g. PM), I want the downstream review phases (e.g. engineer cross-review, QA cross-review) to automatically re-run with the updated artifacts, so that I don't have to manually re-trigger each subsequent phase. |
 
 ---
 
@@ -287,6 +292,7 @@ THEN:  The Discord thread receives a reply such as:
 
 #### REQ-MR-05: No Signal When Workflow Is Not Active
 
+
 | Field | Detail |
 |-------|--------|
 | **ID** | REQ-MR-05 |
@@ -310,6 +316,66 @@ THEN:  No Temporal signal is sent,
 
 ---
 
+#### REQ-MR-06: Queue Multiple Ad-Hoc Revision Signals
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-MR-06 |
+| **Title** | Multiple adHocRevision signals are queued and processed in arrival order |
+| **Priority** | P0 |
+| **Phase** | 1 |
+| **Source user stories** | US-07 |
+| **Dependencies** | REQ-MR-02 |
+
+**Description:**
+The workflow must maintain an ordered queue of pending `adHocRevision` signals. When a second (or third) signal arrives while the first ad-hoc activity is still running, it must be held in the queue rather than rejected or dropped. Once the current ad-hoc activity completes, the workflow dequeues and processes the next signal immediately. Signals are processed in the order they were received (FIFO). There is no maximum queue depth — signals accumulate until the workflow terminates.
+
+**Acceptance Criteria:**
+```
+WHO:   As a user
+GIVEN: The workflow is processing an adHocRevision for agent pm
+WHEN:  The user sends "@eng update the TSPEC to reflect the PM changes"
+       before the pm activity finishes
+THEN:  The eng adHocRevision is held in queue,
+       the pm activity completes first,
+       then the eng activity runs,
+       and both acknowledgements are posted to Discord in order
+```
+
+---
+
+#### REQ-MR-07: Automatic Downstream Phase Re-run After Ad-Hoc Revision
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-MR-07 |
+| **Title** | After an ad-hoc revision, downstream review phases automatically re-execute |
+| **Priority** | P0 |
+| **Phase** | 1 |
+| **Source user stories** | US-08 |
+| **Dependencies** | REQ-MR-02, REQ-WB-03 |
+
+**Description:**
+When an ad-hoc revision activity completes and produces new artifacts on the shared feature branch, the workflow must automatically re-run all review phases that come after the revised agent's phase in the workflow sequence. "After" is determined by the workflow configuration's phase ordering: any phase whose position in the sequence is strictly later than the revised agent's phase, and whose role is a review (cross-review or review) of a prior artifact, must be re-queued.
+
+The re-run must use the latest artifacts from the shared branch (i.e., pull after the revised agent's push completes). The user does not need to take any action to trigger the downstream cascade.
+
+**Example:** If the PM agent is revised ad-hoc, the engineer's cross-review phase and the QA's cross-review phase — which follow PM in the workflow — must re-run automatically. If the engineer agent is revised, only QA's downstream review phases re-run.
+
+**Acceptance Criteria:**
+```
+WHO:   As a user
+GIVEN: The workflow for feature 021 has phases: pm → eng-review → qa-cross-review → ...
+       and an adHocRevision for pm completes
+WHEN:  The pm ad-hoc activity finishes and pushes updated artifacts
+THEN:  The workflow automatically schedules eng-review and qa-cross-review to re-run,
+       each agent pulls the latest shared branch before starting,
+       and the user sees Discord notifications for each re-run phase without
+       having to send any additional messages
+```
+
+---
+
 ### Domain: NF — Non-Functional
 
 #### REQ-NF-01: No Sequential Phase Disruption
@@ -324,16 +390,17 @@ THEN:  No Temporal signal is sent,
 | **Dependencies** | REQ-MR-02 |
 
 **Description:**
-When an ad-hoc revision request interrupts the normal workflow sequence, the workflow's phase state must remain consistent. After the ad-hoc agent activity completes, the workflow must resume the correct next phase without skipping, duplicating, or losing any scheduled phases. The ad-hoc step is a side-effect inserted between phases, not a phase replacement.
+When an ad-hoc revision activity runs and triggers an automatic downstream cascade ([REQ-MR-07]), the workflow's phase state must remain internally consistent throughout. No phase may be skipped, duplicated, or lost. The cascade re-runs are treated as re-executions of existing phases, not insertions of new phases. The workflow's phase cursor advances only after each re-run completes successfully.
 
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: The workflow is between phase req-review (eng) and req-cross-review (qa),
-       and an adHocRevision for pm runs
-WHEN:  The pm ad-hoc activity completes
-THEN:  The workflow proceeds to the qa req-cross-review phase as originally scheduled,
-       and the qa agent sees the pm's updated artifacts on the shared branch
+GIVEN: The workflow phase sequence is: pm → eng-review → qa-cross-review
+       and an adHocRevision for pm triggers a cascade
+WHEN:  The pm ad-hoc activity and the downstream cascade both complete
+THEN:  The workflow's phase log shows each phase executed exactly once per cycle,
+       no phase is missing from the execution history,
+       and the final workflow state is consistent with a clean sequential run
 ```
 
 ---
@@ -376,6 +443,8 @@ THEN:  The TSPEC explicitly addresses how concurrent writes to feat-{featureSlug
 | REQ-MR-03 | Reject ad-hoc request for unknown agent | P1 | 1 | MR |
 | REQ-MR-04 | Acknowledge ad-hoc request in Discord | P1 | 1 | MR |
 | REQ-MR-05 | No signal when workflow is not active | P1 | 1 | MR |
+| REQ-MR-06 | Queue multiple ad-hoc revision signals | P0 | 1 | MR |
+| REQ-MR-07 | Automatic downstream phase re-run after ad-hoc revision | P0 | 1 | MR |
 | REQ-NF-01 | No sequential phase disruption | P0 | 1 | NF |
 | REQ-NF-02 | Shared branch must not block parallel future work | P1 | 1 | NF |
 
@@ -383,8 +452,8 @@ THEN:  The TSPEC explicitly addresses how concurrent writes to feat-{featureSlug
 
 ## 6. Open Questions
 
-| # | Question | Owner | Status |
-|---|----------|-------|--------|
-| OQ-01 | Should `adHocRevision` signals queue (i.e., the user can send multiple before the first completes) or be rejected if one is already in flight? | User | Open |
-| OQ-02 | When an ad-hoc pm run produces updated artifacts, should the workflow re-run downstream review phases automatically, or wait for the user to re-trigger? | User | Open |
-| OQ-03 | What is the canonical mapping from Discord @mention text to agent ID? Does `@product-manager` map to `pm`, or must users type `@pm`? | User | Open |
+| # | Question | Owner | Status | Resolution |
+|---|----------|-------|--------|------------|
+| OQ-01 | Should `adHocRevision` signals queue or be rejected if one is already in flight? | User | **Closed** | Signals queue (FIFO). Multiple can be pending. → [REQ-MR-06] |
+| OQ-02 | Should downstream review phases re-run automatically or wait for user re-trigger? | User | **Closed** | Automatic downstream cascade. → [REQ-MR-07] |
+| OQ-03 | Canonical mapping from Discord @mention text to agent ID? | User | **Closed** | Handled by the system at message receipt time; not a product-level concern. `@product-manager` and `@pm` both acceptable; system resolves to agent ID. No new requirement. |

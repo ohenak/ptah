@@ -596,6 +596,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
 | 3.1 | April 3, 2026 | Product Manager | Added feature 020 (Message Acknowledgement). 3 new user stories (US-33, US-34, US-35). 9 requirements added: MA domain (6 reqs: REQ-MA-01 through REQ-MA-06) + 3 non-functional (REQ-NF-20-01 through REQ-NF-20-03). All pending FSPEC/TSPEC. REQ at docs/020-message-acknowledgement/020-REQ-message-acknowledgement.md. Total requirements: 172. |
 | 3.2 | April 3, 2026 | Product Manager | Added feature 021 (Agent Coordination). 6 new user stories (US-36 through US-41). 11 requirements added: WB domain (4 reqs: REQ-WB-01 through REQ-WB-04, shared branch strategy), MR domain (5 reqs: REQ-MR-01 through REQ-MR-05, ad-hoc message routing), NF domain (2 reqs: REQ-NF-21-01, REQ-NF-21-02). All pending FSPEC/TSPEC. REQ at docs/021-agent-coordination/021-REQ-agent-coordination.md. Total requirements: 183. |
+| 3.3 | April 3, 2026 | Product Manager | REQ-021 v1.1 — closed all 3 open questions. Added 2 user stories (US-42, US-43). Added 2 requirements: REQ-MR-06 (signal queuing, P0) and REQ-MR-07 (automatic downstream cascade, P0). Total requirements: 185. |
 
 ### Phase 21 — Agent Coordination
 
@@ -610,6 +611,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-MR-03] | Pending | Pending | P1 | [US-41] |
 | [REQ-MR-04] | Pending | Pending | P1 | [US-40] |
 | [REQ-MR-05] | Pending | Pending | P1 | [US-41] |
+| [REQ-MR-06] | Pending | Pending | P0 | [US-42] |
+| [REQ-MR-07] | Pending | Pending | P0 | [US-43] |
 | [REQ-NF-21-01] | Pending | Pending | P0 | [US-39] |
 | [REQ-NF-21-02] | Pending | Pending | P1 | [US-36], [US-37] |
 
