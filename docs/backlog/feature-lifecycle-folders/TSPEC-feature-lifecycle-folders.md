@@ -7,7 +7,8 @@
 | **Document ID** | TSPEC-FLF |
 | **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
 | **Functional Specification** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md) |
-| **Date** | April 3, 2026 |
+| **Version** | 1.1 |
+| **Date** | April 4, 2026 |
 | **Status** | Draft |
 
 ---
@@ -578,10 +579,10 @@ export interface ContextResolutionContext {
 }
 ```
 
-**New resolution table:**
+**New resolution table — backlog and in-progress features (unnumbered):**
 
-| Reference | Resolves To (lifecycle-aware) |
-|-----------|-------------------------------|
+| Reference | Resolves To |
+|-----------|-------------|
 | `{feature}/overview` | `{featurePath}overview.md` |
 | `{feature}/REQ` | `{featurePath}REQ-{slug}.md` |
 | `{feature}/FSPEC` | `{featurePath}FSPEC-{slug}.md` |
@@ -590,14 +591,30 @@ export interface ContextResolutionContext {
 | `{feature}/PROPERTIES` | `{featurePath}PROPERTIES-{slug}.md` |
 | other (no `{feature}`) | passed through unchanged |
 
-For `completed/` features where files are NNN-prefixed (e.g., `docs/completed/015-my-feature/015-REQ-my-feature.md`), the resolved path detects the NNN prefix from the featurePath and prepends it:
+**Completed features (NNN-prefixed) — all document types including overview.md:**
+
+| Reference | Resolves To |
+|-----------|-------------|
+| `{feature}/overview` | `{featurePath}{NNN}-overview.md` |
+| `{feature}/REQ` | `{featurePath}{NNN}-REQ-{slug}.md` |
+| `{feature}/FSPEC` | `{featurePath}{NNN}-FSPEC-{slug}.md` |
+| `{feature}/TSPEC` | `{featurePath}{NNN}-TSPEC-{slug}.md` |
+| `{feature}/PLAN` | `{featurePath}{NNN}-PLAN-{slug}.md` |
+| `{feature}/PROPERTIES` | `{featurePath}{NNN}-PROPERTIES-{slug}.md` |
+| other (no `{feature}`) | passed through unchanged |
+
+The NNN prefix is extracted from the folder name in `featurePath`. Per FSPEC-PR-01 Phase 2, **all** files in a completed folder are renamed with the NNN prefix — this includes `overview.md`. The resolution logic applies the NNN prefix uniformly to every document type when the feature is in `completed/`:
 
 ```
 if featurePath starts with "docs/completed/":
-  extract NNN from folder name (e.g., "015")
-  {feature}/REQ → {featurePath}{NNN}-REQ-{slug}.md
+  extract NNN from folder name (e.g., "015" from "docs/completed/015-my-feature/")
+  {feature}/overview → {featurePath}{NNN}-overview.md
+  {feature}/REQ     → {featurePath}{NNN}-REQ-{slug}.md
+  (same pattern for all document types)
 else:
-  {feature}/REQ → {featurePath}REQ-{slug}.md
+  {feature}/overview → {featurePath}overview.md
+  {feature}/REQ     → {featurePath}REQ-{slug}.md
+  (no NNN prefix)
 ```
 
 ### 5.6 Updated Cross-Review Path Construction
@@ -706,14 +723,10 @@ Algorithm:
 4. MIGRATE IN-PROGRESS FEATURES:
    a. Scan docs/ for remaining directories (exclude requirements/, templates/,
       open-questions/, backlog/, in-progress/, completed/, and non-directory entries).
-   b. For each:
-      - If has NNN prefix:
-        i.   Strip prefix → slug.
-        ii.  git mv docs/{NNN}-{slug}/ docs/in-progress/{slug}/
-        iii. Rename files: for each file matching /^{NNN}-/,
-             git mv to stripped name.
-      - If no NNN prefix:
-        i.   git mv docs/{slug}/ docs/in-progress/{slug}/
+      Note: All NNN-prefixed folders were already moved to docs/completed/ in Step 3.
+      Any remaining directories are unnumbered feature folders.
+   b. For each remaining directory:
+      - git mv docs/{slug}/ docs/in-progress/{slug}/
 
 5. COMMIT:
    a. git add -A docs/
@@ -829,7 +842,7 @@ export class FakeWorktreeManager implements WorktreeManager {
 | REQ-PR-03 | promoteInProgressToCompleted (NNN calculation) | `max(existing NNN) + 1`, zero-padded |
 | REQ-PR-04 | promoteInProgressToCompleted Phase 3 | Regex-based markdown link update for renamed files |
 | REQ-PR-05 | Both promotion activities | All moves use `git mv` for history preservation |
-| REQ-SK-01 | PM skill SKILL.md update | Creates folders under `docs/backlog/` |
+| REQ-SK-01 | PM skill SKILL.md Phase 0 algorithm update (§9.2.1) | Phase 0 bootstrap creates folders under `docs/backlog/{feature-slug}/`, removes NNN assignment logic entirely |
 | REQ-SK-02 | FeatureResolver.resolve() | Search order: in-progress → backlog → completed with NNN stripping |
 | REQ-SK-03 | Workflow pre-invocation logic | Orchestrator detects backlog, runs promotion before skill invocation |
 | REQ-SK-04 | Workflow sign-off detection | Orchestrator detects dual LGTM, runs completion promotion |
@@ -869,7 +882,74 @@ export class FakeWorktreeManager implements WorktreeManager {
 | `src/services/filesystem.ts` | 4–22 | `FileSystem` interface | Add `readDirMatching` |
 | `src/commands/start.ts` | composition root | No resolver or worktree manager | Wire `DefaultFeatureResolver` + `DefaultWorktreeManager` |
 
-### 9.2 Skill File Updates (REQ-SK-05)
+### 9.2 Skill File Updates (REQ-SK-01, REQ-SK-05)
+
+#### 9.2.1 PM SKILL.md — Phase 0 Algorithm Changes
+
+The PM SKILL.md Phase 0 (Feature Folder Bootstrap) hardcodes `docs/{feature-slug}` and `docs/{full-folder-name}` paths. These must be updated to create features in `docs/backlog/`. Additionally, the NNN prefix assignment logic is removed entirely — backlog features are always unnumbered.
+
+**Step 3 — Check for existing folder:**
+
+```bash
+# Before:
+test -d docs/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+
+# After:
+test -d docs/backlog/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+```
+
+Also add a secondary check across all lifecycle folders using the feature resolver search order (in-progress → backlog → completed) to detect the feature even if it has been promoted. If found in any folder, skip bootstrap.
+
+**Step 4 — Determine NNN prefix: REMOVE ENTIRELY.**
+
+The entire Step 4 (both Condition A and Condition B) is removed. New features in backlog are unnumbered. The `full-folder-name` variable is replaced by `feature-slug` in all subsequent steps. NNN assignment only happens during the orchestrator's in-progress→completed promotion activity.
+
+**Step 5 — Log:**
+
+```
+# Before:
+[ptah:pm] Bootstrapping feature folder: docs/{full-folder-name}/
+
+# After:
+[ptah:pm] Bootstrapping feature folder: docs/backlog/{feature-slug}/
+```
+
+**Step 6 — Create feature folder:**
+
+```bash
+# Before:
+mkdir -p docs/{full-folder-name}
+
+# After:
+mkdir -p docs/backlog/{feature-slug}
+```
+
+**Step 7 — Synthesize overview.md content:**
+
+The title line derivation changes: replace hyphens in `feature-slug` (not `full-folder-name`) with spaces, then title-case. Since there is no NNN prefix, the title is cleaner (e.g., `"feature-lifecycle-folders"` → `# Feature Lifecycle Folders`).
+
+**Step 8 — Write overview.md:**
+
+```bash
+# Before:
+test -f docs/{full-folder-name}/overview.md && echo "EXISTS" || echo "NOT_FOUND"
+# Write to: docs/{full-folder-name}/overview.md
+
+# After:
+test -f docs/backlog/{feature-slug}/overview.md && echo "EXISTS" || echo "NOT_FOUND"
+# Write to: docs/backlog/{feature-slug}/overview.md
+```
+
+**Idempotency scope note (Step 3):** The existing caveat about unnumbered threads and NNN-prefix mismatch (AF-R8) is no longer relevant — since no NNN is ever assigned in Phase 0, `feature-slug` is always the folder name, and the Step 3 existence check reliably detects the folder on every subsequent invocation.
+
+#### 9.2.2 All Skill Document Path References
+
+Beyond Phase 0, the PM SKILL.md and the other three SKILL.md files reference `docs/{NNN}-{feature-name}/` paths in their task descriptions (Create REQ, Create FSPEC, Review, etc.). These path templates must be updated:
+
+- `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md` → `docs/{lifecycle}/{feature-slug}/REQ-{feature-slug}.md` (for backlog/in-progress) or `docs/completed/{NNN}-{feature-slug}/{NNN}-REQ-{feature-slug}.md` (for completed)
+- All skills should note that the feature folder path is provided by the orchestrator via workflow state — skills should not construct lifecycle paths independently.
+
+#### 9.2.3 File Organization Section Updates (All Four Skills)
 
 All four SKILL.md files have a "File Organization" or "Working with Project Documentation" section that documents the `docs/` structure. Each must be updated to show:
 
@@ -898,7 +978,7 @@ docs/
 
 The document naming convention table must note:
 - Backlog and in-progress: files are unnumbered (e.g., `REQ-my-feature.md`)
-- Completed: files are NNN-prefixed (e.g., `015-REQ-my-feature.md`)
+- Completed: ALL files are NNN-prefixed, including `overview.md` (e.g., `015-overview.md`, `015-REQ-my-feature.md`)
 - NNN is assigned only upon promotion to completed
 
 ### 9.3 Backward Compatibility (REQ-NF-03)
@@ -925,6 +1005,7 @@ The `FeatureResolver` does not natively search the old flat `docs/{NNN}-{slug}/`
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 3, 2026 | Engineer | Initial technical specification |
+| 1.1 | April 4, 2026 | Engineer | Address PM cross-review of TSPEC v1.0. F-01 (High): expanded §9.2 with detailed PM SKILL.md Phase 0 algorithm changes — Steps 3, 4 (removed), 5, 6, 7, 8 updated to use `docs/backlog/{feature-slug}/` paths, NNN assignment removed entirely. F-02 (Medium): fixed §5.5 context resolution table — NNN-prefix now explicitly applied to ALL document types including `overview.md` for completed features, with separate tables for unnumbered vs. completed. F-03 (Low): removed dead "If has NNN prefix" branch from §5.9 migration Step 4 — all NNN-prefixed folders are handled by Step 3. Updated §8 REQ-SK-01 mapping to reference Phase 0 changes. |
 
 ---
 
