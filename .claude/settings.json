@@ -4,7 +4,17 @@
       "Bash(npm install)",
       "Bash(npx vitest:*)",
       "Read(//tmp/**)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(git -C /Users/kaneho/workspace/eng-team status)",
+      "Bash(git -C /Users/kaneho/workspace/eng-team add ptah/tests/unit/commands/migrate.test.ts ptah/tests/unit/config/workflow-validator.test.ts ptah/tests/unit/temporal/client.test.ts ptah/tests/unit/temporal/feature-lifecycle.test.ts)",
+      "Bash(git -C /Users/kaneho/workspace/eng-team commit -m ':*)",
+      "Bash(git -C /Users/kaneho/workspace/eng-team push origin feat-ptah-v5-temporal)",
+      "Bash(git -C /Users/kaneho/workspace/eng-team log --oneline origin/feat-ptah-v5-temporal -1)",
+      "Bash(node dist/bin/ptah.js start --help)",
+      "Bash(node dist/bin/ptah.js start)",
+      "Bash(node dist/bin/ptah.js init)"
     ]
   }
 }
