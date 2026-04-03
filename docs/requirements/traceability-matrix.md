@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Date** | March 19, 2026 |
-| **Version** | 2.9 |
+| **Date** | April 3, 2026 |
+| **Version** | 3.0 |
 | **Status** | Draft |
 
 ---
@@ -194,6 +194,15 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23] | [REQ-NF-14-05] | [FSPEC-TL-02](../014-tech-lead-orchestration/014-FSPEC-tech-lead-orchestration.md) | P1 | 14 | FSPEC Complete |
 
+<!-- Milestone 2 — Messaging Abstraction (Feature 016). US-26/27/28 are the canonical IDs for this feature's user stories. -->
+| [US-26], [US-27], [US-28] | [REQ-MA-01] | Pending Spec | P0 | 16 | Pending Spec |
+| [US-26] | [REQ-MA-02] | Pending Spec | P0 | 16 | Pending Spec |
+| [US-26] | [REQ-MA-03] | Pending Spec | P0 | 16 | Pending Spec |
+| [US-28] | [REQ-MA-04] | Pending Spec | P1 | 16 | Pending Spec |
+| [US-27] | [REQ-MA-05] | Pending Spec | P1 | 16 | Pending Spec |
+| [US-26], [US-27], [US-28] | [REQ-MA-06] | Pending Spec | P0 | 16 | Pending Spec |
+| [US-26], [US-27] | [REQ-MA-07] | Pending Spec | P0 | 16 | Pending Spec |
+
 ---
 
 ## 3. Coverage Analysis
@@ -226,6 +235,9 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23] | Developer Wants Faster Implementation of Large Plans | 17 | Partial (14 of 17 FSPEC'd; 3 pending TSPEC) |
 | [US-24] | Developer Wants to Resume Implementation from a Specific Batch | 5 | Partial (4 of 5 FSPEC'd; 1 pending TSPEC) |
 | [US-25] | Developer Wants Visibility into Parallel Execution Progress | 10 | Partial (7 of 10 FSPEC'd; 3 pending TSPEC) |
+| [US-26] | Developer Uses Ptah Without Discord (CLI-Only Mode) | 5 | No (0 of 5 specified) |
+| [US-27] | Developer Integrates Ptah with Slack | 2 | No (0 of 2 specified) |
+| [US-28] | Developer Receives Notifications via Webhooks | 2 | No (0 of 2 specified) |
 
 ### 3.2 Requirement Coverage
 
@@ -567,6 +579,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | Requirements — Phase 11 | [011-REQ-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-REQ-orchestrator-pdlc-state-machine.md) | Phase 11 (Orchestrator PDLC State Machine) requirements — 45 requirements (v1.2 approved by eng + qa) |
 | FSPEC — Phase 11 | [011-FSPEC-orchestrator-pdlc-state-machine](../011-orchestrator-pdlc-state-machine/011-FSPEC-orchestrator-pdlc-state-machine.md) | Functional specification for Phase 11 — 7 FSPECs (SM-01, SM-02, RT-01, RT-02, AI-01, FC-01, CA-01) |
 | PRD | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) | Product requirements document |
+| Requirements — Milestone 2 | [016-REQ-messaging-abstraction](../016-messaging-abstraction/016-REQ-messaging-abstraction.md) | Milestone 2 (Messaging Abstraction) requirements — 7 requirements in MA domain (v1.2) |
 
 ---
 
@@ -594,6 +607,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.7 | March 15, 2026 | Product Manager | Added FSPEC mappings for Phase 7 (Polish). 2 FSPECs created: FSPEC-DI-02 (thread archiving on resolution), FSPEC-EX-01 (configuration-driven agent extensibility). Phase 7 view updated with FSPEC column. Both Phase 7 requirements now FSPEC'd; pending TSPEC. |
 | 2.9 | March 19, 2026 | Product Manager | Phase 14 FSPEC complete. Added REQ-NF-14-05 (pre-flight infrastructure check) to REQ v1.4 (28 requirements total for Phase 14). Added REQ-PD-06 (cycle detection) row — previously missing from matrix. Updated all Phase 14 requirement rows: 22 of 29 requirements FSPEC'd (FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03 in 014-FSPEC-tech-lead-orchestration.md); 7 pending TSPEC (REQ-TL-01, REQ-TL-03, REQ-PR-04, REQ-NF-14-03, REQ-NF-14-04 and supporting). Total requirements: 164. |
 | 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
+| 3.0 | April 3, 2026 | Product Manager | Added Milestone 2 — Messaging Abstraction (Feature 016). 3 new user stories (US-26, US-27, US-28; renumbered from US-14/15/16 to avoid collision with Phase 11 IDs). 7 requirements added in MA domain: REQ-MA-01 through REQ-MA-07 (5 P0, 2 P1). Total requirements: 171. Coverage: unchanged (all 7 MA requirements pending spec). |
 
 ---
 

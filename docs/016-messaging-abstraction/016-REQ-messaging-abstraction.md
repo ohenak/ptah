@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-MESSAGING |
 | **Parent Document** | [REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -36,7 +36,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 
 ## 2. User Stories
 
-### US-14: Developer Uses Ptah Without Discord (CLI-Only Mode)
+### US-26: Developer Uses Ptah Without Discord (CLI-Only Mode)
 
 | Attribute | Detail |
 |-----------|--------|
@@ -45,7 +45,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Pain points** | Current Ptah requires a Discord server, bot token, and configured channels before any work can begin. This is excessive friction for solo developers, CI pipelines, and evaluation/demo scenarios. |
 | **Key needs** | CLI messaging provider. Stdout for agent output. Stdin or config-file for human input. Headless mode that pre-populates answers or auto-approves. |
 
-### US-15: Developer Integrates Ptah with Slack
+### US-27: Developer Integrates Ptah with Slack
 
 | Attribute | Detail |
 |-----------|--------|
@@ -54,7 +54,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Pain points** | Teams using Slack cannot adopt Ptah without switching to Discord — a non-starter for most organizations. |
 | **Key needs** | Slack messaging provider. Thread creation and management. Block Kit message formatting. Slack event subscription for replies. Mention resolution. |
 
-### US-16: Developer Receives Notifications via Webhooks
+### US-28: Developer Receives Notifications via Webhooks
 
 | Attribute | Detail |
 |-----------|--------|
@@ -78,7 +78,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** The Orchestrator codebase<br>**When:** Searching for direct `DiscordClient` usage outside the Discord provider implementation<br>**Then:** No direct Discord usage exists in the orchestrator layer. All messaging goes through `MessagingProvider`. Thread creation operations return an opaque `ThreadHandle`; the orchestrator never constructs or parses a thread identifier string directly. |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-14, US-15, US-16 |
+| **Source Stories** | US-26, US-27, US-28 |
 | **Dependencies** | None |
 
 #### REQ-MA-02: Discord Messaging Provider
@@ -90,7 +90,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "discord"` (or no provider specified, defaulting to Discord)<br>**When:** The Orchestrator starts<br>**Then:** All Discord behaviors are functionally identical to the pre-abstraction implementation. All existing Discord behaviors are covered by passing tests. (Note: test wiring may change structurally — e.g., `FakeDiscordClient` injected into `DiscordMessagingProvider` rather than directly into the orchestrator — but behavior coverage must be complete.) |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-14 |
+| **Source Stories** | US-26 |
 | **Dependencies** | REQ-MA-01 |
 
 #### REQ-MA-03: CLI Messaging Provider
@@ -102,7 +102,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** `ptah start --provider cli` run in a foreground terminal with stdin attached<br>**When:** An agent completes a phase and the workflow needs human input<br>**Then:** The question is printed to stdout with a prompt. In interactive mode, the user types an answer. In headless mode (`--headless`), the answer is read from config. The workflow resumes in both cases. |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-14 |
+| **Source Stories** | US-26 |
 | **Dependencies** | REQ-MA-01 |
 
 #### REQ-MA-04: Webhook Messaging Provider
@@ -114,7 +114,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "webhook"` and `messaging.webhook.url: "https://hooks.example.com/ptah"`<br>**When:** An agent completes a phase<br>**Then:** A POST request is sent to the URL with a JSON payload: `{ "event": "agent_completed", "feature": "my-feature", "phase": "tspec-creation", "agent": "eng", "timestamp": "...", "callback_url": "http://localhost:8765/webhook/answer/ptah-feature-my-feature-1" }`. If the URL is unreachable, the delivery is retried 3 times with exponential backoff.<br>**And when:** An external system POSTs `{ "answer": "approved" }` to the `callback_url`<br>**Then:** The workflow receives a `user-answer` Temporal Signal and resumes. |
 | **Priority** | P1 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-16 |
+| **Source Stories** | US-28 |
 | **Dependencies** | REQ-MA-01 |
 
 #### REQ-MA-05: Slack Messaging Provider
@@ -126,7 +126,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "slack"`, a valid `bot_token`, and a valid `app_token`<br>**When:** A new feature is initiated<br>**Then:** A Slack thread is created in the configured channel. Agent outputs are posted as Block Kit messages. Human questions appear in the questions channel (or the feature thread if no questions channel is configured). User replies resume the workflow via Temporal Signal. **No public HTTPS URL or inbound firewall rule is required.** |
 | **Priority** | P1 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-15 |
+| **Source Stories** | US-27 |
 | **Dependencies** | REQ-MA-01 |
 
 #### REQ-MA-06: Provider-Agnostic Configuration
@@ -138,7 +138,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "cli"` and no `discord` or `mention_id` fields<br>**When:** The Orchestrator starts<br>**Then:** Config validation passes. No Discord-related fields are required. Agents function without mention IDs.<br>**And given:** A `ptah.config.json` with only a legacy top-level `discord` section (no `messaging` section)<br>**When:** The Orchestrator starts<br>**Then:** The config is accepted and Discord provider is activated. A deprecation warning is logged: `Legacy 'discord' config format detected. Migrate to 'messaging.provider: "discord"' — see docs/016-messaging-abstraction.` |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-14, US-15, US-16 |
+| **Source Stories** | US-26, US-27, US-28 |
 | **Dependencies** | REQ-MA-01 |
 
 #### REQ-MA-07: Response Formatting Abstraction
@@ -150,7 +150,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | **Acceptance Criteria** | **Who:** Orchestrator<br>**Given:** An agent completion event with agent ID, phase, result summary, and artifact list<br>**When:** The event is passed to the active `MessagingProvider`<br>**Then:** Discord produces an embed. Slack produces a Block Kit message. CLI produces a formatted terminal block. Webhook produces a JSON payload. All contain the same semantic information. The orchestrator source code contains no format-specific logic (no embed construction, no Block Kit building, no per-provider conditionals). |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
-| **Source Stories** | US-14, US-15 |
+| **Source Stories** | US-26, US-27 |
 | **Dependencies** | REQ-MA-01 |
 
 ---
@@ -236,6 +236,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 |---------|------|--------|---------|
 | 1.0 | April 1, 2026 | Product Manager | Initial requirements document for Milestone 2 (Messaging Abstraction). 7 requirements in MA domain. |
 | 1.1 | April 3, 2026 | Product Manager | Addressed engineer cross-review (F-01–F-08). REQ-MA-01: added opaque `ThreadHandle` contract. REQ-MA-02: removed "without modification" test constraint. REQ-MA-03: added foreground/stdin requirement for interactive mode. REQ-MA-04: specified embedded HTTP callback server (`callback_port`, `callback_url` in payload). REQ-MA-05: mandated Slack Socket Mode; added `app_token` requirement; Events API out of scope. REQ-MA-06: clarified per-provider mention routing (Discord snowflake / Slack alphanumeric / CLI+webhook via Signal); added legacy `discord` config deprecation warning. REQ-MA-07: clarified formatting is internal to each provider — no separate formatter interface at orchestrator boundary. Assumptions A-13–A-16 updated/added. Risks R-16, R-17 added. |
+| 1.2 | April 3, 2026 | Product Manager | Renumbered user stories to avoid collision with Phase 11 IDs already registered in the master traceability matrix: US-14→US-26, US-15→US-27, US-16→US-28. No requirement changes. |
 
 ---
 
