@@ -132,8 +132,8 @@ When triggered (missing dependency section, unparseable section, or cycle detect
 4. Repeat until the DAG is empty.
 5. Within each batch, sort phases in document order (tie-breaker).
 
-**Apply concurrency cap (max 5 phases per sub-batch):**
-- If a batch has more than 5 phases, split into sub-batches of at most 5, in document order.
+**Apply concurrency cap (max 2 phases per sub-batch):**
+- If a batch has more than 2 phases, split into sub-batches of at most 2, in document order.
 - Label sub-batches as `Batch N.1`, `Batch N.2`, etc.
 - Sub-batches within the same topological batch execute sequentially.
 - The test gate fires ONCE per topological batch — after all sub-batches complete and are merged. NOT between sub-batches.
