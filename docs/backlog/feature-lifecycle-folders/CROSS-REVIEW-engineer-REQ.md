@@ -1,139 +1,89 @@
-# Cross-Review: Engineer — REQ-FLF (Feature Lifecycle Folders)
+# Cross-Review: Engineer — REQ-FLF v2.2 (Feature Lifecycle Folders)
 
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | engineer |
-| **Document Reviewed** | `docs/backlog/feature-lifecycle-folders/REQ-feature-lifecycle-folders.md` v2.0 |
+| **Document Reviewed** | `docs/backlog/feature-lifecycle-folders/REQ-feature-lifecycle-folders.md` v2.2 |
+| **Previous Review** | v2.0 — Needs revision (3 High, 2 Medium) |
 | **Date** | 2026-04-03 |
 | **Recommendation** | **Needs revision** |
 
 ---
 
-## Findings
+## Resolution of Previous Findings
 
-### F-01 — `ContextResolutionContext` redesign not specified (High)
+All findings from the v2.0 review have been addressed:
 
-`feature-lifecycle.ts:42-46` defines:
-
-```typescript
-export interface ContextResolutionContext {
-  featureSlug: string;
-  featurePrefix: string;   // ← becomes meaningless for backlog/in-progress
-  docsRoot?: string;
-}
-```
-
-`resolveContextDocuments` (line 80) uses this to construct:
-
-```
-docs/{featurePrefix}-{featureSlug}
-```
-
-With lifecycle folders, the correct path depends on which folder the feature is in:
-- Backlog: `docs/backlog/{featureSlug}/`
-- In-progress: `docs/in-progress/{featureSlug}/`
-- Completed: `docs/completed/{NNN}-{featureSlug}/`
-
-The `featurePrefix` field no longer serves this purpose. REQ-SK-02 requires all skills to resolve feature paths across lifecycle folders, but doesn't specify how `ContextResolutionContext` changes, which module owns the lifecycle-aware resolution, or what the new interface shape is. Without this, the TSPEC cannot design the type system.
-
-**Required addition:** Define a replacement for `ContextResolutionContext` (or a `FeatureResolver` protocol) that takes a slug and returns the resolved path by searching lifecycle folders. Specify where in the orchestrator this resolver lives.
+| Previous Finding | Resolution |
+|-----------------|-----------|
+| F-01 (High): `ContextResolutionContext` redesign not specified | ✅ REQ-SK-06 defines the feature resolver behavioral contract; REQ-SK-07 requires resolved path stored in workflow state |
+| F-02 (High): Hard-coded path at `feature-lifecycle.ts:1076` replacement unspecified | ✅ REQ-SK-07 explicitly replaces inline path expressions with state reads |
+| F-03 (High): Promotion execution responsibility ambiguous | ✅ REQ-SK-08 clearly assigns promotion execution to the orchestrator |
+| F-04 (Medium): In-document reference update scope underspecified | ✅ REQ-PR-04 now defines exact in-scope formats and explicit out-of-scope items |
+| F-05 (Medium): Idempotency of NNN assignment underspecified | ✅ REQ-NF-02 defines two-phase check for partial-completion idempotency |
+| Q-01: Slug collision behavior | ✅ REQ-SK-02 specifies: log warning, return first match by search order |
+| Q-02: Who triggers completion promotion | ✅ REQ-SK-08 specifies: orchestrator detects both sign-off signals, runs promotion activity |
+| Q-03: Stale file reference in C-02 | ✅ C-02 now includes the correct path `ptah/src/orchestrator/pdlc/cross-review-parser.ts:159` (confirmed in codebase) |
 
 ---
 
-### F-02 — Hard-coded path at line 1076 uses undefined pattern (High)
+## New Findings (v2.2)
 
-`feature-lifecycle.ts:1076` already diverges from the `{prefix}-{slug}` pattern:
+### F-01 — REQ-SK-03 description contradicts REQ-SK-08 (Medium)
 
-```typescript
-.map((id) => `docs/${state.featureSlug}/CROSS-REVIEW-${id}-${creationPhase.id}.md`)
-```
+REQ-SK-03 description reads: *"the skill must promote the feature to `docs/in-progress/` before proceeding with the review."*
 
-This path (`docs/{featureSlug}/CROSS-REVIEW-...`) matches neither the old convention (`docs/{NNN}-{featureSlug}/`) nor the new lifecycle convention (`docs/{lifecycle}/{featureSlug}/`). It is already incorrect today. Under lifecycle folders, it must become something like `docs/in-progress/{featureSlug}/CROSS-REVIEW-...` (for in-progress features) — but only if lifecycle-aware resolution is applied.
+REQ-SK-08 is unambiguous: *"Promotion execution... is performed exclusively by the Ptah orchestrator via a dedicated promotion activity — not by Claude skill agents."*
 
-REQ C-02 lists this line as needing an update but does not define the replacement expression. This gap means the implementation cannot proceed without a decision on how the resolver is invoked in this context.
+These two statements conflict. An engineer reading REQ-SK-03 in isolation would implement promotion logic inside the skill (agent), directly contradicting REQ-SK-08's exclusive ownership assignment. The acceptance criteria of REQ-SK-03 is fine (it describes the observable outcome: "The feature is promoted before my review artifacts are created"), but the description's wording assigns responsibility to the wrong component.
 
-**Required addition:** Specify what `docs/${state.featureSlug}/CROSS-REVIEW-...` should become. Does the orchestrator call the lifecycle resolver here, or does it receive the resolved feature path as part of workflow state?
+**Required fix:** Update REQ-SK-03's description to state that the skill detects the feature is in `backlog/` and signals promotion intent to the orchestrator, and that the orchestrator executes the promotion activity before invoking the skill — consistent with REQ-SK-08.
 
 ---
 
-### F-03 — Promotion execution responsibility is ambiguous (Medium)
+### F-02 — REQ-WT-02 "dangling worktree" identification mechanism unspecified (Medium)
 
-REQ-SK-03 states: "the engineer or tech-lead skill must promote the feature to `docs/in-progress/` before proceeding."
+REQ-WT-02 requires: *"If the orchestrator or skill crashes mid-execution, a cleanup sweep removes any dangling worktrees on next startup."*
 
-In the Ptah architecture, skills are Claude agents invoked by the Temporal orchestrator. They write files via the Write tool but do not execute shell commands (`git mv`). The `git mv` + commit for promotion is a shell/FS operation that must happen in an orchestrator activity or a pre-skill hook — not inside the agent itself.
+The codebase has `ptah/src/orchestrator/worktree-registry.ts` with `InMemoryWorktreeRegistry`. This registry does not survive a process crash — on restart, the registry is empty. The requirement's acceptance criteria ("worktrees without an active skill invocation are cleaned up") is not verifiable from registry state after a crash.
 
-The REQ conflates two distinct concerns:
-1. **Detection** — the skill recognises the feature is in `backlog/` (agent-level, feasible)
-2. **Execution** — `git mv` moves the folder (orchestrator-level, requires a shell activity)
+To implement this requirement, a mechanism to identify worktrees-on-disk that are not associated with any current activity must be specified. Two viable approaches:
+1. Use `git worktree list` to enumerate all worktrees attached to the repo on startup, and remove any not tracked by a live Temporal workflow.
+2. Make the registry persistent (file-based or Temporal side-effect).
 
-Without clarifying which layer owns execution, implementation risks placing `git mv` logic in the wrong component, which would either not work (if in the agent) or require a new Temporal activity (if in the orchestrator, which is the correct place but needs explicit specification).
+Without specifying which approach is required, the acceptance criteria cannot be implemented deterministically.
 
-**Required addition:** Specify that promotion execution (the `git mv` + commit) is performed by the Ptah orchestrator (via a new activity or existing `ExecService`), triggered by a signal from the skill or detected automatically before skill invocation.
-
----
-
-### F-04 — In-document reference update scope is underspecified (Medium)
-
-REQ-PR-04 and R-05 require that internal markdown references remain valid after file renames on completion (e.g., `REQ-feature.md` → `{NNN}-REQ-feature.md`). The REQ acknowledges this in R-05 but defers the "how":
-
-> "Completion promotion must scan document content for internal file references and update them."
-
-Not specified:
-- Which reference formats are in scope: `[title](REQ-feature.md)`, `[title](./REQ-feature.md)`, bare filename mentions, or all of these?
-- Are cross-feature references (e.g., a link in feature B pointing to a file in feature A) in scope or out of scope?
-- Does this scanning happen as a promotion activity in the orchestrator, or as a separate script?
-
-Without this, the TSPEC cannot correctly scope the parser implementation.
-
-**Required addition:** Define the exact reference patterns to match and update, and clarify whether cross-feature references are in or out of scope for the rename step.
-
----
-
-### F-05 — Idempotency of NNN assignment is unspecified (Medium)
-
-REQ-NF-02 requires the migration to be idempotent. REQ-PR-03 assigns NNN as `max(NNN across completed/) + 1`. If a promotion run is interrupted after the folder is moved but before all files are renamed (or before the git commit completes), the next run would find a folder without proper NNN-prefixed files and potentially re-assign or skip it.
-
-The REQ does not describe the idempotency mechanism for this partial-completion case. Options include:
-- A lock/sentinel file written atomically before promotion begins
-- A two-phase check (detect partially-promoted state, resume rename without re-assigning NNN)
-- Relying on Temporal's workflow idempotency (if promotion is a workflow activity)
-
-Without this, the migration and promotion logic may produce inconsistent state on failure/retry.
-
-**Required addition:** Define the idempotency strategy for the promotion-to-completed step, specifically for the partial-completion failure case.
+**Required addition:** Specify the mechanism for identifying dangling worktrees on startup — either via `git worktree list` comparison or a persistent registry.
 
 ---
 
 ## Clarification Questions
 
-### Q-01 — Slug collision across lifecycle folders
+### Q-01 — REQ-WT-05 "or reuses" a promotion worktree
 
-REQ-SK-02 defines search order as `in-progress/ → backlog/ → completed/`. What is the expected behavior if the same slug exists in two folders simultaneously (e.g., folder present in both `backlog/` and `in-progress/` due to a bug or concurrent operation)? Should the resolver return the first match silently, log a warning, or throw an error?
+REQ-WT-05 says the promotion activity "creates (or reuses) a dedicated promotion worktree." Under what condition does reuse apply? If a promotion worktree from a previous crashed run persists on disk, should it be reused or cleaned up and recreated? Reusing a worktree from a partial run could put it in an inconsistent state; recreating it avoids that risk.
 
-### Q-02 — Who triggers completion promotion (REQ-SK-04)?
-
-REQ-SK-04 says "the responsible skill (or orchestrator)" triggers promotion. Which is the authoritative answer? If the orchestrator, what event/signal triggers it (e.g., detecting both sign-off routing tags in a single workflow run)? If a skill, how does it invoke shell operations?
-
-### Q-03 — Stale file reference in C-02
-
-Constraint C-02 references `ptah/src/orchestrator/cross-review-parser.ts:159` as a file containing `docs/` path references. That file does not exist at that path in the current codebase (confirmed by search). Is this reference stale (the file was moved or renamed), or is the path incorrect? The actual cross-review path logic appears to be in `feature-lifecycle.ts:1076`.
+This is consistent with REQ-NF-02's two-phase idempotency, but the conditions for "reuse" vs "recreate" need to be clear.
 
 ---
 
 ## Positive Observations
 
-- The unnumbered-until-completion design is sound. It eliminates NNN coordination overhead for speculative features without losing ordering semantics for completed work.
-- Risk R-03 correctly identifies the highest-impact integration point (`feature-lifecycle.ts` and the path resolution logic) — this is the right place to focus the TSPEC.
-- REQ-PR-05 (`git mv` for history preservation) is the correct engineering choice; specifying this explicitly avoids the common mistake of using `cp` + `rm`.
-- The search order `in-progress/ → backlog/ → completed/` is a reasonable access pattern that prioritises active work.
-- Scope boundaries (section 9) are well-defined and prevent scope creep into unrelated concerns.
+- **v2.1 revisions are thorough and well-targeted.** All five previous findings and three questions were addressed precisely. REQ-SK-06, REQ-SK-07, and REQ-SK-08 together form a coherent and implementable architecture for feature path resolution and promotion execution.
+- **Worktree isolation (WT domain) is the right design.** Giving each skill its own worktree eliminates the shared-mutable-filesystem problem for concurrent agents cleanly. REQ-WT-03 and REQ-WT-04 correctly propagate the DI principle — the resolver accepts the worktree root rather than hardcoding it.
+- **REQ-WT-04 separation of `worktreeRoot` and `featurePath`** is a thoughtful design: when a promotion changes the feature path (backlog → in-progress), only `featurePath` in state needs updating, not the worktree root. This avoids recalculating all activity paths after a promotion.
+- **C-02 now correctly lists all three affected code locations**, including the actual `pdlc/cross-review-parser.ts:159` path (verified in codebase).
+- **REQ-NF-02 two-phase idempotency** correctly handles the partial-completion race by checking for destination folder existence before re-assigning NNN.
 
 ---
 
 ## Recommendation
 
-**Needs revision.** Three High-severity findings (F-01, F-02, F-03) and two Medium-severity findings (F-04, F-05) must be addressed before this REQ can be approved for TSPEC creation.
+**Needs revision.** Two Medium findings must be addressed:
 
-The core gap is that the REQ describes the desired *behavior* of the lifecycle resolver but does not specify the *interface contract* or *execution model* for the orchestrator integration. Without these, the TSPEC cannot design the replacement for `ContextResolutionContext` or the promotion activity architecture.
+- **F-01**: REQ-SK-03 description must be reworded to align with REQ-SK-08's authoritative ownership assignment (orchestrator executes promotion; skill signals intent).
+- **F-02**: REQ-WT-02 must specify the mechanism for identifying dangling worktrees after a crash (e.g., `git worktree list` or persistent registry).
 
-**The author must address F-01 through F-05 and answer Q-01 through Q-03, then route the updated REQ back for re-review.**
+These are targeted fixes to the v2.2 additions; the core v2.1 architecture (resolver service, workflow state design, orchestrator-owned promotion) is solid and does not require further changes.
+
+**The author must address F-01 and F-02, then route the updated REQ back for re-review.**
