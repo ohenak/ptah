@@ -194,6 +194,36 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23] | [REQ-NF-14-05] | [FSPEC-TL-02](../014-tech-lead-orchestration/014-FSPEC-tech-lead-orchestration.md) | P1 | 14 | FSPEC Complete |
 
+| [US-01] (FLF) | [REQ-FS-01] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-01] (FLF) | [REQ-FS-02] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-02] (FLF) | [REQ-FS-03] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-03] (FLF) | [REQ-FS-04] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-01] (FLF) | [REQ-SK-01] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-05] (FLF) | [REQ-SK-02] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF) | [REQ-SK-03] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-03] (FLF) | [REQ-SK-04] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-05] (FLF) | [REQ-SK-05] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-05] (FLF) | [REQ-SK-06] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-05] (FLF) | [REQ-SK-07] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF), [US-03] (FLF) | [REQ-SK-08] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF) | [REQ-PR-01] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-03] (FLF) | [REQ-PR-02] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-03] (FLF) | [REQ-PR-03] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-03] (FLF) | [REQ-PR-04] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P1 | FLF | FSPEC Complete |
+| [US-02] (FLF), [US-03] (FLF) | [REQ-PR-05] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-04] (FLF) | [REQ-MG-01] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-03] (FLF), [US-04] (FLF) | [REQ-MG-02] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF), [US-04] (FLF) | [REQ-MG-03] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-04] (FLF) | [REQ-MG-04] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-06] (FLF) | [REQ-WT-01] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-06] (FLF) | [REQ-WT-02] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-06] (FLF) | [REQ-WT-03] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-05] (FLF), [US-06] (FLF) | [REQ-WT-04] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF), [US-03] (FLF), [US-06] (FLF) | [REQ-WT-05] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
+| [US-02] (FLF), [US-03] (FLF) | [REQ-NF-01] | Pending TSPEC | P0 | FLF | Pending Spec |
+| [US-02] (FLF), [US-03] (FLF) | [REQ-NF-02] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P1 | FLF | FSPEC Complete |
+| [US-05] (FLF) | [REQ-NF-03] | Pending TSPEC | P2 | FLF | Pending Spec |
+
 ---
 
 ## 3. Coverage Analysis
