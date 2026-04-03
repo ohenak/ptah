@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-FLF |
 | **Parent Document** | [Ptah PRD v4.0](../PTAH_PRD_v4.0.docx) |
-| **Version** | 2.1 |
+| **Version** | 2.2 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -71,6 +71,15 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | **Pain points** | Today, skills assume `docs/{NNN}-{feature-name}/`. With lifecycle folders, the same feature could be in `docs/backlog/`, `docs/in-progress/`, or `docs/completed/` depending on its state. |
 | **Key needs** | A feature resolution mechanism — given a feature slug, find its folder across the three lifecycle directories. Skills updated to use resolved paths. |
 
+### US-06: Multiple Skills Run in Parallel Without Conflict
+
+| Attribute | Detail |
+|-----------|--------|
+| **Description** | Two or more Claude skill agents are dispatched in parallel on the same feature branch (e.g., engineer writing a TSPEC while test-engineer reads the REQ). Each agent must read and write files without interfering with the other or with the main working tree. |
+| **Goals** | Parallel execution is safe. No agent clobbers another agent's uncommitted work or leaves the main working tree in a dirty state. |
+| **Pain points** | Today, all skill invocations operate in the main working tree. If two agents run simultaneously, their file writes and `git` commands can interleave, producing corrupt commits or lost files. |
+| **Key needs** | Each skill invocation runs in its own isolated git worktree so that concurrent agents operate on independent filesystem paths. |
+
 ---
 
 ## 3. Assumptions and Constraints
@@ -93,6 +102,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | C-01 | All four skill files (`.claude/skills/*/SKILL.md`) must be updated in a coordinated change — partial updates would break skills that still assume the old path structure. | Skill architecture |
 | C-02 | Ptah orchestrator source code (`ptah/src/`) references `docs/` paths in at least three locations that must be updated: (1) `ptah/src/orchestrator/pdlc/cross-review-parser.ts:159` — returns a `docs/${featureSlug}/CROSS-REVIEW-...` string; (2) `ptah/src/temporal/workflows/feature-lifecycle.ts:1076` — maps agent IDs to `docs/${state.featureSlug}/CROSS-REVIEW-...`; (3) `ptah/src/temporal/workflows/feature-lifecycle.ts:66-71` — comment block documenting old `docs/{prefix}-{slug}/` path conventions. All three must be updated alongside the skill changes. | Codebase |
 | C-03 | Existing features must be migrated to the new folder structure without breaking git history traceability (i.e., use `git mv`). | Development workflow |
+| C-04 | The main working tree must never be modified by a skill invocation. All skill file reads and writes occur within the skill's assigned worktree. The main working tree is used only by the developer and by the orchestrator's one-time migration script. | Isolation architecture |
 
 ---
 
@@ -104,6 +114,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | Skill compatibility | All skills correctly resolve feature paths | Invoke each skill and verify artifact read/write | Skills assume flat `docs/` | Skills resolve across lifecycle folders |
 | Feature promotion (backlog→in-progress) | Promotion moves folder without assigning NNN | Trigger a review on a backlog feature | N/A | Feature appears in `in-progress/` without NNN prefix |
 | Feature completion (in-progress→completed) | Promotion moves folder and assigns NNN | Sign off on a feature | N/A | Feature appears in `completed/` with NNN prefix and files renamed |
+| Parallel skill isolation | Two skills running concurrently on the same branch do not conflict | Run engineer + test-engineer skills simultaneously; verify no merge conflicts or lost files | Skills share the main working tree | Each skill operates in its own worktree; commits land cleanly |
 
 ---
 
@@ -117,6 +128,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | PR | Promotion (lifecycle transitions) |
 | SK | Skill Updates |
 | MG | Migration |
+| WT | Worktree Isolation |
 
 ### 5.1 Folder Structure (FS)
 
@@ -159,6 +171,16 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | REQ-MG-03 | Migrate in-progress features | Any existing feature folders that are currently in active development (have REQ documents but are not yet signed off) must be moved to `docs/in-progress/` using `git mv`. If they currently have NNN prefixes, the NNN prefix must be removed from both the folder name and document filenames to match the unnumbered in-progress convention. | WHO: As a developer GIVEN: The migration runs WHEN: I list `docs/in-progress/` THEN: All currently active features are present without NNN prefixes | P0 | 1 | [US-02], [US-04] | [REQ-MG-01] |
 | REQ-MG-04 | Non-feature directories stay at root | `docs/requirements/`, `docs/templates/`, `docs/open-questions/`, and standalone files (e.g., FEASIBILITY docs, PTAH_PRD) must remain at the `docs/` root — they are not moved into lifecycle folders. | WHO: As a developer GIVEN: The migration runs WHEN: I list `docs/` THEN: `requirements/`, `templates/`, `open-questions/`, and standalone files are still at the root level | P0 | 1 | [US-04] | [REQ-MG-01] |
 
+### 5.5 Worktree Isolation (WT)
+
+| ID | Title | Description | Acceptance Criteria | Priority | Phase | Source Scenarios | Dependencies |
+|----|-------|-------------|---------------------|----------|-------|-----------------|--------------|
+| REQ-WT-01 | Each skill invocation runs in a dedicated git worktree | Every Claude skill invocation (PM, engineer, tech-lead, test-engineer) must execute within a git worktree created specifically for that invocation. The worktree is checked out on the feature branch. The skill reads and writes all artifacts within the worktree — it never touches the main working tree. | WHO: As the Ptah orchestrator GIVEN: A skill is about to be invoked WHEN: The orchestrator prepares the execution environment THEN: A new git worktree is created for the feature branch, and the skill's working directory is set to that worktree root | P0 | 1 | [US-06] | [REQ-WT-02] |
+| REQ-WT-02 | Orchestrator manages worktree lifecycle | The Ptah orchestrator is responsible for creating and destroying worktrees for each skill invocation. A worktree is created immediately before the skill runs. It is removed after the skill completes (success or failure). If the orchestrator or skill crashes mid-execution, a cleanup sweep removes any dangling worktrees on next startup. | WHO: As the Ptah orchestrator GIVEN: A skill completes or fails WHEN: The orchestrator handles the skill's completion THEN: The worktree used by that skill is deleted; on next orchestrator startup, any worktrees without an active skill invocation are cleaned up | P0 | 1 | [US-06] | — |
+| REQ-WT-03 | Feature resolver operates relative to the worktree root | The feature resolver service ([REQ-SK-06]) must accept the worktree root path as an input parameter and search lifecycle folders under that root. It must never search under the main working tree root when called from a skill context. The worktree root is passed by the orchestrator when it sets up the skill execution environment. | WHO: As a Ptah orchestrator activity running inside a skill's worktree GIVEN: The worktree root is `/tmp/ptah-wt-{uuid}/` WHEN: I call the feature resolver with slug `{feature-slug}` and worktree root `/tmp/ptah-wt-{uuid}/` THEN: The resolver searches `/tmp/ptah-wt-{uuid}/docs/in-progress/`, `/tmp/ptah-wt-{uuid}/docs/backlog/`, and `/tmp/ptah-wt-{uuid}/docs/completed/` | P0 | 1 | [US-06] | [REQ-SK-06], [REQ-WT-01] |
+| REQ-WT-04 | Worktree root stored in workflow state alongside resolved feature path | The workflow state must store both the worktree root path and the feature-folder path relative to that root. Activities combine these to form the absolute path to a feature artifact. Storing them separately allows the orchestrator to substitute the worktree root when re-using a resolved feature path across multiple skill invocations (e.g., when a promotion changes the feature-folder path, only the relative path field in state is updated). | WHO: As a Ptah workflow activity GIVEN: Workflow state contains `worktreeRoot` and `featurePath` fields WHEN: The activity needs to write to a feature artifact THEN: The activity computes `path.join(state.worktreeRoot, state.featurePath, filename)` to get the absolute path | P0 | 1 | [US-05], [US-06] | [REQ-SK-07], [REQ-WT-01] |
+| REQ-WT-05 | Promotion activities execute inside a worktree | The promotion activities ([REQ-SK-08]) that run `git mv` and commit the result must execute within a dedicated worktree, not in the main working tree. This isolates the `git mv` operation from any concurrent skill invocations operating on other worktrees of the same branch. | WHO: As the Ptah orchestrator GIVEN: A backlog→in-progress or in-progress→completed promotion is needed WHEN: The orchestrator runs the promotion activity THEN: The activity creates (or reuses) a dedicated promotion worktree, performs `git mv` + commit within it, pushes, and then deletes the worktree | P0 | 1 | [US-02], [US-03], [US-06] | [REQ-SK-08], [REQ-WT-01], [REQ-WT-02] |
+
 ---
 
 ## 6. Non-Functional Requirements
@@ -180,6 +202,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | R-03 | Ptah orchestrator code hardcodes `docs/` paths that don't account for lifecycle subfolders | High | High | Audit all `docs/` path references in `ptah/src/` — confirmed locations: `ptah/src/orchestrator/pdlc/cross-review-parser.ts:159`, `ptah/src/temporal/workflows/feature-lifecycle.ts:1076`, and `feature-lifecycle.ts:66-71` (comment block). Replace all inline path construction with calls to the feature resolver service and reads from workflow state per [REQ-SK-06] and [REQ-SK-07] | [REQ-SK-02], [REQ-SK-06], [REQ-SK-07] |
 | R-04 | NNN numbering conflicts if multiple features are completed concurrently | Low | Low | Sequential completion within a single orchestrator process; if needed, use file-based locking | [REQ-PR-03] |
 | R-05 | File rename on completion breaks in-document references | Medium | Medium | Completion promotion must scan document content for internal file references (e.g., markdown links to `REQ-{feature}.md`) and update them to the NNN-prefixed names | [REQ-PR-02], [REQ-PR-04] |
+| R-06 | Worktree accumulation if orchestrator or skill crashes without cleanup | Medium | Low | On each orchestrator startup, sweep for worktrees whose associated skill invocation is no longer active and delete them. Worktrees are cheap to recreate — aggressive cleanup is preferable to accumulation | [REQ-WT-02] |
 
 ---
 
@@ -189,7 +212,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 19 | REQ-FS-01, REQ-FS-02, REQ-FS-03, REQ-FS-04, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-PR-05, REQ-SK-01, REQ-SK-02, REQ-SK-03, REQ-SK-04, REQ-SK-05, REQ-SK-06, REQ-SK-07, REQ-SK-08, REQ-MG-01, REQ-MG-02, REQ-MG-03, REQ-MG-04, REQ-NF-01 |
+| P0 | 26 | REQ-FS-01, REQ-FS-02, REQ-FS-03, REQ-FS-04, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-PR-05, REQ-SK-01, REQ-SK-02, REQ-SK-03, REQ-SK-04, REQ-SK-05, REQ-SK-06, REQ-SK-07, REQ-SK-08, REQ-MG-01, REQ-MG-02, REQ-MG-03, REQ-MG-04, REQ-NF-01, REQ-WT-01, REQ-WT-02, REQ-WT-03, REQ-WT-04, REQ-WT-05 |
 | P1 | 2 | REQ-PR-04, REQ-NF-02 |
 | P2 | 1 | REQ-NF-03 |
 
@@ -197,7 +220,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 
 | Phase | Count | IDs |
 |-------|-------|-----|
-| Phase 1 | 22 | All requirements (single-phase delivery) |
+| Phase 1 | 29 | All requirements (single-phase delivery) |
 
 ---
 
@@ -212,6 +235,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 - Feature promotion logic (backlog→in-progress without NNN, in-progress→completed with NNN)
 - NNN assignment and file renaming on promotion to completed
 - Removing NNN from in-progress features during migration
+- Git worktree creation, use, and cleanup for all skill invocations and promotion activities
 
 ### Out of Scope
 
@@ -238,6 +262,7 @@ All four Claude skills (product-manager, engineer, tech-lead, test-engineer) and
 | 1.0 | April 3, 2026 | Product Manager | Initial requirements document |
 | 2.0 | April 3, 2026 | Product Manager | Major revision: in-progress features are now unnumbered. NNN prefix assigned only on promotion to completed (not on promotion to in-progress). Updated REQ-FS-03, REQ-PR-01, REQ-PR-02, REQ-PR-03, REQ-SK-03, REQ-SK-04, US-02, US-03, REQ-MG-03. Added A-05, R-05. Changed Document ID from REQ-019 to REQ-FLF (unnumbered). |
 | 2.1 | April 3, 2026 | Product Manager | Addressed engineer cross-review (F-01–F-05, Q-01–Q-03). Added REQ-SK-06 (feature resolver behavioral contract — F-01), REQ-SK-07 (resolved path in workflow state — F-02), REQ-SK-08 (orchestrator owns promotion execution — F-03, Q-02). Updated REQ-SK-02 with slug collision behavior (Q-01). Updated REQ-PR-04 with in-scope reference formats (F-04). Updated REQ-NF-02 with two-phase idempotency for partial-completion (F-05). Fixed C-02 with full file paths (Q-03). Fixed R-03 to reference full paths. Added A-06. |
+| 2.2 | April 3, 2026 | Product Manager | Added worktree isolation requirements. New US-06 (parallel skill agent isolation). New domain WT. Added REQ-WT-01 (skill in dedicated worktree), REQ-WT-02 (orchestrator manages lifecycle), REQ-WT-03 (resolver operates relative to worktree root), REQ-WT-04 (worktree root + feature path in state), REQ-WT-05 (promotion activities in worktree). Added C-04 (main working tree never modified by skills), R-06 (worktree accumulation risk). Updated requirements summary (26 P0, 29 total). |
 
 ---
 
