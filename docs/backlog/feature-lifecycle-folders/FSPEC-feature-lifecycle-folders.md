@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-FLF |
 | **Parent Document** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -58,33 +58,32 @@ The following requirements are fully defined in the REQ and do not require a sep
 
 Specifies the complete flow for both lifecycle promotion events:
 
-1. **Backlog→In-Progress:** Triggered when an engineer or tech-lead skill begins reviewing a REQ document for a feature currently in `docs/backlog/`. The skill detects the condition and signals the orchestrator, which runs the promotion activity before the skill executes.
-2. **In-Progress→Completed:** Triggered when the orchestrator detects that both the test-engineer and product-manager have emitted sign-off routing signals within the same workflow run. The orchestrator runs the completion promotion activity, which assigns a NNN prefix, moves the folder, and renames files.
+1. **Backlog→In-Progress:** Triggered during the orchestrator's pre-invocation setup for an engineer or tech-lead skill. The orchestrator resolves the feature path and detects the backlog condition before invoking the skill. If the feature is in `docs/backlog/`, the orchestrator runs the promotion activity and then invokes the skill with the updated path. The skill is never aware of the promotion — it receives an already-promoted path from workflow state.
+2. **In-Progress→Completed:** Triggered when the orchestrator detects that both the test-engineer and product-manager have emitted sign-off routing signals within the same workflow execution. The orchestrator runs the completion promotion activity, which assigns a NNN prefix, moves the folder, and renames files.
 
 ### Behavioral Flow — Backlog→In-Progress Promotion
 
-**Actor: Claude skill (engineer or tech-lead)**
+**Actor: Orchestrator — pre-invocation setup**
 
-1. **Skill starts a review task.** It calls the feature resolver service with the feature slug and worktree root (see [FSPEC-SK-01]).
-2. **Resolver returns the feature path.** Inspect the path prefix:
-   - If path is under `docs/in-progress/` → no promotion needed. Continue with the task.
+1. **Orchestrator prepares to invoke an engineer or tech-lead skill.** As part of pre-invocation setup, the orchestrator calls the feature resolver service with the feature slug and worktree root (see [FSPEC-SK-01]).
+2. **Resolver returns the feature path.** The orchestrator inspects the path prefix:
+   - If path is under `docs/in-progress/` → no promotion needed. Store path in workflow state and proceed to invoke the skill.
    - If path is under `docs/backlog/` → promotion is needed. Proceed to step 3.
-   - If path is under `docs/completed/` → unexpected state. Log a warning and continue (the feature should not be in completed if a review is just beginning).
-3. **Skill emits a promotion-intent signal** to the orchestrator. This signal carries: `{ type: "PROMOTE_BACKLOG_TO_IN_PROGRESS", featureSlug }`. The skill does NOT move any files — detection and signalling are its only responsibilities.
-4. **Orchestrator receives the signal** and runs the **Backlog→In-Progress Promotion Activity** before the skill invocation proceeds.
+   - If path is under `docs/completed/` → unexpected state. Log a warning and proceed to invoke the skill (the feature should not be in completed if a review is just beginning).
+3. **Orchestrator runs the Backlog→In-Progress Promotion Activity** (steps 4–9 below) before invoking the skill.
 
 **Actor: Orchestrator — Backlog→In-Progress Promotion Activity**
 
-5. **Idempotency check:** Verify the source folder `docs/backlog/{feature-slug}/` exists.
+4. **Idempotency check:** Verify the source folder `docs/backlog/{feature-slug}/` exists.
    - If it does NOT exist → check whether `docs/in-progress/{feature-slug}/` already exists.
      - If yes → log `[ptah] Idempotent skip: {feature-slug} already in in-progress.` Return success.
      - If no → log an error: `Feature {feature-slug} not found in backlog or in-progress.` Return error.
-   - If it DOES exist → continue to step 6.
-6. **Run `git mv docs/backlog/{feature-slug}/ docs/in-progress/{feature-slug}/`** within the promotion worktree.
-7. **Commit the move:** `git commit -m "chore(lifecycle): promote {feature-slug} backlog → in-progress"`.
-8. **Push to the feature branch.**
-9. **Update workflow state:** Set `featurePath` to `docs/in-progress/{feature-slug}/` in workflow state.
-10. **Return success.** The orchestrator now invokes the skill using the updated path.
+   - If it DOES exist → continue to step 5.
+5. **Run `git mv docs/backlog/{feature-slug}/ docs/in-progress/{feature-slug}/`** within the promotion worktree.
+6. **Commit the move:** `git commit -m "chore(lifecycle): promote {feature-slug} backlog → in-progress"`.
+7. **Push to the feature branch.**
+8. **Update workflow state:** Set `featurePath` to `docs/in-progress/{feature-slug}/` in workflow state.
+9. **Return success.** The orchestrator now invokes the skill using the updated path. The skill receives the promoted path from workflow state and is unaware that a promotion occurred.
 
 ### Behavioral Flow — In-Progress→Completed Promotion
 
@@ -119,13 +118,13 @@ Specifies the complete flow for both lifecycle promotion events:
 
 ### Business Rules
 
-- **BR-01:** Promotion execution is always performed by the orchestrator, never by a Claude skill agent. Skills detect and signal intent only.
+- **BR-01:** Both detection and execution of promotions are performed by the orchestrator, never by Claude skill agents. For backlog→in-progress, the orchestrator detects the backlog condition during pre-invocation setup and promotes before invoking the skill. For in-progress→completed, the orchestrator detects both sign-off signals and runs the completion activity. Skills are never aware of promotions — they receive already-resolved paths from workflow state.
 - **BR-02:** Both promotions use `git mv` for all file system operations to preserve `git log --follow` history.
 - **BR-03:** Backlog→In-Progress promotion does NOT rename files or assign a NNN prefix. Folder and file names are unchanged.
 - **BR-04:** NNN assignment is global across `docs/completed/` — it is based on the maximum existing NNN, not a count. Gaps in the sequence are acceptable; re-use of an existing NNN is not.
 - **BR-05:** The two-phase idempotency design (Phase 1 check, Phase 2 per-file check) ensures that a promotion activity retried after a crash resumes from where it left off without re-assigning NNN or re-moving an already-moved folder.
 - **BR-06:** Internal reference update scope is limited to markdown link patterns `[text](filename.md)` and `[text](./filename.md)` where the target is a file in the same feature folder that was renamed in Phase 2. Cross-feature links and bare prose mentions are out of scope.
-- **BR-07:** The sign-off detection for In-Progress→Completed requires both `test-engineer` AND `product-manager` to have emitted `LGTM` signals. A single sign-off is not sufficient. The detection is scoped to the current workflow run — sign-offs from a prior run are not counted.
+- **BR-07:** The sign-off detection for In-Progress→Completed requires both `test-engineer` AND `product-manager` to have emitted `LGTM` signals. A single sign-off is not sufficient. The detection is scoped to a single Temporal workflow execution, identified by the `(workflowId, runId)` pair. If a workflow uses `continue-as-new` (producing a new `runId`), sign-off state accumulated in the prior run is NOT automatically carried forward — the workflow must explicitly pass sign-off state in the `continue-as-new` payload if it needs to survive a run boundary. Sign-offs from unrelated workflow executions are never counted.
 
 ### Input / Output
 
@@ -147,7 +146,7 @@ Specifies the complete flow for both lifecycle promotion events:
 
 - **Feature already in target folder (retry after crash):** Both promotion activities detect the target folder already exists and skip the move step. For completion, Phase 2 re-checks each file individually to resume file renames.
 - **Two features promoted to completed concurrently:** The NNN assignment reads `docs/completed/` at the start of the promotion activity. If two promotions run concurrently in separate worktrees, the second one to commit and push will get a conflict on the `docs/completed/` folder listing. The NNN calculation must be performed within a transaction boundary (e.g., while holding a file-based lock, or by using Temporal's serial activity scheduling for completion promotions). This is the same concern as [R-04] — sequential completion within a single orchestrator process is the first mitigation.
-- **Feature in `backlog/` when engineer starts a non-review task (e.g., TSPEC creation):** The backlog→in-progress promotion is triggered specifically when an engineer or tech-lead starts any task that requires writing artifacts for a feature. If the feature is in backlog, it should be promoted before any engineer artifact is created.
+- **Feature in `backlog/` when engineer starts a non-review task (e.g., TSPEC creation):** The backlog→in-progress promotion is triggered during the orchestrator's pre-invocation setup for any engineer or tech-lead skill task. If the feature is in backlog, the orchestrator promotes it before invoking the skill, regardless of the specific task type (review, TSPEC, PLAN, etc.).
 - **NNN gap in `completed/`:** If `docs/completed/` contains `001-init` and `003-something` (no `002-*`), the next NNN will be `004`. Gaps are preserved — the algorithm does not fill gaps.
 - **No files to rename in Phase 2:** If all files in the folder already have the NNN prefix (e.g., a retry where Phase 1 succeeded but Phase 2 was interrupted before any files were renamed, then the crash recovery on restart finds no un-prefixed files), Phase 2 is a no-op. No commit is made.
 
@@ -163,16 +162,19 @@ Specifies the complete flow for both lifecycle promotion events:
 
 ### Acceptance Tests
 
-**AT-PR-01:** Backlog→In-Progress — normal flow.
+**AT-PR-01:** Backlog→In-Progress — normal flow (orchestrator-first).
 ```
 WHO:   As the Ptah orchestrator
 GIVEN: A feature exists at docs/backlog/my-feature/
        with files REQ-my-feature.md and overview.md
-WHEN:  An engineer skill signals promotion intent for slug my-feature
-THEN:  The orchestrator moves the folder to docs/in-progress/my-feature/
+WHEN:  The orchestrator resolves the feature path during pre-invocation setup
+       for an engineer skill and detects it is in docs/backlog/
+THEN:  The orchestrator runs the promotion activity before invoking the skill
+       The folder is moved to docs/in-progress/my-feature/
        File names are unchanged (REQ-my-feature.md, overview.md)
        git log --follow on REQ-my-feature.md shows history from before the move
        Workflow state featurePath = docs/in-progress/my-feature/
+       The engineer skill receives the promoted path and is unaware of the promotion
 ```
 
 **AT-PR-02:** Backlog→In-Progress — idempotent on retry.
@@ -584,7 +586,7 @@ Specifies the behavior of the one-time migration script that reorganizes the exi
 ### Business Rules
 
 - **BR-01:** The migration script runs exclusively in the main working tree, not in a worktree. It is a developer-run script, not an orchestrator activity.
-- **BR-02:** The determination of which features are "completed" (and should go to `docs/completed/`) versus "in-progress" (and should go to `docs/in-progress/`) is made by the developer who runs the script, not by the script itself. The script provides a classification mechanism (numbered = completed, unnumbered = in-progress) as the default heuristic, but the developer can re-run with manual overrides if the heuristic is wrong.
+- **BR-02:** The determination of which features are "completed" versus "in-progress" uses a simple heuristic: numbered folders (matching `^[0-9]{3}-`) are classified as completed; all remaining feature folders are classified as in-progress. If the heuristic misclassifies a feature, the developer must correct it manually after the script completes by running `git mv` to move the folder to the correct lifecycle directory. The script does not provide a built-in override mechanism.
 - **BR-03:** Existing NNN prefixes on completed features are preserved — they keep their original numbers. The script does not renumber completed features.
 - **BR-04:** In-progress features have their NNN prefix stripped from both the folder name and document filenames. This ensures they conform to the "unnumbered in-progress" convention from the moment of migration.
 - **BR-05:** The migration is not idempotent by default (the pre-flight check in step 1c prevents re-running on a non-empty lifecycle folder). A developer who needs to re-run must manually inspect the state first.
@@ -658,10 +660,11 @@ THEN:  The script prints the non-empty lifecycle folder warning
 
 ## 2. Open Questions
 
-None. All product decisions required to write this specification were resolved in the REQ document (v2.3). The following REQ findings from the engineer cross-review are acknowledged but are editorial — they do not block FSPEC or TSPEC creation:
+None. All product decisions required to write this specification were resolved in the REQ document (v2.3) and the engineer FSPEC cross-review (v1.0). The following notes apply:
 
-- **REQ-SK-04 F-01 (Low):** "responsible skill (or orchestrator)" phrasing — [FSPEC-PR-01] unambiguously assigns promotion execution to the orchestrator (BR-01). The TSPEC author should implement per FSPEC-PR-01 and can treat the REQ-SK-04 wording as an oversight.
-- **REQ-WT-02 F-02 (Low):** "Temporal workflow activity IDs" imprecise terminology — [FSPEC-WT-01 AT-WT-03] and Business Rule BR-05 use accurate terminology ("active Temporal workflow execution identified by workflow ID + run ID"). The TSPEC author should implement per FSPEC-WT-01.
+- **REQ-SK-03 alignment with FSPEC-PR-01:** REQ-SK-03 describes the skill as detecting backlog status and signalling intent. FSPEC-PR-01 v1.1 adopts the orchestrator-first model (Alternative A from the engineer cross-review), where the orchestrator detects the backlog condition during pre-invocation setup. The skill is never aware of the promotion. The TSPEC author should implement per FSPEC-PR-01 — the orchestrator owns both detection and execution. REQ-SK-03's intent (ensure the feature is promoted before the skill writes artifacts) is fully preserved; only the mechanism has changed from skill-signals to orchestrator-detects.
+- **REQ-SK-04 F-01 (Low, from REQ cross-review):** "responsible skill (or orchestrator)" phrasing — [FSPEC-PR-01] unambiguously assigns promotion execution to the orchestrator (BR-01). The TSPEC author should implement per FSPEC-PR-01.
+- **REQ-WT-02 F-02 (Low, from REQ cross-review):** "Temporal workflow activity IDs" imprecise terminology — [FSPEC-WT-01 AT-WT-03] and Business Rule BR-05 use accurate terminology ("active Temporal workflow execution identified by workflow ID + run ID"). The TSPEC author should implement per FSPEC-WT-01.
 
 ---
 
@@ -670,3 +673,4 @@ None. All product decisions required to write this specification were resolved i
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 3, 2026 | Product Manager | Initial functional specification |
+| 1.1 | April 3, 2026 | Product Manager | Addressed engineer cross-review of v1.0 (F-01, F-02, F-03, Q-01). Rewrote FSPEC-PR-01 backlog→in-progress flow to orchestrator-first model: orchestrator detects backlog condition during pre-invocation setup, not the skill (F-01). Removed `PROMOTE_BACKLOG_TO_IN_PROGRESS` signal type — no router extension needed (F-02). Updated BR-01 to reflect orchestrator owns both detection and execution. Updated AT-PR-01. Replaced vague "manual overrides" in FSPEC-MG-01 BR-02 with explicit `git mv` workaround (F-03). Clarified BR-07 sign-off scope: scoped to `(workflowId, runId)` pair; `continue-as-new` requires explicit state carry-forward (Q-01). |
