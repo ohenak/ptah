@@ -51,7 +51,7 @@ Both `→` (Unicode) and `->` (ASCII) arrows accepted. Unknown phase references 
 1. Exclude completed phases (all tasks ✅ Done). If none remain → "All phases Done." Exit LGTM.
 2. Kahn's topological layering: Batch 1 = in-degree 0, remove, repeat.
 3. Within each batch, sort by document order.
-4. **Concurrency cap:** Max 5 phases per sub-batch. Split larger batches into `Batch N.1`, `N.2`, etc.
+4. **Concurrency cap:** Max 2 phases per sub-batch. Split larger batches into `Batch N.1`, `N.2`, etc.
 5. Test gate fires once per topological batch (after all sub-batches), not between sub-batches.
 
 ### Step 4: Assign Skills to Phases
