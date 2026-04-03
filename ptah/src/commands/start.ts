@@ -1,11 +1,20 @@
 import type { ConfigLoader } from "../config/loader.js";
 import type { DiscordClient } from "../services/discord.js";
 import type { Logger } from "../services/logger.js";
-import type { Orchestrator } from "../orchestrator/orchestrator.js";
-import type { StartResult } from "../types.js";
+import type { ThreadMessage, StartResult } from "../types.js";
+
+/**
+ * Minimal orchestrator interface required by StartCommand.
+ * Compatible with both the legacy DefaultOrchestrator and TemporalOrchestrator.
+ */
+export interface StartCommandOrchestrator {
+  startup(): Promise<void>;
+  shutdown(): Promise<void>;
+  handleMessage?(message: ThreadMessage): Promise<void>;
+}
 
 export interface StartCommandOptions {
-  orchestrator?: Orchestrator;
+  orchestrator?: StartCommandOrchestrator;
   checkClaudeCode?: () => Promise<void>;
 }
 
@@ -22,7 +31,7 @@ async function defaultClaudeCodeCheck(): Promise<void> {
 }
 
 export class StartCommand {
-  private orchestrator?: Orchestrator;
+  private orchestrator?: StartCommandOrchestrator;
   private checkClaudeCode: () => Promise<void>;
 
   constructor(
@@ -47,7 +56,7 @@ export class StartCommand {
       );
     }
 
-    // 3. Validate Claude Code availability (Task 137) — only when orchestrator is provided
+    // 3. Validate Claude Code availability — only when orchestrator is provided
     if (this.orchestrator) {
       await this.checkClaudeCode();
     }
@@ -77,7 +86,9 @@ export class StartCommand {
     if (this.orchestrator) {
       const orchestrator = this.orchestrator;
       this.discord.onThreadMessage(channelId, async (message) => {
-        await orchestrator.handleMessage(message);
+        if (orchestrator.handleMessage) {
+          await orchestrator.handleMessage(message);
+        }
       });
     } else {
       this.discord.onThreadMessage(channelId, async (message) => {

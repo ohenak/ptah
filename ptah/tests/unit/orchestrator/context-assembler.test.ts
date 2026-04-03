@@ -7,8 +7,7 @@ import {
   defaultTestConfig,
   createThreadMessage,
 } from "../../fixtures/factories.js";
-import type { PtahConfig, ThreadMessage } from "../../../src/types.js";
-import type { TaskType } from "../../../src/orchestrator/pdlc/phases.js";
+import type { PtahConfig, ThreadMessage, TaskType } from "../../../src/types.js";
 
 describe("DefaultContextAssembler", () => {
   let fs: FakeFileSystem;
@@ -1283,6 +1282,131 @@ describe("DefaultContextAssembler", () => {
 
       expect(result.systemPrompt).not.toContain("## REVISION TASK");
       expect(result.systemPrompt).not.toContain("## RESUBMIT TASK");
+    });
+  });
+
+  // ─── E6: contextDocumentRefs (config-driven context documents) ────────────
+
+  describe("contextDocumentRefs — config-driven document matrix (E6)", () => {
+    it("reads only specified document refs when contextDocumentRefs is provided", async () => {
+      const featureName = "015-temporal-foundation";
+      const docsRoot = "docs";
+      fs.addExistingDir(`${docsRoot}/${featureName}`);
+      fs.addExisting(`${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`, "REQ content here");
+      fs.addExisting(`${docsRoot}/${featureName}/015-TSPEC-temporal-foundation.md`, "TSPEC content here");
+      fs.addExisting(`${docsRoot}/${featureName}/overview.md`, "Feature overview");
+      // Extra file that should NOT be included
+      fs.addExisting(`${docsRoot}/${featureName}/other.md`, "Other content");
+
+      const triggerMessage = createThreadMessage({
+        content: "Implement the feature",
+        threadName: featureName,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        contextDocumentRefs: [
+          `${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`,
+          `${docsRoot}/${featureName}/015-TSPEC-temporal-foundation.md`,
+        ],
+      });
+
+      // REQ and TSPEC are included
+      expect(result.systemPrompt).toContain("REQ content here");
+      expect(result.systemPrompt).toContain("TSPEC content here");
+      // Other file is NOT included (was not in refs)
+      expect(result.systemPrompt).not.toContain("Other content");
+    });
+
+    it("excludes overview.md from Layer 2 when provided in contextDocumentRefs", async () => {
+      const featureName = "015-temporal-foundation";
+      const docsRoot = "docs";
+      fs.addExistingDir(`${docsRoot}/${featureName}`);
+      fs.addExisting(`${docsRoot}/${featureName}/overview.md`, "Feature overview content");
+      fs.addExisting(`${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`, "REQ content");
+
+      const triggerMessage = createThreadMessage({
+        content: "Do the task",
+        threadName: featureName,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        contextDocumentRefs: [
+          `${docsRoot}/${featureName}/overview.md`,
+          `${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`,
+        ],
+      });
+
+      // overview appears exactly once (in Layer 1), not duplicated in Layer 2
+      const overviewCount = result.systemPrompt.split("Feature overview content").length - 1;
+      expect(overviewCount).toBe(1);
+      // REQ content appears in Layer 2
+      expect(result.systemPrompt).toContain("REQ content");
+    });
+
+    it("gracefully skips missing files referenced in contextDocumentRefs", async () => {
+      const featureName = "015-temporal-foundation";
+      const docsRoot = "docs";
+      fs.addExistingDir(`${docsRoot}/${featureName}`);
+      fs.addExisting(`${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`, "REQ content");
+
+      const triggerMessage = createThreadMessage({
+        content: "Do the task",
+        threadName: featureName,
+      });
+
+      // Does not throw when a referenced file is missing
+      await expect(
+        assembler.assemble({
+          agentId: "pm-agent",
+          threadId: "thread-1",
+          threadName: featureName,
+          threadHistory: [],
+          triggerMessage,
+          config,
+          contextDocumentRefs: [
+            `${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`,
+            `${docsRoot}/${featureName}/does-not-exist.md`,
+          ],
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("falls back to full feature folder scan when contextDocumentRefs is absent", async () => {
+      const featureName = "015-temporal-foundation";
+      const docsRoot = "docs";
+      fs.addExistingDir(`${docsRoot}/${featureName}`);
+      fs.addExisting(`${docsRoot}/${featureName}/015-REQ-temporal-foundation.md`, "REQ content all");
+      fs.addExisting(`${docsRoot}/${featureName}/015-TSPEC-temporal-foundation.md`, "TSPEC content all");
+
+      const triggerMessage = createThreadMessage({
+        content: "Do the task",
+        threadName: featureName,
+      });
+
+      const result = await assembler.assemble({
+        agentId: "pm-agent",
+        threadId: "thread-1",
+        threadName: featureName,
+        threadHistory: [],
+        triggerMessage,
+        config,
+        // No contextDocumentRefs — falls back to full folder scan
+      });
+
+      expect(result.systemPrompt).toContain("REQ content all");
+      expect(result.systemPrompt).toContain("TSPEC content all");
     });
   });
 });

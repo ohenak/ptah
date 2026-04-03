@@ -17,7 +17,6 @@ import type { MessageDeduplicator } from "../../src/orchestrator/message-dedupli
 import type {
   PtahConfig,
   ThreadMessage,
-  ThreadStatus,
   SkillRequest,
   SkillResponse,
   RoutingSignal,
@@ -32,7 +31,6 @@ import type {
   CommitResult,
   ArtifactLogEntry,
   PendingQuestion,
-  RegisteredQuestion,
   ChannelMessage,
   LogEntry,
   Component,
@@ -43,17 +41,12 @@ import type {
   UserFacingErrorContext,
   MergeBranchParams,
   BranchMergeResult,
+  FeatureConfig,
+  ContextDocumentSet,
+  TaskType,
 } from "../../src/types.js";
-import type { QuestionStore } from "../../src/orchestrator/question-store.js";
-import type { QuestionPoller } from "../../src/orchestrator/question-poller.js";
-import type { PatternBContextBuilder } from "../../src/orchestrator/pattern-b-context-builder.js";
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
-import type { ThreadStateManager } from "../../src/orchestrator/thread-state-manager.js";
-import type { InvocationGuard, InvocationGuardParams, GuardResult } from "../../src/orchestrator/invocation-guard.js";
 import type { AgentRegistry } from "../../src/orchestrator/agent-registry.js";
-import type { StateStore } from "../../src/orchestrator/pdlc/state-store.js";
-import type { PdlcDispatcher } from "../../src/orchestrator/pdlc/pdlc-dispatcher.js";
-import type { PdlcStateFile, FeatureState, FeatureConfig, DispatchAction, ContextDocumentSet, TaskType } from "../../src/orchestrator/pdlc/phases.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
 
@@ -1014,71 +1007,6 @@ export class FakeWorktreeRegistry implements WorktreeRegistry {
   size(): number { return this.worktrees.length; }
 }
 
-export class FakeThreadStateManager implements ThreadStateManager {
-  turnResults = new Map<string, "allowed" | "limit-reached">();
-  reviewTurnResults = new Map<string, "allowed" | "stalled">();
-  reviewThreadIds = new Set<string>();
-  turnCounts = new Map<string, number>();
-  openThreadIdSet = new Set<string>();
-  parentThreadIds = new Map<string, string>();
-  closedThreadIds = new Set<string>();
-  stalledThreadIds = new Set<string>();
-  reconstructCalls: Array<{ threadId: string; messages: ThreadMessage[]; isReview: boolean }> = [];
-  seenThreadIds = new Set<string>();
-
-  checkAndIncrementTurn(threadId: string, _maxTurns: number): "allowed" | "limit-reached" {
-    return this.turnResults.get(threadId) ?? "allowed";
-  }
-  closeThread(threadId: string): void { this.closedThreadIds.add(threadId); }
-  registerReviewThread(threadId: string, parentThreadId: string): void {
-    this.reviewThreadIds.add(threadId);
-    this.parentThreadIds.set(threadId, parentThreadId);
-  }
-  isReviewThread(threadId: string): boolean { return this.reviewThreadIds.has(threadId); }
-  checkAndIncrementReviewTurn(threadId: string): "allowed" | "stalled" {
-    return this.reviewTurnResults.get(threadId) ?? "allowed";
-  }
-  stallReviewThread(threadId: string): void { this.stalledThreadIds.add(threadId); }
-  getParentThreadId(threadId: string): string | undefined { return this.parentThreadIds.get(threadId); }
-  getStatus(threadId: string): ThreadStatus {
-    if (this.stalledThreadIds.has(threadId)) return "stalled";
-    if (this.closedThreadIds.has(threadId)) return "closed";
-    return "open";
-  }
-  openThreadIds(): string[] { return Array.from(this.openThreadIdSet); }
-  reconstructTurnCount(threadId: string, messages: ThreadMessage[], isReview: boolean): void {
-    this.reconstructCalls.push({ threadId, messages, isReview });
-    this.seenThreadIds.add(threadId);
-  }
-}
-
-export class FakeInvocationGuard implements InvocationGuard {
-  results: GuardResult[] = [];
-  callCount = 0;
-  lastParams: InvocationGuardParams | null = null;
-  lastShutdownSignal: AbortSignal | null = null;
-
-  async invokeWithRetry(params: InvocationGuardParams): Promise<GuardResult> {
-    this.lastParams = params;
-    this.lastShutdownSignal = params.shutdownSignal;
-    const result = this.results[this.callCount] ?? this.results[this.results.length - 1] ?? {
-      status: "success" as const,
-      invocationResult: {
-        textResponse: "",
-        routingSignalRaw: 'ROUTE_TO_AGENT',
-        artifactChanges: [],
-        durationMs: 0,
-      },
-      commitResult: {
-        commitSha: "abc",
-        mergeStatus: "merged" as const,
-        branch: "test",
-      },
-    };
-    this.callCount++;
-    return result;
-  }
-}
 
 // --- Phase 4: New fakes ---
 
@@ -1172,95 +1100,6 @@ export function defaultCommitResult(): CommitResult {
 
 // --- Phase 5: New fakes and factories ---
 
-// Task 8: FakeQuestionStore
-export class FakeQuestionStore implements QuestionStore {
-  private questions = new Map<string, PendingQuestion>();
-  private archived: PendingQuestion[] = [];
-  private nextId = 1;
-
-  appendError: Error | null = null;
-  updateDiscordMessageIdError: Error | null = null;
-  readError: Error | null = null;
-  setAnswerError: Error | null = null;
-  archiveError: Error | null = null;
-
-  seedQuestion(q: PendingQuestion): void {
-    this.questions.set(q.id, q);
-  }
-
-  getArchivedQuestions(): PendingQuestion[] {
-    return [...this.archived];
-  }
-
-  async appendQuestion(question: Omit<PendingQuestion, "id">): Promise<PendingQuestion> {
-    if (this.appendError) throw this.appendError;
-    const id = `Q-${String(this.nextId++).padStart(4, "0")}`;
-    const full: PendingQuestion = { ...question, id };
-    this.questions.set(id, full);
-    return full;
-  }
-
-  async updateDiscordMessageId(questionId: string, messageId: string): Promise<void> {
-    if (this.updateDiscordMessageIdError) throw this.updateDiscordMessageIdError;
-    const q = this.questions.get(questionId);
-    if (q) this.questions.set(questionId, { ...q, discordMessageId: messageId });
-  }
-
-  async readPendingQuestions(): Promise<PendingQuestion[]> {
-    if (this.readError) throw this.readError;
-    return [...this.questions.values()];
-  }
-
-  async readResolvedQuestions(): Promise<PendingQuestion[]> {
-    if (this.readError) throw this.readError;
-    return [...this.archived];
-  }
-
-  async getQuestion(questionId: string): Promise<PendingQuestion | null> {
-    return this.questions.get(questionId) ?? null;
-  }
-
-  async setAnswer(questionId: string, answer: string): Promise<void> {
-    if (this.setAnswerError) throw this.setAnswerError;
-    const q = this.questions.get(questionId);
-    if (q) this.questions.set(questionId, { ...q, answer });
-  }
-
-  async archiveQuestion(questionId: string, resolvedAt: Date): Promise<void> {
-    if (this.archiveError) throw this.archiveError;
-    const q = this.questions.get(questionId);
-    if (q) {
-      this.questions.delete(questionId);
-      this.archived.push({ ...q, askedAt: resolvedAt });
-    }
-  }
-}
-
-// Task 9: FakeQuestionPoller
-export class FakeQuestionPoller implements QuestionPoller {
-  registeredQuestions: RegisteredQuestion[] = [];
-  stopCalled = false;
-  private onAnswer: ((question: PendingQuestion) => Promise<void>) | null;
-
-  constructor(onAnswer?: (question: PendingQuestion) => Promise<void>) {
-    this.onAnswer = onAnswer ?? null;
-  }
-
-  registerQuestion(question: RegisteredQuestion): void {
-    this.registeredQuestions.push(question);
-  }
-
-  async stop(): Promise<void> {
-    this.stopCalled = true;
-  }
-
-  async simulateAnswerDetected(question: PendingQuestion): Promise<void> {
-    if (this.onAnswer) {
-      await this.onAnswer(question);
-    }
-  }
-}
-
 // Task 11: createPendingQuestion factory
 export function createPendingQuestion(overrides: Partial<PendingQuestion> = {}): PendingQuestion {
   return {
@@ -1289,134 +1128,6 @@ export function createChannelMessage(overrides: Partial<ChannelMessage> = {}): C
     timestamp: new Date("2026-01-01T10:05:00Z"),
     ...overrides,
   };
-}
-
-// FakePatternBContextBuilder (task 14 companion)
-export class FakePatternBContextBuilder implements PatternBContextBuilder {
-  buildCalls: Array<{ question: PendingQuestion; worktreePath: string }> = [];
-  buildResult: ContextBundle = {
-    systemPrompt: "fake system prompt",
-    userMessage: "fake user message",
-    agentId: "pm-agent",
-    threadId: "thread-123",
-    featureName: "test-feature",
-    resumePattern: "pattern_b",
-    turnNumber: 1,
-    tokenCounts: { layer1: 100, layer2: 200, layer3: 50, total: 350 },
-  };
-  buildError: Error | null = null;
-
-  async build(params: {
-    question: PendingQuestion;
-    worktreePath: string;
-    config: PtahConfig;
-    threadHistory: ThreadMessage[];
-  }): Promise<ContextBundle> {
-    this.buildCalls.push({ question: params.question, worktreePath: params.worktreePath });
-    if (this.buildError) throw this.buildError;
-    return this.buildResult;
-  }
-}
-
-// --- Phase 11: PDLC State Machine ---
-
-export class FakeStateStore implements StateStore {
-  state: PdlcStateFile = { version: 1, features: {} };
-  loadError: Error | null = null;
-  saveError: Error | null = null;
-  saveCount = 0;
-  savedStates: PdlcStateFile[] = [];
-
-  async load(): Promise<PdlcStateFile> {
-    if (this.loadError) throw this.loadError;
-    return structuredClone(this.state);
-  }
-
-  async save(state: PdlcStateFile): Promise<void> {
-    if (this.saveError) throw this.saveError;
-    this.state = structuredClone(state);
-    this.savedStates.push(structuredClone(state));
-    this.saveCount++;
-  }
-}
-
-export class FakePdlcDispatcher implements PdlcDispatcher {
-  loaded = false;
-  managedSlugs = new Set<string>();
-  featureStates = new Map<string, FeatureState>();
-  nextActions = new Map<string, DispatchAction>();
-  agentCompletionResult: DispatchAction = { action: "wait" };
-  reviewCompletionResult: DispatchAction = { action: "wait" };
-  resumeResult: DispatchAction = { action: "wait" };
-  initResult: FeatureState | null = null;
-  initError: Error | null = null;
-  autoRegisterOnInit = false;
-
-  processAgentCompletionCalls: Array<{
-    featureSlug: string;
-    agentId: string;
-    signal: "LGTM" | "TASK_COMPLETE";
-    worktreePath: string;
-  }> = [];
-  processReviewCompletionCalls: Array<{
-    featureSlug: string;
-    reviewerAgentId: string;
-    reviewerScope?: string;
-    worktreePath: string;
-  }> = [];
-  getNextActionCalls: string[] = [];
-  initializeFeatureCalls: Array<{ slug: string; config: FeatureConfig }> = [];
-
-  async loadState(): Promise<void> {
-    this.loaded = true;
-  }
-
-  async isManaged(featureSlug: string): Promise<boolean> {
-    return this.managedSlugs.has(featureSlug);
-  }
-
-  async getFeatureState(featureSlug: string): Promise<FeatureState | null> {
-    return this.featureStates.get(featureSlug) ?? null;
-  }
-
-  async initializeFeature(slug: string, config: FeatureConfig): Promise<FeatureState> {
-    this.initializeFeatureCalls.push({ slug, config });
-    if (this.initError) throw this.initError;
-    if (!this.initResult) throw new Error("FakePdlcDispatcher: no initResult configured");
-    if (this.autoRegisterOnInit) {
-      this.managedSlugs.add(slug);
-    }
-    return this.initResult;
-  }
-
-  async processAgentCompletion(params: {
-    featureSlug: string;
-    agentId: string;
-    signal: "LGTM" | "TASK_COMPLETE";
-    worktreePath: string;
-  }): Promise<DispatchAction> {
-    this.processAgentCompletionCalls.push(params);
-    return this.agentCompletionResult;
-  }
-
-  async processReviewCompletion(params: {
-    featureSlug: string;
-    reviewerAgentId: string;
-    reviewerScope?: string;
-    worktreePath: string;
-  }): Promise<DispatchAction> {
-    this.processReviewCompletionCalls.push(params);
-    return this.reviewCompletionResult;
-  }
-
-  async getNextAction(featureSlug: string): Promise<DispatchAction> {
-    this.getNextActionCalls.push(featureSlug);
-    return this.nextActions.get(featureSlug) ?? { action: "wait" };
-  }
-
-  async processResumeFromBound(_featureSlug: string): Promise<DispatchAction> {
-    return this.resumeResult;
-  }
 }
 
 // --- Phase 7: Agent factory functions ---
@@ -1494,6 +1205,183 @@ export function makeMergeBranchParams(overrides?: Partial<MergeBranchParams>): M
     featureBranch: "feat-014-tech-lead-orchestration",
     featureBranchWorktreePath: "/tmp/worktree-feature",
     agentId: "eng",
+    ...overrides,
+  };
+}
+
+// --- Phase 15: Temporal Foundation fakes ---
+
+import type { WorkflowConfigLoader, WorkflowConfig, PhaseDefinition } from "../../src/config/workflow-config.js";
+import type {
+  FeatureWorkflowState,
+  StartWorkflowParams,
+  UserAnswerSignal,
+  SkillActivityInput,
+  SkillActivityResult,
+  NotificationInput,
+} from "../../src/temporal/types.js";
+
+export type { TemporalClientWrapper } from "../../src/temporal/client.js";
+
+/**
+ * FakeWorkflowConfigLoader — returns a pre-configured WorkflowConfig.
+ */
+export class FakeWorkflowConfigLoader implements WorkflowConfigLoader {
+  config: WorkflowConfig;
+  loadError: Error | null = null;
+
+  constructor(config?: Partial<WorkflowConfig>) {
+    this.config = {
+      version: 1,
+      phases: [
+        {
+          id: "req-creation",
+          name: "Requirements Creation",
+          type: "creation",
+          agent: "pm",
+          context_documents: ["{feature}/overview"],
+          transition: "req-review",
+        },
+        {
+          id: "req-review",
+          name: "Requirements Review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          context_documents: ["{feature}/REQ"],
+          transition: "req-approved",
+          revision_bound: 3,
+        },
+        {
+          id: "req-approved",
+          name: "Requirements Approved",
+          type: "approved",
+        },
+      ],
+      ...config,
+    };
+  }
+
+  async load(_path?: string): Promise<WorkflowConfig> {
+    if (this.loadError) throw this.loadError;
+    return this.config;
+  }
+}
+
+/**
+ * FakeTemporalClient — records all calls for assertion.
+ */
+export class FakeTemporalClient implements TemporalClientWrapper {
+  startedWorkflows: StartWorkflowParams[] = [];
+  sentSignals: { workflowId: string; signal: string; payload: unknown }[] = [];
+  workflowStates: Map<string, FeatureWorkflowState> = new Map();
+  workflowIds: Map<string, string[]> = new Map(); // prefix → workflow IDs
+  connectionError: Error | null = null;
+  disconnectError: Error | null = null;
+  startWorkflowError: Error | null = null;
+  signalError: Error | null = null;
+  connected = false;
+  connectCalls = 0;
+  disconnectCalls = 0;
+
+  async connect(): Promise<void> {
+    this.connectCalls++;
+    if (this.connectionError) throw this.connectionError;
+    this.connected = true;
+  }
+
+  async disconnect(): Promise<void> {
+    this.disconnectCalls++;
+    if (this.disconnectError) throw this.disconnectError;
+    this.connected = false;
+  }
+
+  async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
+    if (this.startWorkflowError) throw this.startWorkflowError;
+    this.startedWorkflows.push(params);
+    return `ptah-feature-${params.featureSlug}-1`;
+  }
+
+  async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {
+    if (this.signalError) throw this.signalError;
+    this.sentSignals.push({ workflowId, signal: "user-answer", payload: answer });
+  }
+
+  async signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void> {
+    if (this.signalError) throw this.signalError;
+    this.sentSignals.push({ workflowId, signal: "retry-or-cancel", payload: action });
+  }
+
+  async signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void> {
+    if (this.signalError) throw this.signalError;
+    this.sentSignals.push({ workflowId, signal: "resume-or-cancel", payload: action });
+  }
+
+  async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
+    const state = this.workflowStates.get(workflowId);
+    if (!state) throw new Error(`Workflow ${workflowId} not found`);
+    return state;
+  }
+
+  async listWorkflowsByPrefix(prefix: string): Promise<string[]> {
+    return this.workflowIds.get(prefix) ?? [];
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+}
+
+/** Minimal fake for the Temporal Worker (from @temporalio/worker) */
+export class FakeTemporalWorker {
+  running = false;
+  shutdownCalled = false;
+  shutdownError: Error | null = null;
+  runError: Error | null = null;
+  private runResolve: (() => void) | null = null;
+
+  async run(): Promise<void> {
+    if (this.runError) throw this.runError;
+    this.running = true;
+    await new Promise<void>((resolve) => {
+      this.runResolve = resolve;
+    });
+  }
+
+  async shutdown(): Promise<void> {
+    this.shutdownCalled = true;
+    if (this.shutdownError) throw this.shutdownError;
+    this.running = false;
+    this.runResolve?.();
+  }
+}
+
+/**
+ * Factory: default WorkflowConfig for tests (minimal 3-phase pipeline).
+ */
+export function defaultTestWorkflowConfig(overrides?: Partial<WorkflowConfig>): WorkflowConfig {
+  return new FakeWorkflowConfigLoader(overrides).config;
+}
+
+/**
+ * Factory: default FeatureWorkflowState for tests.
+ */
+export function defaultFeatureWorkflowState(
+  overrides?: Partial<FeatureWorkflowState>,
+): FeatureWorkflowState {
+  return {
+    featureSlug: "test-feature",
+    featureConfig: { discipline: "backend-only", skipFspec: false },
+    workflowConfig: defaultTestWorkflowConfig(),
+    currentPhaseId: "req-creation",
+    completedPhaseIds: [],
+    activeAgentIds: ["pm"],
+    phaseStatus: "running",
+    reviewStates: {},
+    forkJoinState: null,
+    pendingQuestion: null,
+    failureInfo: null,
+    startedAt: "2026-04-02T00:00:00Z",
+    updatedAt: "2026-04-02T00:00:00Z",
     ...overrides,
   };
 }

@@ -822,4 +822,125 @@ describe("NodeConfigLoader", () => {
       await expect(loadConfig(config)).rejects.toThrow(/mention_id/);
     });
   });
+
+  // Task A3: TemporalConfig and HeartbeatConfig types in PtahConfig
+  describe("temporal config", () => {
+    function makeConfigWithTemporal(temporal: Record<string, unknown>) {
+      const base = makeConfigWithAgent({ id: "eng", skill_path: "./skill.md" });
+      return { ...base, temporal };
+    }
+
+    it("parses temporal section with all fields", async () => {
+      const config = makeConfigWithTemporal({
+        address: "temporal.example.com:7233",
+        namespace: "production",
+        taskQueue: "ptah-prod",
+        worker: {
+          maxConcurrentWorkflowTasks: 20,
+          maxConcurrentActivities: 5,
+        },
+        retry: {
+          maxAttempts: 5,
+          initialIntervalSeconds: 60,
+          backoffCoefficient: 3.0,
+          maxIntervalSeconds: 900,
+        },
+        heartbeat: {
+          intervalSeconds: 45,
+          timeoutSeconds: 180,
+        },
+      });
+
+      const result = await loadConfig(config);
+
+      expect(result.temporal).toBeDefined();
+      expect(result.temporal!.address).toBe("temporal.example.com:7233");
+      expect(result.temporal!.namespace).toBe("production");
+      expect(result.temporal!.taskQueue).toBe("ptah-prod");
+      expect(result.temporal!.worker.maxConcurrentWorkflowTasks).toBe(20);
+      expect(result.temporal!.worker.maxConcurrentActivities).toBe(5);
+      expect(result.temporal!.retry.maxAttempts).toBe(5);
+      expect(result.temporal!.retry.initialIntervalSeconds).toBe(60);
+      expect(result.temporal!.retry.backoffCoefficient).toBe(3.0);
+      expect(result.temporal!.retry.maxIntervalSeconds).toBe(900);
+      expect(result.temporal!.heartbeat.intervalSeconds).toBe(45);
+      expect(result.temporal!.heartbeat.timeoutSeconds).toBe(180);
+    });
+
+    it("applies defaults when temporal section is absent", async () => {
+      const config = makeConfigWithAgent({ id: "eng", skill_path: "./skill.md" });
+      const result = await loadConfig(config);
+
+      // temporal should be undefined when not specified in config
+      expect(result.temporal).toBeUndefined();
+    });
+
+    it("applies defaults for missing temporal sub-fields", async () => {
+      const config = makeConfigWithTemporal({});
+      const result = await loadConfig(config);
+
+      expect(result.temporal).toBeDefined();
+      expect(result.temporal!.address).toBe("localhost:7233");
+      expect(result.temporal!.namespace).toBe("default");
+      expect(result.temporal!.taskQueue).toBe("ptah-main");
+      expect(result.temporal!.worker.maxConcurrentWorkflowTasks).toBe(10);
+      expect(result.temporal!.worker.maxConcurrentActivities).toBe(3);
+      expect(result.temporal!.retry.maxAttempts).toBe(3);
+      expect(result.temporal!.retry.initialIntervalSeconds).toBe(30);
+      expect(result.temporal!.retry.backoffCoefficient).toBe(2.0);
+      expect(result.temporal!.retry.maxIntervalSeconds).toBe(600);
+      expect(result.temporal!.heartbeat.intervalSeconds).toBe(30);
+      expect(result.temporal!.heartbeat.timeoutSeconds).toBe(120);
+    });
+
+    it("applies defaults for partially specified worker config", async () => {
+      const config = makeConfigWithTemporal({
+        address: "custom:7233",
+        worker: { maxConcurrentActivities: 8 },
+      });
+      const result = await loadConfig(config);
+
+      expect(result.temporal!.address).toBe("custom:7233");
+      expect(result.temporal!.worker.maxConcurrentWorkflowTasks).toBe(10);
+      expect(result.temporal!.worker.maxConcurrentActivities).toBe(8);
+    });
+
+    it("applies defaults for partially specified retry config", async () => {
+      const config = makeConfigWithTemporal({
+        retry: { maxAttempts: 5 },
+      });
+      const result = await loadConfig(config);
+
+      expect(result.temporal!.retry.maxAttempts).toBe(5);
+      expect(result.temporal!.retry.initialIntervalSeconds).toBe(30);
+      expect(result.temporal!.retry.backoffCoefficient).toBe(2.0);
+      expect(result.temporal!.retry.maxIntervalSeconds).toBe(600);
+    });
+
+    it("applies defaults for partially specified heartbeat config", async () => {
+      const config = makeConfigWithTemporal({
+        heartbeat: { intervalSeconds: 60 },
+      });
+      const result = await loadConfig(config);
+
+      expect(result.temporal!.heartbeat.intervalSeconds).toBe(60);
+      expect(result.temporal!.heartbeat.timeoutSeconds).toBe(120);
+    });
+
+    it("parses TLS config when present", async () => {
+      const config = makeConfigWithTemporal({
+        tls: {
+          clientCertPath: "/path/to/cert.pem",
+          clientKeyPath: "/path/to/key.pem",
+          serverRootCACertPath: "/path/to/ca.pem",
+        },
+      });
+      const result = await loadConfig(config);
+
+      expect(result.temporal!.tls).toBeDefined();
+      expect(result.temporal!.tls!.clientCertPath).toBe("/path/to/cert.pem");
+      expect(result.temporal!.tls!.clientKeyPath).toBe("/path/to/key.pem");
+      expect(result.temporal!.tls!.serverRootCACertPath).toBe("/path/to/ca.pem");
+    });
+  });
 });

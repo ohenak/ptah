@@ -4,30 +4,22 @@ import {
   FakeConfigLoader,
   FakeDiscordClient,
   FakeLogger,
-  FakeRoutingEngine,
-  FakeContextAssembler,
-  FakeSkillInvoker,
-  FakeResponsePoster,
-  FakeGitClient,
-  FakeArtifactCommitter,
-  FakeAgentLogWriter,
-  FakeMessageDeduplicator,
-  FakeQuestionStore,
-  FakeQuestionPoller,
-  FakePatternBContextBuilder,
-  FakeInvocationGuard,
-  FakeThreadStateManager,
-  FakeWorktreeRegistry,
-  FakePdlcDispatcher,
-  FakeAgentRegistry,
-  makeRegisteredAgent,
-  defaultTestConfig,
-  defaultCommitResult,
   createThreadMessage,
 } from "../../fixtures/factories.js";
-import { DefaultOrchestrator } from "../../../src/orchestrator/orchestrator.js";
-import { InMemoryThreadQueue } from "../../../src/orchestrator/thread-queue.js";
 import type { ThreadMessage } from "../../../src/types.js";
+
+// Minimal fake orchestrator satisfying the StartCommandOrchestrator interface
+function makeFakeOrchestrator(overrides: {
+  startup?: () => Promise<void>;
+  shutdown?: () => Promise<void>;
+  handleMessage?: (msg: ThreadMessage) => Promise<void>;
+} = {}) {
+  return {
+    startup: overrides.startup ?? (async () => {}),
+    shutdown: overrides.shutdown ?? (async () => {}),
+    handleMessage: overrides.handleMessage,
+  };
+}
 
 describe("StartCommand", () => {
   let configLoader: FakeConfigLoader;
@@ -192,87 +184,50 @@ describe("StartCommand", () => {
     });
   });
 
-  // Task 136: Orchestrator integration
+  // Task 136: Orchestrator integration — using generic fake orchestrator
   describe("orchestrator integration", () => {
-    let orchestratorLogger: FakeLogger;
-    let skillInvoker: FakeSkillInvoker;
-    let routingEngine: FakeRoutingEngine;
-    let orchestrator: DefaultOrchestrator;
-
-    beforeEach(() => {
-      orchestratorLogger = new FakeLogger();
-      skillInvoker = new FakeSkillInvoker();
-      routingEngine = new FakeRoutingEngine();
-
-      orchestrator = new DefaultOrchestrator({
-        discordClient: discord,
-        routingEngine,
-        contextAssembler: new FakeContextAssembler(),
-        skillInvoker,
-        responsePoster: new FakeResponsePoster(),
-        threadQueue: new InMemoryThreadQueue(),
-        logger: orchestratorLogger,
-        config: defaultTestConfig(),
-        gitClient: new FakeGitClient(),
-        artifactCommitter: new FakeArtifactCommitter(),
-        agentLogWriter: new FakeAgentLogWriter(),
-        messageDeduplicator: new FakeMessageDeduplicator(),
-        questionStore: new FakeQuestionStore(),
-        questionPoller: new FakeQuestionPoller(),
-        patternBContextBuilder: new FakePatternBContextBuilder(),
-        invocationGuard: new FakeInvocationGuard(),
-        threadStateManager: new FakeThreadStateManager(),
-        worktreeRegistry: new FakeWorktreeRegistry(),
-        shutdownSignal: new AbortController().signal,
-        pdlcDispatcher: new FakePdlcDispatcher(),
-        agentRegistry: new FakeAgentRegistry([
-          makeRegisteredAgent({ id: "dev-agent", mention_id: "111222333" }),
-        ]),
-      });
-
-      command = new StartCommand(configLoader, discord, logger, {
-        orchestrator,
-        checkClaudeCode: async () => {}, // Skip check in tests
-      });
-
-      // Debug channel for orchestrator.startup()
-      discord.channels.set("agent-debug", "debug-channel-id");
-    });
-
     it("calls orchestrator.startup() before accepting messages", async () => {
-      await command.execute();
+      let startupCalled = false;
+      const orchestrator = makeFakeOrchestrator({
+        startup: async () => { startupCalled = true; },
+      });
 
-      // Verify pruneOrphanedWorktrees was called (via startup)
-      expect(skillInvoker.pruned).toBe(true);
+      const cmd = new StartCommand(configLoader, discord, logger, {
+        orchestrator,
+        checkClaudeCode: async () => {},
+      });
+
+      discord.channels.set("agent-debug", "debug-channel-id");
+      await cmd.execute();
+
+      expect(startupCalled).toBe(true);
     });
 
     it("uses orchestrator.handleMessage() as the thread message handler", async () => {
-      routingEngine.resolveHumanResult = "dev-agent";
-      routingEngine.parseResult = { type: "TASK_COMPLETE" };
-      routingEngine.decideResult = {
-        signal: { type: "TASK_COMPLETE" },
-        targetAgentId: null,
-        isTerminal: true,
-        isPaused: false,
-        createNewThread: false,
-      };
-      discord.threadHistory.set("thread-1", []);
+      const handledMessages: ThreadMessage[] = [];
+      const orchestrator = makeFakeOrchestrator({
+        handleMessage: async (msg) => { handledMessages.push(msg); },
+      });
 
-      await command.execute();
+      const cmd = new StartCommand(configLoader, discord, logger, {
+        orchestrator,
+        checkClaudeCode: async () => {},
+      });
+
+      discord.channels.set("agent-debug", "debug-channel-id");
+      await cmd.execute();
 
       const message = createThreadMessage({
         parentChannelId: "channel-123",
         threadId: "thread-1",
-        content: "<@&111222333> implement feature",
+        content: "test message",
       });
 
       await discord.simulateMessage(message);
 
-      // Wait briefly for async processing
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // The message should have been processed by orchestrator, not just logged
-      expect(routingEngine.resolveHumanCalls.length).toBeGreaterThanOrEqual(1);
+      // The message should have been routed to handleMessage
+      expect(handledMessages).toHaveLength(1);
+      expect(handledMessages[0].threadId).toBe("thread-1");
     });
   });
 
@@ -281,12 +236,9 @@ describe("StartCommand", () => {
     it("calls orchestrator.shutdown() before discord.disconnect()", async () => {
       const callOrder: string[] = [];
 
-      const fakeOrchestrator = {
-        handleMessage: async () => {},
-        startup: async () => {},
+      const fakeOrchestrator = makeFakeOrchestrator({
         shutdown: async () => { callOrder.push("shutdown"); },
-        resumeWithPatternB: async () => {},
-      };
+      });
 
       const origDisconnect = discord.disconnect.bind(discord);
       discord.disconnect = async () => {
@@ -311,29 +263,7 @@ describe("StartCommand", () => {
   // Task 137: Claude Code availability check
   describe("claude code validation", () => {
     it("throws with guidance when Claude Code SDK is not available", async () => {
-      const orchestrator = new DefaultOrchestrator({
-        discordClient: discord,
-        routingEngine: new FakeRoutingEngine(),
-        contextAssembler: new FakeContextAssembler(),
-        skillInvoker: new FakeSkillInvoker(),
-        responsePoster: new FakeResponsePoster(),
-        threadQueue: new InMemoryThreadQueue(),
-        logger: new FakeLogger(),
-        config: defaultTestConfig(),
-        gitClient: new FakeGitClient(),
-        artifactCommitter: new FakeArtifactCommitter(),
-        agentLogWriter: new FakeAgentLogWriter(),
-        messageDeduplicator: new FakeMessageDeduplicator(),
-        questionStore: new FakeQuestionStore(),
-        questionPoller: new FakeQuestionPoller(),
-        patternBContextBuilder: new FakePatternBContextBuilder(),
-        invocationGuard: new FakeInvocationGuard(),
-        threadStateManager: new FakeThreadStateManager(),
-        worktreeRegistry: new FakeWorktreeRegistry(),
-        shutdownSignal: new AbortController().signal,
-        pdlcDispatcher: new FakePdlcDispatcher(),
-        agentRegistry: new FakeAgentRegistry([]),
-      });
+      const orchestrator = makeFakeOrchestrator();
 
       const cmdWithCheck = new StartCommand(configLoader, discord, logger, {
         orchestrator,
@@ -350,28 +280,7 @@ describe("StartCommand", () => {
     });
 
     it("succeeds when Claude Code SDK is available", async () => {
-      const orchestrator = new DefaultOrchestrator({
-        discordClient: discord,
-        routingEngine: new FakeRoutingEngine(),
-        contextAssembler: new FakeContextAssembler(),
-        skillInvoker: new FakeSkillInvoker(),
-        responsePoster: new FakeResponsePoster(),
-        threadQueue: new InMemoryThreadQueue(),
-        logger: new FakeLogger(),
-        config: defaultTestConfig(),
-        gitClient: new FakeGitClient(),
-        artifactCommitter: new FakeArtifactCommitter(),
-        agentLogWriter: new FakeAgentLogWriter(),
-        messageDeduplicator: new FakeMessageDeduplicator(),
-        questionStore: new FakeQuestionStore(),
-        questionPoller: new FakeQuestionPoller(),
-        patternBContextBuilder: new FakePatternBContextBuilder(),
-        invocationGuard: new FakeInvocationGuard(),
-        threadStateManager: new FakeThreadStateManager(),
-        worktreeRegistry: new FakeWorktreeRegistry(),
-        shutdownSignal: new AbortController().signal,
-        pdlcDispatcher: new FakePdlcDispatcher(),
-      });
+      const orchestrator = makeFakeOrchestrator();
 
       discord.channels.set("agent-debug", "debug-channel-id");
 

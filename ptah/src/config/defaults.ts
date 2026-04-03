@@ -98,6 +98,200 @@ _Answered questions are moved here from pending.md by the Orchestrator._
   "ptah/templates/.gitkeep": "",
 
   "ptah.config.json": "CONFIG_PLACEHOLDER",
+
+  "ptah.workflow.yaml": `# Ptah Workflow Configuration
+#
+# This file configures the PDLC workflow phases for this project.
+# It is loaded at startup and validated against the agent registry.
+# See: https://github.com/ohenak/ptah for documentation.
+
+version: 1
+phases:
+  # --- Requirements ---
+  - id: req-creation
+    name: Requirements Creation
+    type: creation
+    agent: pm
+    context_documents:
+      - "{feature}/overview"
+    transition: req-review
+
+  - id: req-review
+    name: Requirements Review
+    type: review
+    reviewers:
+      backend-only: [eng, qa]
+      frontend-only: [fe, qa]
+      fullstack: [eng, fe, qa]
+    context_documents:
+      - "{feature}/REQ"
+    transition: req-approved
+    revision_bound: 3
+
+  - id: req-approved
+    name: Requirements Approved
+    type: approved
+    transition: fspec-creation
+
+  # --- Functional Specification ---
+  - id: fspec-creation
+    name: Functional Specification Creation
+    type: creation
+    agent: pm
+    skip_if:
+      field: config.skipFspec
+      equals: true
+    context_documents:
+      - "{feature}/REQ"
+    transition: fspec-review
+
+  - id: fspec-review
+    name: Functional Specification Review
+    type: review
+    skip_if:
+      field: config.skipFspec
+      equals: true
+    reviewers:
+      backend-only: [eng, qa]
+      frontend-only: [fe, qa]
+      fullstack: [eng, fe, qa]
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+    transition: fspec-approved
+    revision_bound: 3
+
+  - id: fspec-approved
+    name: Functional Specification Approved
+    type: approved
+    skip_if:
+      field: config.skipFspec
+      equals: true
+    transition: tspec-creation
+
+  # --- Technical Specification ---
+  - id: tspec-creation
+    name: Technical Specification Creation
+    type: creation
+    agent: eng
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+    transition: tspec-review
+
+  - id: tspec-review
+    name: Technical Specification Review
+    type: review
+    reviewers:
+      backend-only: [pm, qa]
+      frontend-only: [pm, qa]
+      fullstack: [pm, qa, fe, eng]
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+    transition: tspec-approved
+    revision_bound: 3
+
+  - id: tspec-approved
+    name: Technical Specification Approved
+    type: approved
+    transition: plan-creation
+
+  # --- Execution Plan ---
+  - id: plan-creation
+    name: Execution Plan Creation
+    type: creation
+    agent: eng
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+    transition: plan-review
+
+  - id: plan-review
+    name: Execution Plan Review
+    type: review
+    reviewers:
+      backend-only: [pm, qa]
+      frontend-only: [pm, qa]
+      fullstack: [pm, qa, fe, eng]
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+    transition: plan-approved
+    revision_bound: 3
+
+  - id: plan-approved
+    name: Execution Plan Approved
+    type: approved
+    transition: properties-creation
+
+  # --- Test Properties ---
+  - id: properties-creation
+    name: Test Properties Creation
+    type: creation
+    agent: qa
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+    transition: properties-review
+
+  - id: properties-review
+    name: Test Properties Review
+    type: review
+    reviewers:
+      backend-only: [pm, eng]
+      frontend-only: [pm, fe]
+      fullstack: [pm, eng, fe]
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+      - "{feature}/PROPERTIES"
+    transition: properties-approved
+    revision_bound: 3
+
+  # --- Implementation ---
+  - id: properties-approved
+    name: Test Properties Approved
+    type: approved
+    transition: implementation
+
+  - id: implementation
+    name: Implementation
+    type: implementation
+    agent: eng
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/FSPEC"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+      - "{feature}/PROPERTIES"
+    transition: implementation-review
+
+  - id: implementation-review
+    name: Implementation Review
+    type: review
+    reviewers:
+      default: [qa]
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+      - "{feature}/PROPERTIES"
+    transition: done
+    revision_bound: 3
+
+  - id: done
+    name: Done
+    type: approved
+`,
 };
 
 export function buildConfig(projectName: string): string {
@@ -156,6 +350,25 @@ export function buildConfig(projectName: string): string {
     docs: {
       root: "docs",
       templates: "./ptah/templates",
+    },
+    temporal: {
+      address: "localhost:7233",
+      namespace: "default",
+      taskQueue: "ptah-main",
+      worker: {
+        maxConcurrentWorkflowTasks: 10,
+        maxConcurrentActivities: 3,
+      },
+      retry: {
+        maxAttempts: 3,
+        initialIntervalSeconds: 30,
+        backoffCoefficient: 2.0,
+        maxIntervalSeconds: 600,
+      },
+      heartbeat: {
+        intervalSeconds: 30,
+        timeoutSeconds: 120,
+      },
     },
   };
 
