@@ -5,7 +5,7 @@
  * Activities, Signals, and Queries.
  */
 
-import type { FeatureConfig } from "../orchestrator/pdlc/phases.js";
+import type { FeatureConfig } from "../types.js";
 import type { WorkflowConfig } from "../config/workflow-config.js";
 
 // ---------------------------------------------------------------------------

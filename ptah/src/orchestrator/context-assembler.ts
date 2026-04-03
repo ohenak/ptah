@@ -4,12 +4,13 @@ import type {
   PtahConfig,
   ResumePattern,
   TokenBudgetConfig,
+  ContextDocumentSet,
+  TaskType,
 } from "../types.js";
 import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
 import type { TokenCounter } from "./token-counter.js";
 import { extractFeatureName as extractFeatureNameFromModule } from "./feature-branch.js";
-import type { ContextDocumentSet, TaskType } from "./pdlc/phases.js";
 
 export interface ContextAssembler {
   assemble(params: {

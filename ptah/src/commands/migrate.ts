@@ -12,9 +12,10 @@
 import type { FileSystem } from "../services/filesystem.js";
 import type { Logger } from "../services/logger.js";
 import type { TemporalClientWrapper } from "../temporal/client.js";
-import type { PdlcStateFile, FeatureState } from "../orchestrator/pdlc/phases.js";
+import type { PdlcStateFile, FeatureState } from "../orchestrator/pdlc/v4-types.js";
 import type { ReviewPhaseState } from "../temporal/types.js";
 import { WorkflowConfigError } from "../config/workflow-config.js";
+import type { WorkflowConfig } from "../config/workflow-config.js";
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -288,11 +289,9 @@ export class MigrateCommand {
   /**
    * Parse the workflow YAML into a minimal WorkflowConfig shape.
    * Only extracts version and phases array (with id/name/type fields).
+   * The type field is widened from string to PhaseType via cast.
    */
-  private parseWorkflowYaml(raw: string): {
-    version: number;
-    phases: Array<{ id: string; name: string; type: string }>;
-  } {
+  private parseWorkflowYaml(raw: string): WorkflowConfig {
     // Simple line-by-line extraction for the fields we need
     // We rely on the YAML being well-formed (already validated in step 2)
     const lines = raw.split("\n");
@@ -319,7 +318,7 @@ export class MigrateCommand {
     }
     if (currentPhase?.id) phases.push(currentPhase as { id: string; name: string; type: string });
 
-    return { version, phases };
+    return { version, phases } as unknown as WorkflowConfig;
   }
 
   private async loadCustomPhaseMap(

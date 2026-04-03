@@ -1,50 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createShutdownHandler } from "../../src/shutdown.js";
+import type { ShutdownOrchestrator } from "../../src/shutdown.js";
 import {
   FakeLogger,
-  FakeGitClient,
-  FakeWorktreeRegistry,
   FakeDiscordClient,
 } from "../fixtures/factories.js";
 import type { StartResult } from "../../src/types.js";
-import type { Orchestrator } from "../../src/orchestrator/orchestrator.js";
-import type { ThreadQueue } from "../../src/orchestrator/thread-queue.js";
 
-function makeFakeOrchestrator(): Orchestrator {
+function makeFakeOrchestrator(): ShutdownOrchestrator {
   return {
-    handleMessage: vi.fn().mockResolvedValue(undefined),
-    startup: vi.fn().mockResolvedValue(undefined),
     shutdown: vi.fn().mockResolvedValue(undefined),
-    resumeWithPatternB: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-function makeFakeThreadQueue(activeCount = 0): ThreadQueue {
-  return {
-    enqueue: vi.fn(),
-    isProcessing: vi.fn().mockReturnValue(false),
-    activeCount: vi.fn().mockReturnValue(activeCount),
   };
 }
 
 describe("createShutdownHandler", () => {
   let logger: FakeLogger;
   let result: StartResult;
-  let gitClient: FakeGitClient;
-  let worktreeRegistry: FakeWorktreeRegistry;
   let discord: FakeDiscordClient;
-  let orchestrator: Orchestrator;
-  let threadQueue: ThreadQueue;
+  let orchestrator: ShutdownOrchestrator;
   let abortController: AbortController;
 
   beforeEach(() => {
     logger = new FakeLogger();
     result = { cleanup: vi.fn().mockResolvedValue(undefined) };
-    gitClient = new FakeGitClient();
-    worktreeRegistry = new FakeWorktreeRegistry();
     discord = new FakeDiscordClient();
     orchestrator = makeFakeOrchestrator();
-    threadQueue = makeFakeThreadQueue(0);
     abortController = new AbortController();
     // Mock process.exit to prevent actual exit
     vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
@@ -54,24 +34,19 @@ describe("createShutdownHandler", () => {
     vi.restoreAllMocks();
   });
 
-  function makeHandler(opts?: { activeCount?: number; debugChannelId?: string }) {
-    const queue = opts?.activeCount != null ? makeFakeThreadQueue(opts.activeCount) : threadQueue;
+  function makeHandler(opts?: { debugChannelId?: string }) {
     return createShutdownHandler(
       result,
       logger,
-      queue,
-      worktreeRegistry,
-      gitClient,
       orchestrator,
       discord,
-      60000, // shutdownTimeoutMs
       abortController,
       opts?.debugChannelId ?? null,
     );
   }
 
   // PROP-DI-13: SIGINT triggers graceful shutdown
-  it("calls cleanup and exits with code 0 on shutdown", async () => {
+  it("calls orchestrator.shutdown() and exits with code 0 on shutdown", async () => {
     const { shutdown } = makeHandler();
 
     await shutdown();
@@ -113,8 +88,8 @@ describe("createShutdownHandler", () => {
     expect(process.exit).toHaveBeenCalled();
   });
 
-  // Phase 6: abortController.abort() is called on shutdown
-  it("abortController.abort() called on shutdown to signal in-flight invocations", async () => {
+  // Phase 15: abortController.abort() is called on shutdown
+  it("abortController.abort() called on shutdown to signal in-flight operations", async () => {
     const abortSpy = vi.spyOn(abortController, "abort");
     const { shutdown } = makeHandler();
 

@@ -7,7 +7,7 @@ import {
   FakeTemporalClient,
   defaultFeatureWorkflowState,
 } from "../../fixtures/factories.js";
-import type { PdlcStateFile, FeatureState } from "../../../src/orchestrator/pdlc/phases.js";
+import type { PdlcStateFile, FeatureState } from "../../../src/orchestrator/pdlc/v4-types.js";
 
 // ---------------------------------------------------------------------------
 // Test helpers

@@ -8,30 +8,23 @@ import { DiscordJsClient } from "../src/services/discord.js";
 import { ConsoleLogger } from "../src/services/logger.js";
 import { StartCommand } from "../src/commands/start.js";
 import { createShutdownHandler } from "../src/shutdown.js";
-import { DefaultOrchestrator } from "../src/orchestrator/orchestrator.js";
 import { DefaultRoutingEngine } from "../src/orchestrator/router.js";
 import { DefaultContextAssembler } from "../src/orchestrator/context-assembler.js";
 import { DefaultSkillInvoker } from "../src/orchestrator/skill-invoker.js";
-import { DefaultResponsePoster } from "../src/orchestrator/response-poster.js";
-import { InMemoryThreadQueue } from "../src/orchestrator/thread-queue.js";
 import { CharTokenCounter } from "../src/orchestrator/token-counter.js";
 import { ClaudeCodeClient } from "../src/services/claude-code.js";
 import type { ClaudeCodeInvokeFn } from "../src/services/claude-code.js";
-import { AsyncMutex } from "../src/orchestrator/merge-lock.js";
 import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer.js";
 import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
-import { InMemoryMessageDeduplicator } from "../src/orchestrator/message-deduplicator.js";
-import { DefaultQuestionStore } from "../src/orchestrator/question-store.js";
-import { DefaultQuestionPoller } from "../src/orchestrator/question-poller.js";
-import { DefaultPatternBContextBuilder } from "../src/orchestrator/pattern-b-context-builder.js";
 import { InMemoryWorktreeRegistry } from "../src/orchestrator/worktree-registry.js";
-import { InMemoryThreadStateManager } from "../src/orchestrator/thread-state-manager.js";
-import { DefaultInvocationGuard } from "../src/orchestrator/invocation-guard.js";
-import { FileStateStore } from "../src/orchestrator/pdlc/state-store.js";
-import { DefaultPdlcDispatcher } from "../src/orchestrator/pdlc/pdlc-dispatcher.js";
 import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
 import { MigrateCommand } from "../src/commands/migrate.js";
 import { TemporalClientWrapperImpl } from "../src/temporal/client.js";
+import { TemporalOrchestrator } from "../src/orchestrator/temporal-orchestrator.js";
+import { createTemporalWorker } from "../src/temporal/worker.js";
+import { YamlWorkflowConfigLoader } from "../src/config/workflow-config.js";
+import { DefaultWorkflowValidator } from "../src/config/workflow-validator.js";
+import type { TemporalConfig } from "../src/types.js";
 
 function printHelp(): void {
   console.log(`ptah v0.1.0
@@ -104,14 +97,35 @@ async function main(): Promise<void> {
         return;
       }
 
-      // Phase 7 (Phase I): Build agent registry from config.agentEntries.
-      // buildAgentRegistry logs each validation error and the final registration summary.
+      // Build agent registry from config.agentEntries
       const configLogger = logger.forComponent('config');
       const { registry: agentRegistry } = await buildAgentRegistry(
         config.agentEntries,
         fs,
         configLogger,
       );
+
+      // Load and validate workflow config
+      const workflowConfigLoader = new YamlWorkflowConfigLoader(fs);
+      let workflowConfig;
+      try {
+        workflowConfig = await workflowConfigLoader.load();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to load workflow config: ${message}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const validator = new DefaultWorkflowValidator();
+      const validation = validator.validate(workflowConfig, agentRegistry);
+      if (!validation.valid) {
+        for (const err of validation.errors) {
+          logger.error(`Workflow config error in phase '${err.phase}' field '${err.field}': ${err.message}`);
+        }
+        process.exitCode = 1;
+        return;
+      }
 
       // Build Claude Code client
       const claudeCodeInvokeFn: ClaudeCodeInvokeFn = async (options) => {
@@ -151,83 +165,76 @@ async function main(): Promise<void> {
 
       const skillClient = new ClaudeCodeClient(claudeCodeInvokeFn);
 
-      // Wire up orchestrator dependencies
+      // Wire up shared dependencies
       const routingEngine = new DefaultRoutingEngine(agentRegistry, logger);
       const contextAssembler = new DefaultContextAssembler(fs, tokenCounter, logger);
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
-      const responsePoster = new DefaultResponsePoster(discord, logger);
-      const threadQueue = new InMemoryThreadQueue();
+      const worktreeRegistry = new InMemoryWorktreeRegistry();
 
-      // Phase 6: Abort controller for graceful shutdown
-      const abortController = new AbortController();
-
-      // Phase 4: Artifact commit pipeline services
+      // Phase 4: Artifact commit pipeline services (AsyncMutex no longer needed at top level)
+      const { AsyncMutex } = await import("../src/orchestrator/merge-lock.js");
       const mergeLock = new AsyncMutex();
       const artifactCommitter = new DefaultArtifactCommitter(git, mergeLock, logger);
       const agentLogWriter = new DefaultAgentLogWriter(fs, mergeLock, logger);
-      const messageDeduplicator = new InMemoryMessageDeduplicator();
 
-      // Phase 5: Question pipeline (closure-capture for circular construction)
-      const questionStore = new DefaultQuestionStore(
-        fs,
-        git,
-        mergeLock,
-        logger,
-        "../docs/open-questions/pending.md",
-        "../docs/open-questions/resolved.md",
-      );
-      let orchestrator: DefaultOrchestrator;
-      const questionPoller = new DefaultQuestionPoller(
-        questionStore,
-        (q) => orchestrator.resumeWithPatternB(q),
-        30_000, // 30s poll interval
-        logger,
-      );
-      const patternBContextBuilder = new DefaultPatternBContextBuilder(fs, tokenCounter, logger);
+      // Abort controller for graceful shutdown
+      const abortController = new AbortController();
 
-      // Phase 6: New modules
-      const worktreeRegistry = new InMemoryWorktreeRegistry();
-      const threadStateManager = new InMemoryThreadStateManager();
-      const invocationGuard = new DefaultInvocationGuard(
+      // Build Temporal config with defaults
+      const temporalConfig: TemporalConfig = config.temporal ?? {
+        address: "localhost:7233",
+        namespace: "default",
+        taskQueue: "ptah-main",
+        worker: { maxConcurrentWorkflowTasks: 10, maxConcurrentActivities: 3 },
+        retry: { maxAttempts: 3, initialIntervalSeconds: 30, backoffCoefficient: 2.0, maxIntervalSeconds: 600 },
+        heartbeat: { intervalSeconds: 30, timeoutSeconds: 120 },
+      };
+
+      // Construct activity closures for the Worker
+      const { createActivities } = await import("../src/temporal/activities/skill-activity.js");
+      const { createNotificationActivities } = await import("../src/temporal/activities/notification-activity.js");
+      const skillActivities = createActivities({
         skillInvoker,
-        artifactCommitter,
-        git,
-        discord,
-        responsePoster,
-        logger,
-      );
-
-      // Phase 11: PDLC State Machine
-      const stateStore = new FileStateStore(fs, logger, "ptah/state/pdlc-state.json");
-      const pdlcDispatcher = new DefaultPdlcDispatcher(stateStore, fs, logger, config.docs.root);
-
-      orchestrator = new DefaultOrchestrator({
-        discordClient: discord,
-        routingEngine,
         contextAssembler,
-        skillInvoker,
-        responsePoster,
-        threadQueue,
+        artifactCommitter,
+        gitClient: git,
+        routingEngine,
+        agentRegistry,
         logger,
         config,
-        // Phase 4 additions:
-        gitClient: git,
-        artifactCommitter,
-        agentLogWriter,
-        messageDeduplicator,
-        // Phase 5 additions:
-        questionStore,
-        questionPoller,
-        patternBContextBuilder,
-        // Phase 6 additions:
-        invocationGuard,
-        threadStateManager,
-        worktreeRegistry,
-        shutdownSignal: abortController.signal,
-        // Phase 11: PDLC State Machine
-        pdlcDispatcher,
-        // Phase 7: Agent registry
+      });
+      const notificationActivities = createNotificationActivities({ discordClient: discord, logger, config });
+
+      // Create Temporal Worker
+      let worker;
+      try {
+        worker = await createTemporalWorker({
+          config,
+          activities: {
+            invokeSkill: skillActivities.invokeSkill,
+            mergeWorktree: skillActivities.mergeWorktree,
+            sendNotification: notificationActivities.sendNotification,
+          },
+          logger,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to create Temporal Worker: ${message}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const temporalClient = new TemporalClientWrapperImpl(temporalConfig);
+
+      const orchestrator = new TemporalOrchestrator({
+        temporalClient,
+        worker,
+        discordClient: discord,
+        logger,
+        config,
+        workflowConfig,
         agentRegistry,
+        skillInvoker,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {
@@ -240,12 +247,8 @@ async function main(): Promise<void> {
         const { registerSignals } = createShutdownHandler(
           result,
           logger,
-          threadQueue,
-          worktreeRegistry,
-          git,
           orchestrator,
           discord,
-          config.orchestrator.shutdown_timeout_ms ?? 60000,
           abortController,
         );
         registerSignals();
@@ -279,7 +282,7 @@ async function main(): Promise<void> {
         return;
       }
 
-      const temporalConfig = config.temporal ?? {
+      const temporalConfig: TemporalConfig = config.temporal ?? {
         address: "localhost:7233",
         namespace: "default",
         taskQueue: "ptah-main",

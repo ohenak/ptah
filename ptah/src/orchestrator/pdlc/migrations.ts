@@ -1,4 +1,4 @@
-import type { PdlcStateFile } from "./phases.js";
+import type { PdlcStateFile } from "./v4-types.js";
 
 export type MigrationFn = (state: unknown) => unknown;
 

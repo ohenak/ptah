@@ -22,7 +22,7 @@ import type { AgentRegistry } from "./agent-registry.js";
 import type { SkillInvoker } from "./skill-invoker.js";
 import type { TemporalClientWrapper } from "../temporal/client.js";
 import type { StartWorkflowParams, UserAnswerSignal } from "../temporal/types.js";
-import type { FeatureConfig } from "./pdlc/phases.js";
+import type { FeatureConfig } from "../types.js";
 
 // ---------------------------------------------------------------------------
 // Deps interface

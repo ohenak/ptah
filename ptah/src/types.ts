@@ -51,6 +51,7 @@ export interface LlmConfig {
 
 export type Component =
   | 'orchestrator'
+  | 'temporal-orchestrator'
   | 'router'
   | 'invocation-guard'
   | 'skill-invoker'
@@ -406,6 +407,16 @@ export interface AgentValidationError {
   reason: string;         // human-readable description
 }
 
+// --- Phase 15: Feature configuration (moved from pdlc/phases.ts) ---
+
+export type Discipline = "backend-only" | "frontend-only" | "fullstack";
+
+export interface FeatureConfig {
+  discipline: Discipline;
+  skipFspec: boolean;
+  useTechLead?: boolean;
+}
+
 // --- Phase 14: Tech-lead orchestration merge types ---
 
 /** Parameters for merging a worktree agent branch into the feature branch */
@@ -432,3 +443,19 @@ export interface BranchMergeResult {
   conflictingFiles: string[];     // set if status === "conflict"
   errorMessage: string | null;    // set if status === "merge-error"
 }
+
+// ---------------------------------------------------------------------------
+// Context Document Set — used by ContextAssembler (migrated from pdlc/phases.ts)
+// ---------------------------------------------------------------------------
+
+export interface ContextDocument {
+  type: "overview" | "req" | "fspec" | "tspec" | "plan" | "properties" | "cross_review";
+  relativePath: string;
+  required: boolean;
+}
+
+export interface ContextDocumentSet {
+  documents: ContextDocument[];
+}
+
+export type TaskType = "Create" | "Review" | "Revise" | "Resubmit" | "Implement";

@@ -17,10 +17,14 @@ import type { Logger } from "../services/logger.js";
  * Activities interface — the activity functions to register with the Worker.
  * These are created by closing over WorkerDeps at composition time.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface WorkerActivities {
-  invokeSkill: (...args: unknown[]) => Promise<unknown>;
-  sendNotification: (...args: unknown[]) => Promise<unknown>;
-  mergeWorktree: (...args: unknown[]) => Promise<unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  invokeSkill: (...args: any[]) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sendNotification: (...args: any[]) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mergeWorktree: (...args: any[]) => Promise<any>;
 }
 
 /**

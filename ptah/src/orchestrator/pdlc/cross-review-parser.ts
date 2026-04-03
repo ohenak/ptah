@@ -1,4 +1,4 @@
-import type { ParsedRecommendation } from "./phases.js";
+import type { ParsedRecommendation } from "./v4-types.js";
 
 // --- Skill-to-Agent mapping ---
 

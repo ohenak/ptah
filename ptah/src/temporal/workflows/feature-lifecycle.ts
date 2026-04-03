@@ -18,7 +18,7 @@
 
 import * as wf from "@temporalio/workflow";
 import type { PhaseDefinition, WorkflowConfig } from "../../config/workflow-config.js";
-import type { FeatureConfig } from "../../orchestrator/pdlc/phases.js";
+import type { FeatureConfig } from "../../types.js";
 import type {
   FeatureWorkflowState,
   SkillActivityInput,

@@ -7,8 +7,7 @@ import {
   defaultTestConfig,
   createThreadMessage,
 } from "../../fixtures/factories.js";
-import type { PtahConfig, ThreadMessage } from "../../../src/types.js";
-import type { TaskType } from "../../../src/orchestrator/pdlc/phases.js";
+import type { PtahConfig, ThreadMessage, TaskType } from "../../../src/types.js";
 
 describe("DefaultContextAssembler", () => {
   let fs: FakeFileSystem;
