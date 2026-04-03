@@ -21,6 +21,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { PhaseDefinition, WorkflowConfig } from "../../../src/config/workflow-config.js";
 import type { FeatureConfig } from "../../../src/orchestrator/pdlc/phases.js";
 import type { SkillActivityInput } from "../../../src/temporal/types.js";
@@ -707,5 +710,77 @@ describe("resolveContextDocuments", () => {
       { featureSlug: "my-feature", featurePrefix: "015" }
     );
     expect(paths).toEqual(["docs/015-my-feature/015-REQ-my-feature.md"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROP-TF-89: Workflow determinism — no non-deterministic APIs in workflow file
+//
+// Temporal workflows MUST be deterministic. Using Date.now(), Math.random(),
+// or direct I/O inside a workflow violates this constraint and causes replay
+// bugs. This test statically verifies the feature-lifecycle workflow file
+// does not contain calls to these banned APIs.
+//
+// Source: TSPEC S5.1 comment, PROP-TF-89
+// ---------------------------------------------------------------------------
+
+describe("PROP-TF-89: featureLifecycleWorkflow determinism — no non-deterministic APIs", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  let workflowSource: string;
+
+  it("workflow source file exists", () => {
+    expect(() => {
+      workflowSource = fs.readFileSync(workflowSrcPath, "utf-8");
+    }).not.toThrow();
+    expect(workflowSource.length).toBeGreaterThan(0);
+  });
+
+  it("does not call Date.now() inside the workflow function body", () => {
+    // Read source, which we already confirmed exists
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Date.now() is banned in workflow code — Temporal uses its own clock via wf.sleep()
+    // We allow Date.now in comments and in test files but not in production function calls
+    // Regex matches `Date.now(` as a call expression (not in a comment)
+    const linesWithDateNow = source
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+      .filter((line) => /\bDate\.now\s*\(/.test(line));
+    expect(linesWithDateNow).toHaveLength(0);
+  });
+
+  it("does not call Math.random() inside the workflow function body", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const linesWithMathRandom = source
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+      .filter((line) => /\bMath\.random\s*\(/.test(line));
+    expect(linesWithMathRandom).toHaveLength(0);
+  });
+
+  it("does not use direct fs/io imports (no node:fs or node:path in workflow)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Workflow files must not import node:fs, node:path, or node:net etc.
+    const linesWithNodeImports = source
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .filter((line) => /import.*from.*["']node:(fs|path|net|http|https|child_process|os|stream|crypto)["']/.test(line));
+    expect(linesWithNodeImports).toHaveLength(0);
+  });
+
+  it("uses @temporalio/workflow import (not direct Temporal client)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Workflows must import from @temporalio/workflow, not @temporalio/client
+    expect(source).toContain("@temporalio/workflow");
+    // Must NOT import @temporalio/client or @temporalio/worker (server-side only)
+    const linesWithClientImport = source
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .filter((line) => /@temporalio\/(client|worker)/.test(line));
+    expect(linesWithClientImport).toHaveLength(0);
   });
 });

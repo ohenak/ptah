@@ -94,6 +94,65 @@ describe("TemporalClientWrapperImpl", () => {
   });
 
   // -------------------------------------------------------------------------
+  // PROP-NF-05: TLS configuration
+  // -------------------------------------------------------------------------
+  describe("TLS configuration (PROP-NF-05)", () => {
+    it("connects without TLS when tls config is not provided", async () => {
+      // Default config has no tls field
+      await client.connect();
+
+      expect(temporalClientModule.Connection.connect).toHaveBeenCalledWith(
+        expect.objectContaining({ address: "localhost:7233" }),
+      );
+      // tls should be undefined or falsy when no TLS config is set
+      const connectArg = temporalClientModule.Connection.connect.mock.calls[0][0];
+      expect(connectArg.tls).toBeFalsy();
+    });
+
+    it("passes TLS config to Connection.connect when tls is provided", async () => {
+      const tlsConfig = makeTemporalConfig({
+        tls: {
+          clientCertPath: "/path/to/cert.pem",
+          clientKeyPath: "/path/to/key.pem",
+          serverRootCACertPath: "/path/to/ca.pem",
+        },
+      });
+      const tlsClient = new TemporalClientWrapperImpl(tlsConfig);
+
+      await tlsClient.connect();
+
+      const connectArg = temporalClientModule.Connection.connect.mock.calls[0][0];
+      // TLS should be enabled when tls config is present
+      expect(connectArg.tls).toBeDefined();
+      expect(connectArg.tls).toBeTruthy();
+
+      await tlsClient.disconnect();
+    });
+
+    it("does not add TLS config when tls is absent from TemporalConfig", async () => {
+      // Ensure no tls field at all
+      const noTlsConfig: TemporalConfig = {
+        address: "localhost:7233",
+        namespace: "default",
+        taskQueue: "ptah-main",
+        worker: { maxConcurrentWorkflowTasks: 10, maxConcurrentActivities: 3 },
+        retry: { maxAttempts: 3, initialIntervalSeconds: 30, backoffCoefficient: 2.0, maxIntervalSeconds: 600 },
+        heartbeat: { intervalSeconds: 30, timeoutSeconds: 120 },
+        // No tls field
+      };
+      const noTlsClient = new TemporalClientWrapperImpl(noTlsConfig);
+
+      await noTlsClient.connect();
+
+      const connectArg = temporalClientModule.Connection.connect.mock.calls[0][0];
+      // tls should be falsy / undefined
+      expect(connectArg.tls).toBeFalsy();
+
+      await noTlsClient.disconnect();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // B1: connect, disconnect, isConnected
   // -------------------------------------------------------------------------
   describe("connect / disconnect / isConnected", () => {

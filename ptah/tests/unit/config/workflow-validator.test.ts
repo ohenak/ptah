@@ -324,4 +324,73 @@ describe("DefaultWorkflowValidator", () => {
       expect(result.errors.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // PROP-NF-06: ValidationResult contract — invalid configs must produce
+  // valid:false with descriptive errors to signal startup should halt
+  // -------------------------------------------------------------------------
+
+  describe("PROP-NF-06: ValidationResult signals startup should halt on invalid config", () => {
+    it("returns valid:true for a correct config (startup should proceed)", () => {
+      const config = makeConfig([
+        makePhase({ id: "req-creation", type: "creation", agent: "pm" }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("returns valid:false with non-empty errors array when config is invalid (startup must halt)", () => {
+      // A config with unknown agent — startup should halt
+      const config = makeConfig([
+        makePhase({ id: "req-creation", type: "creation", agent: "unknown-agent" }),
+      ]);
+      const registry = makeRegistry([]); // no agents registered
+
+      const result = validator.validate(config, registry);
+
+      // Callers must check result.valid to decide whether to halt startup
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it("provides descriptive error messages with phase, field, and message for each error (PROP-NF-06)", () => {
+      const config = makeConfig([
+        makePhase({ id: "bad-phase", type: "creation", agent: "ghost" }),
+      ]);
+      const registry = makeRegistry([]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      for (const error of result.errors) {
+        // Each error must have phase, field, and a non-empty message
+        expect(error.phase).toBeDefined();
+        expect(error.phase.length).toBeGreaterThan(0);
+        expect(error.field).toBeDefined();
+        expect(error.field.length).toBeGreaterThan(0);
+        expect(error.message).toBeDefined();
+        expect(error.message.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("returns errors describing the invalid agent when an unregistered agent is referenced", () => {
+      const config = makeConfig([
+        makePhase({ id: "req-creation", type: "creation", agent: "nonexistent-agent" }),
+      ]);
+      const registry = makeRegistry([]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      // The error message must mention the invalid agent name
+      const hasAgentError = result.errors.some(
+        (e) => e.message.includes("nonexistent-agent")
+      );
+      expect(hasAgentError).toBe(true);
+    });
+  });
 });

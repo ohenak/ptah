@@ -602,4 +602,150 @@ describe("MigrateCommand", () => {
       expect(result.warnings.some((w) => /query|verify/i.test(w))).toBe(true);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // PROP-MG-12: V4_DEFAULT_MAPPING covers all 18 PdlcPhase enum values
+  // -------------------------------------------------------------------------
+
+  describe("PROP-MG-12: V4_DEFAULT_MAPPING covers all 18 v4 PdlcPhase values", () => {
+    const ALL_V4_PHASES = [
+      "REQ_CREATION",
+      "REQ_REVIEW",
+      "REQ_APPROVED",
+      "FSPEC_CREATION",
+      "FSPEC_REVIEW",
+      "FSPEC_APPROVED",
+      "TSPEC_CREATION",
+      "TSPEC_REVIEW",
+      "TSPEC_APPROVED",
+      "PLAN_CREATION",
+      "PLAN_REVIEW",
+      "PLAN_APPROVED",
+      "PROPERTIES_CREATION",
+      "PROPERTIES_REVIEW",
+      "PROPERTIES_APPROVED",
+      "IMPLEMENTATION",
+      "IMPLEMENTATION_REVIEW",
+      "DONE",
+    ] as const;
+
+    it("maps IMPLEMENTATION to implementation", async () => {
+      client.connected = true;
+      fs.addExisting("pdlc-state.json", makeStateFile({ "feat-impl": { phase: "IMPLEMENTATION" } }));
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      const result = await command.execute(DEFAULT_OPTS);
+      expect(result.activeCreated).toBe(1);
+      expect(client.startedWorkflows[0]?.startAtPhase).toBe("implementation");
+    });
+
+    it("maps IMPLEMENTATION_REVIEW to implementation-review", async () => {
+      client.connected = true;
+      fs.addExisting("pdlc-state.json", makeStateFile({ "feat-impl-rev": { phase: "IMPLEMENTATION_REVIEW" } }));
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      const result = await command.execute(DEFAULT_OPTS);
+      expect(result.activeCreated).toBe(1);
+      expect(client.startedWorkflows[0]?.startAtPhase).toBe("implementation-review");
+    });
+
+    it("maps DONE to done phase (for --include-completed)", async () => {
+      client.connected = true;
+      fs.addExisting(
+        "pdlc-state.json",
+        makeStateFile({ "feat-done": { phase: "DONE", completedAt: "2026-01-01T00:00:00Z" } }),
+      );
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      const result = await command.execute({ ...DEFAULT_OPTS, includeCompleted: true });
+      expect(result.completedImported).toBe(1);
+      expect(client.startedWorkflows[0]?.startAtPhase).toBe("done");
+    });
+
+    it("maps all 18 phases without any unmapped-phase error", async () => {
+      // Create 18 features each in a different v4 phase
+      client.connected = true;
+      const featuresByPhase = Object.fromEntries(
+        ALL_V4_PHASES.map((phase, i) => [
+          `feat-${i}`,
+          { phase, ...(phase === "DONE" ? { completedAt: "2026-01-01T00:00:00Z" } : {}) },
+        ]),
+      );
+      fs.addExisting("pdlc-state.json", makeStateFile(featuresByPhase));
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+
+      // Should not throw unmapped-phase error
+      const result = await command.execute({ dryRun: true, includeCompleted: true });
+
+      // All 18 phases should be represented in the dry-run count
+      expect(result.activeCreated + result.completedImported).toBe(18);
+    });
+
+    it("maps PROPERTIES_CREATION, PROPERTIES_REVIEW, PROPERTIES_APPROVED", async () => {
+      client.connected = true;
+      fs.addExisting(
+        "pdlc-state.json",
+        makeStateFile({
+          "feat-prop-create": { phase: "PROPERTIES_CREATION" },
+          "feat-prop-review": { phase: "PROPERTIES_REVIEW" },
+          "feat-prop-approved": { phase: "PROPERTIES_APPROVED" },
+        }),
+      );
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      const result = await command.execute(DEFAULT_OPTS);
+      expect(result.activeCreated).toBe(3);
+      const phases = client.startedWorkflows.map((w) => w.startAtPhase);
+      expect(phases).toContain("properties-creation");
+      expect(phases).toContain("properties-review");
+      expect(phases).toContain("properties-approved");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // PROP-MG-19: MigrateCommand must NOT transfer pending questions from v4
+  // PROP-NF-11: MigrateCommand emits warning when feature had a pending question
+  // -------------------------------------------------------------------------
+
+  describe("PROP-MG-19: pending questions not transferred from v4", () => {
+    it("does not include pendingQuestion in StartWorkflowParams (v4 has no question state)", async () => {
+      // v4 FeatureState has no pendingQuestion field — verify no question data is included
+      client.connected = true;
+      fs.addExisting("pdlc-state.json", makeStateFile({ "feat-a": { phase: "REQ_CREATION" } }));
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      await command.execute(DEFAULT_OPTS);
+
+      const started = client.startedWorkflows[0]!;
+      // StartWorkflowParams has no pendingQuestion field and should not have one set
+      expect((started as any).pendingQuestion).toBeUndefined();
+    });
+
+    it("does not attempt to restore question state from v4 data", async () => {
+      // MigrateCommand must not transfer any pending question data
+      // since v4 pdlc-state.json does not contain question information
+      client.connected = true;
+      fs.addExisting(
+        "pdlc-state.json",
+        makeStateFile({
+          "feat-review": {
+            phase: "REQ_REVIEW",
+            reviewPhases: {
+              REQ_REVIEW: { reviewerStatuses: { eng: "pending" }, revisionCount: 0 },
+            },
+          },
+        }),
+      );
+      fs.addExisting("ptah.workflow.yaml", makeWorkflowYaml());
+      const command = new MigrateCommand(client, fs, logger);
+      await command.execute(DEFAULT_OPTS);
+
+      const started = client.startedWorkflows[0]!;
+      // Only review state should be transferred, never question state
+      expect(started.initialReviewState).toBeDefined();
+      expect((started as any).pendingQuestion).toBeUndefined();
+      expect((started as any).initialQuestionState).toBeUndefined();
+    });
+  });
 });
