@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-021 |
 | **Parent Document** | [REQ-015 — Temporal Foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -32,7 +32,7 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 
 - Shared feature branch strategy: all agents working on a feature use one shared feature branch
 - Worktree creation from the shared branch so each agent has an isolated working directory
-- Merging agent worktree changes back to the shared feature branch after each phase completes
+- Committing and pushing agent worktree changes directly to the shared feature branch after each phase completes
 - Parsing user messages to detect an `@agent-id` directive
 - Dispatching ad-hoc revision requests to the named agent when the feature workflow is active
 - Queuing multiple ad-hoc revision requests so the user can send several before the first completes
@@ -49,7 +49,7 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 ### Assumptions
 
 - Each feature has exactly one active Temporal workflow at a time
-- The shared feature branch (`feat-{feature-slug}`) is created before the first agent runs
+- The shared feature branch (`feat-{feature-slug}`) is created by the system before the first agent runs, as specified in [REQ-WB-05]
 - Agent worktrees are still in `/tmp` and are ephemeral; only committed + pushed changes persist
 - The `@agent-id` syntax mirrors agent IDs as defined in `workflow.yaml` (e.g. `@pm`, `@eng`, `@qa`)
 - Mapping from human-readable @mention text (e.g. `@product-manager`) to agent ID (e.g. `pm`) is performed by the system at message receipt time and is not a product-level concern
@@ -109,17 +109,20 @@ THEN:  The shared feature branch contains the PM's committed artifacts, and the
 | **Priority** | P0 |
 | **Phase** | 1 |
 | **Source user stories** | US-01, US-02, US-03 |
-| **Dependencies** | REQ-WB-01 |
+| **Dependencies** | REQ-WB-01, REQ-WB-05 |
 
 **Description:**
 Each agent still gets its own worktree directory for isolation during execution. The worktree is created from `feat-{featureSlug}` at the point the phase starts (i.e., it includes all commits up to that moment). The worktree does NOT create a new branch; it checks out `feat-{featureSlug}` directly into the agent's temp directory.
 
 Worktree path convention remains `/tmp/ptah-worktrees/{agentId}/{featureSlug}/{phaseId}` for uniqueness.
 
+The shared feature branch must already exist before any agent's worktree is created. [REQ-WB-05] is responsible for ensuring this precondition is met.
+
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: Agent eng is starting phase req-review for feature 016-messaging-abstraction
+GIVEN: Agent eng is starting phase req-review for feature 016-messaging-abstraction,
+       and feat-016-messaging-abstraction already exists (per REQ-WB-05)
 WHEN:  invokeSkill creates the agent's worktree
 THEN:  A worktree is created at /tmp/ptah-worktrees/eng/016-messaging-abstraction/req-review
        checked out at the HEAD of feat-016-messaging-abstraction,
@@ -140,15 +143,18 @@ THEN:  A worktree is created at /tmp/ptah-worktrees/eng/016-messaging-abstractio
 | **Dependencies** | REQ-WB-01, REQ-WB-02 |
 
 **Description:**
-After an agent finishes its skill invocation and commits artifacts to its worktree, the merge/push step must target `feat-{featureSlug}` rather than a per-agent branch. The current `mergeWorktree` activity pushes to a feature branch; this requirement formalises that the target is always the shared feature branch derived from the feature slug, not the worktree's local branch.
+After an agent finishes its skill invocation and commits artifacts to its worktree, those commits must be pushed directly to `feat-{featureSlug}` on the remote. Because the worktree is already checked out on `feat-{featureSlug}` (per [REQ-WB-02]), there is no intermediate per-agent branch and therefore no merge step. The previous two-step mechanism (commit to per-agent branch → merge into feature branch) is eliminated. The commit pathway is: **commit in the worktree (already on `feat-{featureSlug}`) → push to remote `feat-{featureSlug}`**.
+
+The `ArtifactCommitter` interface and its call site in `invokeSkill` must be updated to reflect this simpler pathway. The `mergeWorktree` step is no longer needed and must be removed or replaced with a direct push.
 
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
 GIVEN: Agent pm has committed docs/016-messaging-abstraction/016-REQ-messaging-abstraction.md
-       to its worktree
-WHEN:  The mergeWorktree activity runs
-THEN:  The commit appears on feat-016-messaging-abstraction on the remote,
+       in its worktree, which is checked out on feat-016-messaging-abstraction
+WHEN:  The post-skill commit step runs
+THEN:  The commit is pushed directly to feat-016-messaging-abstraction on the remote
+       (no intermediate branch is created or merged),
        and the next agent can read the file by pulling that branch
 ```
 
@@ -166,15 +172,62 @@ THEN:  The commit appears on feat-016-messaging-abstraction on the remote,
 | **Dependencies** | REQ-WB-02 |
 
 **Description:**
-Because the shared feature branch may already be checked out as a worktree (e.g., by a prior retry or a surviving `/tmp` directory), the worktree creation step must handle the case where `feat-{featureSlug}` is already checked out elsewhere. The system must reuse or recreate the worktree without error, consistent with the general idempotency requirement already present in `invokeSkill`.
+Because the shared feature branch may already be checked out as a worktree (e.g., by a prior retry or a surviving `/tmp` directory), the worktree creation step must handle the case where a worktree already exists for this agent's path.
+
+Idempotency is determined by **worktree path alone** — not by branch name. Under the shared branch model, `feat-{featureSlug}` is the branch for every agent and phase in the feature, so a branch-name match would incorrectly identify another agent's active worktree as a reusable one. The existing idempotency check `wt.branch === worktreeBranch` must be replaced with a path-only check: `wt.path === worktreeBasePath`.
+
+The `hasUnmergedCommits` check used to short-circuit retries must also be keyed to the phase's specific committed work (e.g., presence of the expected artifact file or a phase-specific commit marker), not the shared branch's general commit history — since the shared branch accumulates commits from all agents and phases.
 
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: A Temporal activity retry occurs and /tmp/ptah-worktrees/eng/.../req-review already exists
-       checked out at feat-016-messaging-abstraction
+GIVEN: A Temporal activity retry occurs and /tmp/ptah-worktrees/eng/016-messaging-abstraction/req-review
+       already exists, checked out on feat-016-messaging-abstraction
 WHEN:  invokeSkill attempts to create the worktree
-THEN:  The activity reuses the existing worktree path without error and continues normally
+THEN:  The activity detects the existing path and reuses it without error,
+       regardless of how many other worktrees may also be checked out on feat-016-messaging-abstraction
+```
+
+---
+
+---
+
+#### REQ-WB-05: Shared Feature Branch Created Before First Agent Runs
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-WB-05 |
+| **Title** | The shared feature branch is created by the workflow start step if it does not exist |
+| **Priority** | P0 |
+| **Phase** | 1 |
+| **Source user stories** | US-01, US-02, US-03 |
+| **Dependencies** | REQ-WB-01 |
+
+**Description:**
+The `startWorkflowForFeature` step — immediately before the Temporal workflow execution begins — must create the shared feature branch (`feat-{featureSlug}`) on the remote if it does not already exist. This is a single synchronous git operation outside of Temporal's determinism constraints and must complete before the workflow is submitted.
+
+Creating the branch at workflow start (rather than inside the first agent's activity) is the preferred approach because:
+1. Temporal activities may not call external git operations in a non-deterministic way without an activity wrapper.
+2. The branch needs to exist before `invokeSkill` tries to add a worktree to it.
+3. Making branch creation the workflow initiator's responsibility gives a single, predictable owner.
+
+If the branch already exists (e.g., from a previous run or manual creation), the step is a no-op.
+
+**Acceptance Criteria:**
+```
+WHO:   As the orchestration system
+GIVEN: Feature 016-messaging-abstraction is being started for the first time
+       and feat-016-messaging-abstraction does not exist on the remote
+WHEN:  startWorkflowForFeature is called
+THEN:  feat-016-messaging-abstraction is created on the remote,
+       the Temporal workflow is then submitted,
+       and the first agent's invokeSkill activity can successfully add a worktree
+       from feat-016-messaging-abstraction without error
+
+WHO:   As the orchestration system
+GIVEN: feat-016-messaging-abstraction already exists on the remote
+WHEN:  startWorkflowForFeature is called
+THEN:  No duplicate branch creation is attempted, and the workflow starts normally
 ```
 
 ---
@@ -193,9 +246,11 @@ THEN:  The activity reuses the existing worktree path without error and continue
 | **Dependencies** | — |
 
 **Description:**
-When a user sends a message to a feature thread, the orchestrator must check whether the message begins with (or contains) an `@{agent-id}` directive that names a specific agent participating in the feature's workflow. If such a directive is found, the message is classified as an **ad-hoc agent request** rather than a generic workflow signal.
+When a user sends a message to a feature thread, the orchestrator must check whether the message's **first token** (after stripping leading whitespace) is an `@{agent-id}` directive that names a specific agent participating in the feature's workflow. If the first token matches, the message is classified as an **ad-hoc agent request** rather than a generic workflow signal.
 
-`agent-id` values are defined in `workflow.yaml` (e.g., `pm`, `eng`, `qa`, `tech-lead`). The parser must be case-insensitive and must ignore leading whitespace. A message that does not contain a recognisable `@{agent-id}` is treated as a regular user answer signal (existing behavior, unchanged).
+The `@{agent-id}` directive qualifies **only when it appears as the first token** of the message. An `@{agent-id}` that appears mid-sentence (e.g., "The issue is that @pm wrote conflicting docs") must NOT be classified as an ad-hoc request. This prevents incidental agent @-mentions in discussion messages from triggering unintended actions.
+
+`agent-id` values are defined in `workflow.yaml` (e.g., `pm`, `eng`, `qa`, `tech-lead`). The parser must be case-insensitive. A message whose first token does not match a recognisable `@{agent-id}` is treated as a regular user answer signal (existing behavior, unchanged).
 
 **Acceptance Criteria:**
 ```
@@ -224,6 +279,8 @@ THEN:  The message is classified as an ad-hoc request targeting agent "pm",
 When an ad-hoc agent request is detected and the named agent participates in the active workflow, the orchestrator must send a Temporal signal that causes the workflow to invoke the named agent with the user's instruction as the task. This should be modeled as a new signal type distinct from `userAnswer` — for example, `adHocRevision` — carrying the target agent ID and the instruction text.
 
 The workflow must be able to receive this signal at any point (not just during a specific wait state) and schedule the named agent's activity as an out-of-band step. After the agent completes, the workflow resumes from where it was interrupted, or proceeds to the next scheduled phase if the interrupted phase had already completed.
+
+The orchestrator must be able to resolve the active Temporal workflow ID from the feature slug in order to send the signal. [REQ-MR-08] specifies how this resolution is performed.
 
 **Acceptance Criteria:**
 ```
@@ -328,7 +385,11 @@ THEN:  No Temporal signal is sent,
 | **Dependencies** | REQ-MR-02 |
 
 **Description:**
-The workflow must maintain an ordered queue of pending `adHocRevision` signals. When a second (or third) signal arrives while the first ad-hoc activity is still running, it must be held in the queue rather than rejected or dropped. Once the current ad-hoc activity completes, the workflow dequeues and processes the next signal immediately. Signals are processed in the order they were received (FIFO). There is no maximum queue depth — signals accumulate until the workflow terminates.
+The workflow must maintain an ordered queue of pending `adHocRevision` signals. When a second (or third) signal arrives while the first ad-hoc activity is still running, it must be held in the queue rather than rejected or dropped. Signals are processed in the order they were received (FIFO).
+
+**Cascade-blocking rule:** A queued `adHocRevision` signal must not be dequeued until both (a) the current ad-hoc agent activity and (b) all downstream cascade phases triggered by that activity (per [REQ-MR-07]) have fully completed. Processing the next queued signal while a cascade is in progress would allow two agent activities to run simultaneously, violating the sequential constraint in [REQ-NF-01]. The queue is considered "blocked" for the duration of the cascade.
+
+**Queue depth:** There is no maximum queue depth — signals accumulate until the workflow terminates. This is a conscious product decision: Temporal's built-in signal buffering handles accumulation, and normal usage will not approach problematic depths. The TSPEC should note that Temporal's event history limit (default 50k events) is the practical upper bound; if adversarial or accidental message floods are a concern, a soft cap (e.g., 50 pending signals) may be enforced at the implementation layer.
 
 **Acceptance Criteria:**
 ```
@@ -356,11 +417,15 @@ THEN:  The eng adHocRevision is held in queue,
 | **Dependencies** | REQ-MR-02, REQ-WB-03 |
 
 **Description:**
-When an ad-hoc revision activity completes and produces new artifacts on the shared feature branch, the workflow must automatically re-run all review phases that come after the revised agent's phase in the workflow sequence. "After" is determined by the workflow configuration's phase ordering: any phase whose position in the sequence is strictly later than the revised agent's phase, and whose role is a review (cross-review or review) of a prior artifact, must be re-queued.
+When an ad-hoc revision activity completes and produces new artifacts on the shared feature branch, the workflow must automatically re-run all phases that come after the revised agent's phase in the workflow sequence and have `type: "review"` in the `WorkflowConfig`. Phases with other types (`"creation"`, `"approved"`, `"implementation"`) are not re-run.
 
-The re-run must use the latest artifacts from the shared branch (i.e., pull after the revised agent's push completes). The user does not need to take any action to trigger the downstream cascade.
+"After" means a strictly higher position index in the workflow phase array than the revised agent's phase. All such `type: "review"` phases re-run, regardless of which creation phase they were originally reviewing. This conservative approach is simpler to implement and ensures complete downstream consistency.
 
-**Example:** If the PM agent is revised ad-hoc, the engineer's cross-review phase and the QA's cross-review phase — which follow PM in the workflow — must re-run automatically. If the engineer agent is revised, only QA's downstream review phases re-run.
+**Cascade + revision loop:** If a cascaded review phase completes with a "Needs revision" outcome, the standard revision loop runs within the cascade (the target creation agent is invoked, addresses the feedback, and the review phase re-runs). This is the same behavior as the normal sequential workflow. The cascade does not short-circuit back to the original ad-hoc revision agent.
+
+The re-run must use the latest artifacts from the shared branch (i.e., each cascaded agent pulls `feat-{featureSlug}` before starting). The user does not need to take any action to trigger the downstream cascade.
+
+**Example:** If the PM agent is revised ad-hoc, all `type: "review"` phases after PM's position re-run automatically (e.g., eng-review, qa-cross-review). If the engineer agent is revised, all `type: "review"` phases after eng's position re-run (e.g., qa-cross-review).
 
 **Acceptance Criteria:**
 ```
@@ -372,6 +437,44 @@ THEN:  The workflow automatically schedules eng-review and qa-cross-review to re
        each agent pulls the latest shared branch before starting,
        and the user sees Discord notifications for each re-run phase without
        having to send any additional messages
+```
+
+---
+
+#### REQ-MR-08: Deterministic Workflow ID from Feature Slug
+
+| Field | Detail |
+|-------|--------|
+| **ID** | REQ-MR-08 |
+| **Title** | Workflow IDs are derived deterministically from feature slug |
+| **Priority** | P0 |
+| **Phase** | 1 |
+| **Source user stories** | US-04, US-06 |
+| **Dependencies** | REQ-MR-02, REQ-MR-05 |
+
+**Description:**
+To send an `adHocRevision` signal or check for an active workflow, the orchestrator must know the Temporal workflow ID for a given feature. Rather than maintaining an in-memory map or querying Temporal's list API, workflow IDs must be **deterministically derived from the feature slug**: `ptah-{featureSlug}` (e.g., `ptah-016-messaging-abstraction`).
+
+This approach has three advantages:
+1. No state to maintain — the orchestrator can reconstruct the workflow ID at any time from the feature slug.
+2. No Temporal query API dependency — no search attributes or custom namespace configuration required.
+3. "No active workflow" detection becomes a handled error: if a signal to `ptah-{featureSlug}` returns "workflow not found", the orchestrator treats this as the inactive case ([REQ-MR-05]).
+
+Workflow IDs must be assigned this deterministic format when workflows are started. Existing workflows not using this format are out of scope.
+
+**Acceptance Criteria:**
+```
+WHO:   As the orchestration system
+GIVEN: A user sends "@pm address feedback" for feature 016-messaging-abstraction
+WHEN:  The orchestrator constructs the Temporal signal target
+THEN:  The workflow ID used is "ptah-016-messaging-abstraction",
+       no lookup table or query API is consulted,
+       and if that workflow ID is not found in Temporal, the response follows REQ-MR-05
+
+WHO:   As the orchestration system
+GIVEN: startWorkflowForFeature is called for feature 016-messaging-abstraction
+WHEN:  The Temporal workflow is submitted
+THEN:  The workflow is registered under the ID "ptah-016-messaging-abstraction"
 ```
 
 ---
@@ -436,15 +539,17 @@ THEN:  The TSPEC explicitly addresses how concurrent writes to feat-{featureSlug
 |----|-------|----------|-------|--------|
 | REQ-WB-01 | Shared feature branch for all agents | P0 | 1 | WB |
 | REQ-WB-02 | Per-agent worktree from shared branch | P0 | 1 | WB |
-| REQ-WB-03 | Agent commits push to shared branch | P0 | 1 | WB |
-| REQ-WB-04 | Worktree idempotency with shared branch | P0 | 1 | WB |
-| REQ-MR-01 | Parse @agent directive from user messages | P0 | 1 | MR |
+| REQ-WB-03 | Agent commits push directly to shared branch | P0 | 1 | WB |
+| REQ-WB-04 | Worktree idempotency via path-only matching | P0 | 1 | WB |
+| REQ-WB-05 | Shared feature branch created before first agent runs | P0 | 1 | WB |
+| REQ-MR-01 | Parse @agent directive (first-token rule) | P0 | 1 | MR |
 | REQ-MR-02 | Dispatch ad-hoc revision to named agent | P0 | 1 | MR |
 | REQ-MR-03 | Reject ad-hoc request for unknown agent | P1 | 1 | MR |
 | REQ-MR-04 | Acknowledge ad-hoc request in Discord | P1 | 1 | MR |
 | REQ-MR-05 | No signal when workflow is not active | P1 | 1 | MR |
 | REQ-MR-06 | Queue multiple ad-hoc revision signals | P0 | 1 | MR |
 | REQ-MR-07 | Automatic downstream phase re-run after ad-hoc revision | P0 | 1 | MR |
+| REQ-MR-08 | Deterministic workflow ID from feature slug | P0 | 1 | MR |
 | REQ-NF-01 | No sequential phase disruption | P0 | 1 | NF |
 | REQ-NF-02 | Shared branch must not block parallel future work | P1 | 1 | NF |
 
@@ -457,3 +562,5 @@ THEN:  The TSPEC explicitly addresses how concurrent writes to feat-{featureSlug
 | OQ-01 | Should `adHocRevision` signals queue or be rejected if one is already in flight? | User | **Closed** | Signals queue (FIFO). Multiple can be pending. → [REQ-MR-06] |
 | OQ-02 | Should downstream review phases re-run automatically or wait for user re-trigger? | User | **Closed** | Automatic downstream cascade. → [REQ-MR-07] |
 | OQ-03 | Canonical mapping from Discord @mention text to agent ID? | User | **Closed** | Handled by the system at message receipt time; not a product-level concern. `@product-manager` and `@pm` both acceptable; system resolves to agent ID. No new requirement. |
+| OQ-04 | For REQ-MR-07 cascade: does it re-run ALL subsequent `type: "review"` phases, or only those whose `creationPhase` directly corresponds to the revised agent? | Engineer | **Closed** | All `type: "review"` phases with a strictly higher position index than the revised agent's phase re-run, regardless of which creation phase they originally reviewed. Conservative approach ensures full downstream consistency. → [REQ-MR-07] |
+| OQ-05 | For REQ-MR-07 cascade: if a cascaded review phase returns "Needs revision", does the standard revision loop run or is it short-circuited? | Engineer | **Closed** | Standard revision loop runs within the cascade. The cascade does not short-circuit; each cascaded phase follows normal outcome logic. → [REQ-MR-07] |
