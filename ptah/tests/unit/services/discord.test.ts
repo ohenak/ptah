@@ -36,14 +36,14 @@ describe("DiscordJsClient", () => {
     it("calls client.login with the provided token", async () => {
       const connectPromise = discordClient.connect("my-bot-token");
       // Emit ready after login
-      (stubClient as any).emit("ready", stubClient);
+      (stubClient as any).emit("clientReady", stubClient);
       await connectPromise;
       expect((stubClient as any).login).toHaveBeenCalledWith("my-bot-token");
     });
 
     it("resolves when ready event fires", async () => {
       const connectPromise = discordClient.connect("my-bot-token");
-      (stubClient as any).emit("ready", stubClient);
+      (stubClient as any).emit("clientReady", stubClient);
       await expect(connectPromise).resolves.toBeUndefined();
     });
 
@@ -60,7 +60,7 @@ describe("DiscordJsClient", () => {
     it("does not reject if ready fires before timeout", async () => {
       vi.useFakeTimers();
       const connectPromise = discordClient.connect("my-bot-token");
-      (stubClient as any).emit("ready", stubClient);
+      (stubClient as any).emit("clientReady", stubClient);
       vi.advanceTimersByTime(30000);
       await expect(connectPromise).resolves.toBeUndefined();
       vi.useRealTimers();

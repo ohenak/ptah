@@ -81,7 +81,7 @@ export class DiscordJsClient implements DiscordClient {
         reject(new Error("connection timed out after 30 seconds"));
       }, 30_000);
 
-      this.client.once("ready", () => {
+      this.client.once("clientReady", () => {
         clearTimeout(timeout);
         resolve();
       });
