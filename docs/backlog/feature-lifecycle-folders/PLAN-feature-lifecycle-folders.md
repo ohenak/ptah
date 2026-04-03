@@ -2,9 +2,10 @@
 
 | Field | Detail |
 |-------|--------|
-| **Technical Specification** | [TSPEC-FLF](TSPEC-feature-lifecycle-folders.md) |
-| **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
-| **Functional Specification** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md) |
+| **Technical Specification** | [TSPEC-FLF v1.2](TSPEC-feature-lifecycle-folders.md) |
+| **Requirements** | [REQ-FLF v2.4](REQ-feature-lifecycle-folders.md) |
+| **Functional Specification** | [FSPEC-FLF v1.1](FSPEC-feature-lifecycle-folders.md) |
+| **Version** | 1.1 |
 | **Date** | April 4, 2026 |
 | **Status** | Draft |
 
@@ -212,8 +213,8 @@ Phase I (Integration Tests)
 - [ ] All tasks completed and status updated to ✅
 - [ ] All tests pass (`npx vitest run`) — 0 failures
 - [ ] No skipped or pending tests
-- [ ] Code reviewed against requirement acceptance criteria (REQ-FS-01..04, REQ-PR-01..05, REQ-SK-01..08, REQ-MG-01..04, REQ-WT-01..05, REQ-NF-01..03)
-- [ ] Implementation matches TSPEC v1.1 (protocols, algorithms, error handling, test doubles)
+- [ ] Code reviewed against requirement acceptance criteria (REQ-FS-01..04, REQ-PR-01..05, REQ-SK-01..08, REQ-MG-01..04, REQ-WT-01..05, REQ-NF-01, REQ-NF-02). **Note:** REQ-NF-03 (P2 — legacy path fallback) is intentionally deferred per TSPEC §9.3; it is not implemented in this plan.
+- [ ] Implementation matches TSPEC v1.2 (protocols, algorithms, error handling, test doubles)
 - [ ] Existing tests remain green (no regressions)
 - [ ] Changes committed in logical units with `type(scope): description` format
 - [ ] Pushed to remote for review

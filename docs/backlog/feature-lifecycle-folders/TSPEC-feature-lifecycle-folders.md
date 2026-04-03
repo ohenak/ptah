@@ -7,7 +7,7 @@
 | **Document ID** | TSPEC-FLF |
 | **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
 | **Functional Specification** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 4, 2026 |
 | **Status** | Draft |
 
@@ -515,7 +515,7 @@ const pattern = new RegExp(
 // Replace group 3 with the NNN-prefixed filename
 ```
 
-This matches `[text](oldFilename)` and `[text](./oldFilename)` per FSPEC-PR-01 BR-06.
+This matches `[text](oldFilename)` and `[text](./oldFilename)` per FSPEC-PR-01 BR-06. Per REQ-PR-04 v2.4, the following link formats are explicitly **out of scope** and are not matched by this regex: wiki-style links, reference-style links (`[text][ref]`), HTML `<a href="">` patterns, bare filename mentions in prose, absolute paths, and cross-feature references. These exclusions are intentional — the two in-scope patterns cover all link styles used in this project's documents.
 
 ### 5.3 WorktreeManager — Create / Destroy
 
@@ -1006,6 +1006,7 @@ The `FeatureResolver` does not natively search the old flat `docs/{NNN}-{slug}/`
 |---------|------|--------|---------|
 | 1.0 | April 3, 2026 | Engineer | Initial technical specification |
 | 1.1 | April 4, 2026 | Engineer | Address PM cross-review of TSPEC v1.0. F-01 (High): expanded §9.2 with detailed PM SKILL.md Phase 0 algorithm changes — Steps 3, 4 (removed), 5, 6, 7, 8 updated to use `docs/backlog/{feature-slug}/` paths, NNN assignment removed entirely. F-02 (Medium): fixed §5.5 context resolution table — NNN-prefix now explicitly applied to ALL document types including `overview.md` for completed features, with separate tables for unnumbered vs. completed. F-03 (Low): removed dead "If has NNN prefix" branch from §5.9 migration Step 4 — all NNN-prefixed folders are handled by Step 3. Updated §8 REQ-SK-01 mapping to reference Phase 0 changes. |
+| 1.2 | April 4, 2026 | Engineer | Sync with REQ v2.4 (test-engineer cross-review updates). Added explicit out-of-scope link format note in §5.2.2 Phase 3 regex section per REQ-PR-04 v2.4 (wiki-style, reference-style, HTML `<a>` patterns). No structural changes required — all v2.4 acceptance criteria expansions (REQ-PR-01, REQ-PR-03, REQ-SK-02, REQ-SK-08, REQ-NF-02) were already covered by the existing TSPEC design. |
 
 ---
 
