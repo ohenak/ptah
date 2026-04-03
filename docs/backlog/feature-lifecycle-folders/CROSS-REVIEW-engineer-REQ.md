@@ -1,89 +1,62 @@
-# Cross-Review: Engineer — REQ-FLF v2.2 (Feature Lifecycle Folders)
+# Cross-Review: Engineer — REQ-FLF v2.3 (Feature Lifecycle Folders)
 
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | engineer |
-| **Document Reviewed** | `docs/backlog/feature-lifecycle-folders/REQ-feature-lifecycle-folders.md` v2.2 |
-| **Previous Review** | v2.0 — Needs revision (3 High, 2 Medium) |
+| **Document Reviewed** | `docs/backlog/feature-lifecycle-folders/REQ-feature-lifecycle-folders.md` v2.3 |
+| **Previous Review** | v2.2 — Needs revision (2 Medium) |
 | **Date** | 2026-04-03 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved with minor changes** |
 
 ---
 
 ## Resolution of Previous Findings
 
-All findings from the v2.0 review have been addressed:
+All findings and questions from the v2.2 review have been addressed:
 
 | Previous Finding | Resolution |
 |-----------------|-----------|
-| F-01 (High): `ContextResolutionContext` redesign not specified | ✅ REQ-SK-06 defines the feature resolver behavioral contract; REQ-SK-07 requires resolved path stored in workflow state |
-| F-02 (High): Hard-coded path at `feature-lifecycle.ts:1076` replacement unspecified | ✅ REQ-SK-07 explicitly replaces inline path expressions with state reads |
-| F-03 (High): Promotion execution responsibility ambiguous | ✅ REQ-SK-08 clearly assigns promotion execution to the orchestrator |
-| F-04 (Medium): In-document reference update scope underspecified | ✅ REQ-PR-04 now defines exact in-scope formats and explicit out-of-scope items |
-| F-05 (Medium): Idempotency of NNN assignment underspecified | ✅ REQ-NF-02 defines two-phase check for partial-completion idempotency |
-| Q-01: Slug collision behavior | ✅ REQ-SK-02 specifies: log warning, return first match by search order |
-| Q-02: Who triggers completion promotion | ✅ REQ-SK-08 specifies: orchestrator detects both sign-off signals, runs promotion activity |
-| Q-03: Stale file reference in C-02 | ✅ C-02 now includes the correct path `ptah/src/orchestrator/pdlc/cross-review-parser.ts:159` (confirmed in codebase) |
+| F-01 (Medium): REQ-SK-03 description said "skill must promote", contradicting REQ-SK-08 | ✅ REQ-SK-03 description rewritten: skill detects and signals intent; "The skill never executes the promotion itself." REQ-SK-08 added to dependencies. |
+| F-02 (Medium): REQ-WT-02 dangling worktree identification mechanism unspecified | ✅ REQ-WT-02 now specifies: use `git worktree list` to enumerate repo-attached worktrees, cross-reference against live Temporal workflow activity IDs, prune with `git worktree remove --force`. Acceptance criteria updated with two-part criteria (normal completion + startup cleanup). |
+| Q-01: REQ-WT-05 "or reuses" ambiguity | ✅ Removed. REQ-WT-05 now requires "a newly created worktree" and explicitly states idempotency is handled by REQ-NF-02 two-phase folder check, not worktree reuse. |
 
 ---
 
-## New Findings (v2.2)
+## New Findings (v2.3)
 
-### F-01 — REQ-SK-03 description contradicts REQ-SK-08 (Medium)
+### F-01 — REQ-SK-04 description still ambiguous on promotion ownership (Low)
 
-REQ-SK-03 description reads: *"the skill must promote the feature to `docs/in-progress/` before proceeding with the review."*
+REQ-SK-04 description reads: *"the responsible skill (or orchestrator) must promote the feature folder."*
 
-REQ-SK-08 is unambiguous: *"Promotion execution... is performed exclusively by the Ptah orchestrator via a dedicated promotion activity — not by Claude skill agents."*
+This was not modified in v2.3. While REQ-SK-08 authoritatively assigns completion promotion to the orchestrator (and the acceptance criteria of SK-04 is correct), the "responsible skill (or orchestrator)" phrasing remains ambiguous. An engineer reading SK-04 in isolation would not know whether to implement promotion in the skill or the orchestrator.
 
-These two statements conflict. An engineer reading REQ-SK-03 in isolation would implement promotion logic inside the skill (agent), directly contradicting REQ-SK-08's exclusive ownership assignment. The acceptance criteria of REQ-SK-03 is fine (it describes the observable outcome: "The feature is promoted before my review artifacts are created"), but the description's wording assigns responsibility to the wrong component.
+This is non-blocking because REQ-SK-08 is the canonical authority and its dependency chain covers this case. REQ-SK-04 should also add REQ-SK-08 to its dependencies to make the cross-reference explicit.
 
-**Required fix:** Update REQ-SK-03's description to state that the skill detects the feature is in `backlog/` and signals promotion intent to the orchestrator, and that the orchestrator executes the promotion activity before invoking the skill — consistent with REQ-SK-08.
-
----
-
-### F-02 — REQ-WT-02 "dangling worktree" identification mechanism unspecified (Medium)
-
-REQ-WT-02 requires: *"If the orchestrator or skill crashes mid-execution, a cleanup sweep removes any dangling worktrees on next startup."*
-
-The codebase has `ptah/src/orchestrator/worktree-registry.ts` with `InMemoryWorktreeRegistry`. This registry does not survive a process crash — on restart, the registry is empty. The requirement's acceptance criteria ("worktrees without an active skill invocation are cleaned up") is not verifiable from registry state after a crash.
-
-To implement this requirement, a mechanism to identify worktrees-on-disk that are not associated with any current activity must be specified. Two viable approaches:
-1. Use `git worktree list` to enumerate all worktrees attached to the repo on startup, and remove any not tracked by a live Temporal workflow.
-2. Make the registry persistent (file-based or Temporal side-effect).
-
-Without specifying which approach is required, the acceptance criteria cannot be implemented deterministically.
-
-**Required addition:** Specify the mechanism for identifying dangling worktrees on startup — either via `git worktree list` comparison or a persistent registry.
+**Suggested fix (non-blocking):** Update REQ-SK-04 description to mirror SK-03's fixed language: the orchestrator detects both sign-off signals and runs the completion promotion activity. Add REQ-SK-08 to SK-04's dependencies.
 
 ---
 
-## Clarification Questions
+### F-02 — "workflow activity IDs" is imprecise Temporal terminology (Low)
 
-### Q-01 — REQ-WT-05 "or reuses" a promotion worktree
+REQ-WT-02 says: *"cross-reference each against live Temporal workflow activity IDs."*
 
-REQ-WT-05 says the promotion activity "creates (or reuses) a dedicated promotion worktree." Under what condition does reuse apply? If a promotion worktree from a previous crashed run persists on disk, should it be reused or cleaned up and recreated? Reusing a worktree from a partial run could put it in an inconsistent state; recreating it avoids that risk.
+In Temporal's data model, "activity IDs" are short-lived task identifiers within a single workflow execution. The concept intended here is **workflow executions** (identified by workflow ID + run ID), not activities. The cross-reference should be against active Temporal workflow executions (or equivalently, active workflow run IDs). Using "activity IDs" could cause confusion when implementing the startup cleanup query against the Temporal server.
 
-This is consistent with REQ-NF-02's two-phase idempotency, but the conditions for "reuse" vs "recreate" need to be clear.
+**Suggested fix (non-blocking):** Replace "live Temporal workflow activity IDs" with "active Temporal workflow executions" (or "live workflow run IDs") to use accurate Temporal terminology.
 
 ---
 
 ## Positive Observations
 
-- **v2.1 revisions are thorough and well-targeted.** All five previous findings and three questions were addressed precisely. REQ-SK-06, REQ-SK-07, and REQ-SK-08 together form a coherent and implementable architecture for feature path resolution and promotion execution.
-- **Worktree isolation (WT domain) is the right design.** Giving each skill its own worktree eliminates the shared-mutable-filesystem problem for concurrent agents cleanly. REQ-WT-03 and REQ-WT-04 correctly propagate the DI principle — the resolver accepts the worktree root rather than hardcoding it.
-- **REQ-WT-04 separation of `worktreeRoot` and `featurePath`** is a thoughtful design: when a promotion changes the feature path (backlog → in-progress), only `featurePath` in state needs updating, not the worktree root. This avoids recalculating all activity paths after a promotion.
-- **C-02 now correctly lists all three affected code locations**, including the actual `pdlc/cross-review-parser.ts:159` path (verified in codebase).
-- **REQ-NF-02 two-phase idempotency** correctly handles the partial-completion race by checking for destination folder existence before re-assigning NNN.
+- **All Medium findings from v2.2 are cleanly resolved.** REQ-SK-03 is now precise and unambiguous about responsibility boundaries. REQ-WT-02's dangling worktree identification is now fully specified and implementable. REQ-WT-05's worktree reuse ambiguity is eliminated with clear "fresh worktree" language.
+- **The specification is now implementable end-to-end.** The feature resolver contract (REQ-SK-06), workflow state design (REQ-SK-07, REQ-WT-04), orchestrator promotion ownership (REQ-SK-08), and worktree lifecycle (REQ-WT-01–05) together form a coherent, implementable architecture with no blocking gaps.
+- **The two-phase idempotency design (REQ-NF-02) is correctly separated from worktree lifecycle** — the REQ-WT-05 fix makes clear these are orthogonal concerns.
+- **The `git worktree list` + Temporal cross-reference approach** in REQ-WT-02 is the correct crash-safe mechanism given the in-memory registry limitation.
 
 ---
 
 ## Recommendation
 
-**Needs revision.** Two Medium findings must be addressed:
+**Approved with minor changes.** Two Low-severity editorial findings (F-01, F-02) are non-blocking and do not require re-review. The document is approved for TSPEC creation.
 
-- **F-01**: REQ-SK-03 description must be reworded to align with REQ-SK-08's authoritative ownership assignment (orchestrator executes promotion; skill signals intent).
-- **F-02**: REQ-WT-02 must specify the mechanism for identifying dangling worktrees after a crash (e.g., `git worktree list` or persistent registry).
-
-These are targeted fixes to the v2.2 additions; the core v2.1 architecture (resolver service, workflow state design, orchestrator-owned promotion) is solid and does not require further changes.
-
-**The author must address F-01 and F-02, then route the updated REQ back for re-review.**
+The PM may address F-01 and F-02 in a future minor revision, but TSPEC work can begin immediately on the current v2.3 text.
