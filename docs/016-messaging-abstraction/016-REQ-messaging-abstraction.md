@@ -6,8 +6,8 @@
 |-------|--------|
 | **Document ID** | REQ-MESSAGING |
 | **Parent Document** | [REQ-PTAH](../requirements/001-REQ-PTAH.md) |
-| **Version** | 1.0 |
-| **Date** | April 1, 2026 |
+| **Version** | 1.1 |
+| **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
 | **Milestone** | 2 of 3 |
@@ -74,8 +74,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | Define Messaging Provider Interface |
-| **Description** | Define a `MessagingProvider` interface that abstracts all messaging operations. The interface covers: thread creation, message posting (plain text and formatted), thread history reading, mention resolution, and event subscription (for human replies). All existing Discord-specific code in the Orchestrator uses this interface rather than the Discord client directly. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** The Orchestrator codebase<br>**When:** Searching for direct `DiscordClient` usage outside the Discord provider implementation<br>**Then:** No direct Discord usage exists in the orchestrator layer. All messaging goes through `MessagingProvider`. |
+| **Description** | Define a `MessagingProvider` interface that abstracts all messaging operations. The interface covers: thread creation, message posting (plain text and formatted), thread history reading, mention resolution, and event subscription (for human replies). All existing Discord-specific code in the Orchestrator uses this interface rather than the Discord client directly. Thread identifiers are **opaque handles** — when the provider creates a thread it returns a `ThreadHandle` value; the orchestrator stores and passes this handle back to the provider for subsequent operations without inspecting its contents. The provider owns creation and interpretation of thread identifiers; the orchestrator never constructs or parses them. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** The Orchestrator codebase<br>**When:** Searching for direct `DiscordClient` usage outside the Discord provider implementation<br>**Then:** No direct Discord usage exists in the orchestrator layer. All messaging goes through `MessagingProvider`. Thread creation operations return an opaque `ThreadHandle`; the orchestrator never constructs or parses a thread identifier string directly. |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-14, US-15, US-16 |
@@ -87,7 +87,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 |-----------|--------|
 | **Title** | Discord Implementation of Messaging Provider |
 | **Description** | The existing Discord integration is refactored into a `DiscordMessagingProvider` that implements the `MessagingProvider` interface. Behavior is identical to current v4/v5 — threads, embeds, @mentions, `#open-questions` channel, `#agent-debug` channel. This is the default provider for backward compatibility. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "discord"` (or no provider specified, defaulting to Discord)<br>**When:** The Orchestrator starts<br>**Then:** Behavior is identical to the pre-abstraction implementation. All existing Discord integration tests pass without modification. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "discord"` (or no provider specified, defaulting to Discord)<br>**When:** The Orchestrator starts<br>**Then:** All Discord behaviors are functionally identical to the pre-abstraction implementation. All existing Discord behaviors are covered by passing tests. (Note: test wiring may change structurally — e.g., `FakeDiscordClient` injected into `DiscordMessagingProvider` rather than directly into the orchestrator — but behavior coverage must be complete.) |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-14 |
@@ -98,8 +98,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | CLI-Only Messaging Provider |
-| **Description** | A `CliMessagingProvider` that operates entirely via stdout/stdin. Agent outputs are printed as formatted terminal text (with optional color). Threads are simulated as labeled output sections. Human-in-the-loop questions prompt via stdin in interactive mode, or are pre-answered via a `answers` config section in headless mode. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** `ptah start --provider cli`<br>**When:** An agent completes a phase and the workflow needs human input<br>**Then:** The question is printed to stdout with a prompt. In interactive mode, the user types an answer. In headless mode (`--headless`), the answer is read from config. The workflow resumes in both cases. |
+| **Description** | A `CliMessagingProvider` that operates entirely via stdout/stdin. Agent outputs are printed as formatted terminal text (with optional color). Threads are simulated as labeled output sections. Human-in-the-loop questions prompt via stdin in interactive mode, or are pre-answered via an `answers` config section in headless mode. **CLI interactive mode requires Ptah to run as a foreground process with stdin attached** (not as a background Temporal worker daemon). In this mode, the Temporal worker runs in-process alongside the prompt loop. This is the natural behavior when running `ptah start --provider cli` in a terminal. Headless mode (`--headless`) is the correct mode for CI/CD pipelines where stdin is not available. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** `ptah start --provider cli` run in a foreground terminal with stdin attached<br>**When:** An agent completes a phase and the workflow needs human input<br>**Then:** The question is printed to stdout with a prompt. In interactive mode, the user types an answer. In headless mode (`--headless`), the answer is read from config. The workflow resumes in both cases. |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-14 |
@@ -110,8 +110,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | Webhook Notification Provider |
-| **Description** | A `WebhookMessagingProvider` sends HTTP POST requests with JSON payloads for all messaging events. Event types: `phase_transition`, `agent_started`, `agent_completed`, `question_asked`, `question_answered`, `feature_completed`, `error`. The webhook URL is configured in `messaging.webhook.url`. Optional HMAC-SHA256 signing via a shared secret. Human-in-the-loop is handled via a callback endpoint that sends a Temporal Signal. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "webhook"` and `messaging.webhook.url: "https://hooks.example.com/ptah"`<br>**When:** An agent completes a phase<br>**Then:** A POST request is sent to the URL with a JSON payload: `{ "event": "agent_completed", "feature": "my-feature", "phase": "tspec-creation", "agent": "eng", "timestamp": "..." }`. If the URL is unreachable, the delivery is retried 3 times with exponential backoff. |
+| **Description** | A `WebhookMessagingProvider` sends HTTP POST requests with JSON payloads for all messaging events. Event types: `phase_transition`, `agent_started`, `agent_completed`, `question_asked`, `question_answered`, `feature_completed`, `error`. The webhook URL is configured in `messaging.webhook.url`. Optional HMAC-SHA256 signing via a shared secret (`messaging.webhook.secret`). Human-in-the-loop is handled via an **embedded HTTP callback server** that Ptah starts alongside the Temporal worker when the webhook provider is active. The callback server listens on a configurable port (`messaging.webhook.callback_port`, default `8765`). Each outgoing webhook payload includes a `callback_url` field: `{base_url}/webhook/answer/{workflowId}`. The base URL is configurable via `messaging.webhook.callback_base_url` (defaults to `http://localhost:{callback_port}`). When an external system POSTs `{ "answer": "..." }` to the callback URL, Ptah sends a `user-answer` Temporal Signal to resume the workflow. TLS termination is not provided by Ptah; operators must use a reverse proxy if HTTPS is required. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "webhook"` and `messaging.webhook.url: "https://hooks.example.com/ptah"`<br>**When:** An agent completes a phase<br>**Then:** A POST request is sent to the URL with a JSON payload: `{ "event": "agent_completed", "feature": "my-feature", "phase": "tspec-creation", "agent": "eng", "timestamp": "...", "callback_url": "http://localhost:8765/webhook/answer/ptah-feature-my-feature-1" }`. If the URL is unreachable, the delivery is retried 3 times with exponential backoff.<br>**And when:** An external system POSTs `{ "answer": "approved" }` to the `callback_url`<br>**Then:** The workflow receives a `user-answer` Temporal Signal and resumes. |
 | **Priority** | P1 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-16 |
@@ -122,8 +122,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | Slack Implementation of Messaging Provider |
-| **Description** | A `SlackMessagingProvider` that uses the Slack Web API and Events API. Creates Slack threads for features, posts formatted messages using Block Kit, receives human replies via Slack events, and resolves @mentions via Slack user/usergroup IDs. Configured via `messaging.slack.bot_token`, `messaging.slack.channel_id`, and optional `messaging.slack.questions_channel_id`. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "slack"` and valid Slack credentials<br>**When:** A new feature is initiated<br>**Then:** A Slack thread is created in the configured channel. Agent outputs are posted as Block Kit messages. Human questions appear in the questions channel (or the same thread). User replies resume the workflow. |
+| **Description** | A `SlackMessagingProvider` using the Slack Web API for posting and **Socket Mode** for receiving events. Socket Mode uses a persistent outbound WebSocket connection — no inbound HTTP endpoint is required, making it suitable for local, CI, and on-premise deployments without public URL exposure. Creates Slack threads for features, posts formatted messages with Block Kit, receives human replies via Socket Mode events, and resolves @mentions via Slack user/usergroup IDs (alphanumeric format, e.g. `U01234ABC`). Configured via `messaging.slack.bot_token` (OAuth bot token, `xoxb-` prefix), `messaging.slack.app_token` (app-level token for Socket Mode, `xapp-` prefix), `messaging.slack.channel_id`, and optional `messaging.slack.questions_channel_id`. Slack HTTP Events API is **out of scope** for this feature — Socket Mode is the only supported connection mode. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "slack"`, a valid `bot_token`, and a valid `app_token`<br>**When:** A new feature is initiated<br>**Then:** A Slack thread is created in the configured channel. Agent outputs are posted as Block Kit messages. Human questions appear in the questions channel (or the feature thread if no questions channel is configured). User replies resume the workflow via Temporal Signal. **No public HTTPS URL or inbound firewall rule is required.** |
 | **Priority** | P1 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-15 |
@@ -134,8 +134,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | Messaging Configuration Independent of Provider |
-| **Description** | The `ptah.config.json` `messaging` section has a `provider` field and provider-specific sub-sections. The config loader validates only the fields relevant to the selected provider. Agent `mention_id` becomes optional — only required for providers that support @mentions (Discord, Slack). CLI and webhook providers do not require it. |
-| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "cli"` and no `discord` or `mention_id` fields<br>**When:** The Orchestrator starts<br>**Then:** Config validation passes. No Discord-related fields are required. Agents function without mention IDs. |
+| **Description** | The `ptah.config.json` `messaging` section has a `provider` field and provider-specific sub-sections. The config loader validates only the fields relevant to the selected provider. Agent `mention_id` is used for mention-based routing on Discord and Slack only; it is not required for CLI or webhook providers. Mention ID format is provider-specific: Discord accepts numeric snowflakes only; Slack accepts alphanumeric user/usergroup IDs (e.g. `U01234ABC`, `S01234ABC`); the `/^\d+$/` snowflake-only validation is removed and replaced by provider-level format validation at startup. For CLI and webhook providers, agent routing is determined entirely by the Temporal Signal payload (`agent_id` field) — no mention parsing occurs. The config loader accepts the **legacy top-level `discord` section** (pre-016 format) as an alias for `messaging.provider: "discord"` and logs a deprecation warning directing operators to migrate to the `messaging` section format. |
+| **Acceptance Criteria** | **Who:** Developer<br>**Given:** A `ptah.config.json` with `messaging.provider: "cli"` and no `discord` or `mention_id` fields<br>**When:** The Orchestrator starts<br>**Then:** Config validation passes. No Discord-related fields are required. Agents function without mention IDs.<br>**And given:** A `ptah.config.json` with only a legacy top-level `discord` section (no `messaging` section)<br>**When:** The Orchestrator starts<br>**Then:** The config is accepted and Discord provider is activated. A deprecation warning is logged: `Legacy 'discord' config format detected. Migrate to 'messaging.provider: "discord"' — see docs/016-messaging-abstraction.` |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-14, US-15, US-16 |
@@ -146,8 +146,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Attribute | Detail |
 |-----------|--------|
 | **Title** | Provider-Specific Message Formatting |
-| **Description** | The `ResponsePoster` is replaced by a `ResponseFormatter` interface that each provider implements. Discord uses embeds with color coding. Slack uses Block Kit. CLI uses formatted terminal output (with optional ANSI colors). Webhook sends raw JSON. The Orchestrator provides a structured event object; the formatter converts it to the provider's native format. |
-| **Acceptance Criteria** | **Who:** Orchestrator<br>**Given:** An agent completion event with agent ID, phase, result summary, and artifact list<br>**When:** The event is passed to the active `ResponseFormatter`<br>**Then:** Discord produces an embed. Slack produces a Block Kit message. CLI produces a formatted terminal block. Webhook produces a JSON payload. All contain the same semantic information. |
+| **Description** | The `ResponsePoster` is replaced by the `MessagingProvider` interface. Response formatting is an **internal concern of each provider implementation** — the orchestrator does not know or care how a provider formats its output. The orchestrator constructs a structured event object (agent ID, phase, result summary, artifact list, routing outcome) and passes it to the active provider. Each provider handles format conversion internally: Discord produces an embed, Slack produces a Block Kit message, CLI produces a formatted terminal block, Webhook produces JSON. No separate `ResponseFormatter` interface is exposed at the orchestrator boundary; formatting lives inside each provider. |
+| **Acceptance Criteria** | **Who:** Orchestrator<br>**Given:** An agent completion event with agent ID, phase, result summary, and artifact list<br>**When:** The event is passed to the active `MessagingProvider`<br>**Then:** Discord produces an embed. Slack produces a Block Kit message. CLI produces a formatted terminal block. Webhook produces a JSON payload. All contain the same semantic information. The orchestrator source code contains no format-specific logic (no embed construction, no Block Kit building, no per-provider conditionals). |
 | **Priority** | P0 |
 | **Phase** | Milestone 2 |
 | **Source Stories** | US-14, US-15 |
@@ -159,14 +159,14 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 
 ### 4.1 In Scope
 
-- `MessagingProvider` interface definition
-- Discord provider (refactored from existing code)
-- CLI provider (stdout/stdin with headless mode)
-- Webhook provider (JSON over HTTP with signing)
-- Slack provider
-- Provider-agnostic configuration
-- Response formatting abstraction
-- Removal of Discord hard-dependency from config loader and agent registry
+- `MessagingProvider` interface definition (with opaque `ThreadHandle` type)
+- Discord provider (refactored from existing code — no behavior change)
+- CLI provider (stdout/stdin with headless mode; interactive mode requires foreground process)
+- Webhook provider (JSON over HTTP with signing and embedded HTTP callback server for human-in-the-loop)
+- Slack provider (Socket Mode connection; no Events API / public URL required)
+- Provider-agnostic configuration (`messaging` section; legacy `discord` section accepted with deprecation warning)
+- Response formatting as internal concern of each provider (no separate formatter interface at orchestrator boundary)
+- Removal of Discord snowflake-only validation from agent registry; provider-specific mention routing
 
 ### 4.2 Out of Scope
 
@@ -175,14 +175,19 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 - Email notifications
 - Custom UI (web dashboard)
 - Multi-provider (using Discord AND Slack simultaneously)
+- Slack HTTP Events API support — Socket Mode is the only connection mode in this feature
+- TLS termination for the webhook callback server — operators use a reverse proxy
+- Slack Marketplace submission (incompatible with Socket Mode)
 
 ### 4.3 Assumptions
 
 | ID | Assumption | Impact if Wrong |
 |----|-----------|-----------------|
 | A-12 | Slack's threading model is sufficiently similar to Discord's for a common `MessagingProvider` interface | May need provider-specific thread management strategies |
-| A-13 | Temporal Signals provide a clean mechanism for webhook-based human-in-the-loop (external HTTP → Signal) | May need a small HTTP server embedded in the Orchestrator for webhook callbacks |
+| A-13 | Ptah embeds a lightweight HTTP callback server (default port 8765) when the webhook provider is active; this server receives human-in-the-loop answers and converts them to Temporal Signals | If embedding is infeasible, callers must invoke the Temporal API directly — documented as out of scope for v1 |
 | A-14 | CLI headless mode (pre-answered questions) covers CI/CD use cases adequately | CI/CD may need more sophisticated automation; can be extended later |
+| A-15 | Slack Socket Mode (WebSocket-based, no public URL required) is suitable for Ptah's single-instance deployment model; the 10-concurrent-connection limit per app is not a concern for a single Ptah process | If Socket Mode reconnect instability affects production reliability, HTTP Events API can be added in a future iteration |
+| A-16 | CLI interactive mode runs as a foreground process with stdin attached; the Temporal worker runs in-process in this mode | If headless CI pipelines need interactive fallback, a named-pipe mechanism must be defined separately |
 
 ---
 
@@ -193,6 +198,8 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | R-13 | Slack API differences from Discord may force interface compromises (e.g., no equivalent of Discord embeds with sidebar color) | Med | Low | Use Block Kit's visual flexibility; accept minor formatting differences between providers |
 | R-14 | CLI provider in headless mode may not handle all question types (e.g., multi-choice, file upload) | Low | Med | Define question schema with typed fields; headless config supports all question types |
 | R-15 | Webhook delivery failures in unreliable networks may cause missed notifications | Med | Med | Retry with exponential backoff; log all delivery failures; events are also visible in Temporal UI |
+| R-16 | Slack Socket Mode WebSocket disconnects in long-running Ptah sessions may cause missed events | Med | Med | Implement reconnect-with-backoff; Slack's Socket Mode SDK handles reconnection automatically |
+| R-17 | Webhook callback server port conflicts in shared CI environments (port 8765 already in use) | Low | Med | Port is configurable via `messaging.webhook.callback_port`; document clearly in setup guide |
 
 ---
 
@@ -228,6 +235,7 @@ Abstract Ptah's messaging layer from a Discord-only implementation into a provid
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 1, 2026 | Product Manager | Initial requirements document for Milestone 2 (Messaging Abstraction). 7 requirements in MA domain. |
+| 1.1 | April 3, 2026 | Product Manager | Addressed engineer cross-review (F-01–F-08). REQ-MA-01: added opaque `ThreadHandle` contract. REQ-MA-02: removed "without modification" test constraint. REQ-MA-03: added foreground/stdin requirement for interactive mode. REQ-MA-04: specified embedded HTTP callback server (`callback_port`, `callback_url` in payload). REQ-MA-05: mandated Slack Socket Mode; added `app_token` requirement; Events API out of scope. REQ-MA-06: clarified per-provider mention routing (Discord snowflake / Slack alphanumeric / CLI+webhook via Signal); added legacy `discord` config deprecation warning. REQ-MA-07: clarified formatting is internal to each provider — no separate formatter interface at orchestrator boundary. Assumptions A-13–A-16 updated/added. Risks R-16, R-17 added. |
 
 ---
 
