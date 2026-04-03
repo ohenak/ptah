@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | REQ-020 |
-| **Parent Document** | [REQ-019 — Discord-to-Temporal Integration](../019-discord-temporal-integration/019-REQ-discord-temporal-integration.md) |
+| **Document ID** | REQ-017 |
+| **Parent Document** | [REQ-019 — Discord-to-Temporal Integration](../../completed/019-discord-temporal-integration/019-REQ-discord-temporal-integration.md) |
 | **Version** | 1.0 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
@@ -41,7 +41,7 @@ Reactions are preferred over replies for success cases because they attach to th
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A developer posts the first message in a thread named `020-message-acknowledgement`. They want to know immediately that Ptah detected the message and started a workflow — without having to open the Temporal Web UI to check. |
+| **Description** | A developer posts the first message in a thread named `017-message-acknowledgement`. They want to know immediately that Ptah detected the message and started a workflow — without having to open the Temporal Web UI to check. |
 | **Goals** | Instant, in-Discord confirmation that the feature workflow has been initiated. Know the workflow ID without leaving Discord. |
 | **Pain points** | Currently nothing happens in Discord. The developer must switch to the Temporal UI, wait for the workflow to appear, and search for it by slug — adding friction and uncertainty. |
 | **Key needs** | A reaction on their message (e.g. ✅) and a brief reply confirming the workflow ID and that it has started. |
@@ -122,7 +122,7 @@ Reactions are preferred over replies for success cases because they attach to th
 
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source Scenarios | Dependencies |
 |----|-------|-------------|---------------------|----------|-------|-----------------|--------------|
-| REQ-MA-01 | React with ✅ on workflow started | When `handleMessage()` successfully creates a new Temporal workflow, it must add a ✅ emoji reaction to the triggering message using `addReaction(channelId, messageId, "✅")`. | WHO: Developer GIVEN: A message is posted in a thread named `020-message-acknowledgement` with no existing workflow WHEN: `startWorkflowForFeature()` returns successfully THEN: The ✅ emoji appears on the developer's message in Discord within 5 seconds. | P0 | 1 | US-33 | — |
+| REQ-MA-01 | React with ✅ on workflow started | When `handleMessage()` successfully creates a new Temporal workflow, it must add a ✅ emoji reaction to the triggering message using `addReaction(channelId, messageId, "✅")`. | WHO: Developer GIVEN: A message is posted in a thread named `017-message-acknowledgement` with no existing workflow WHEN: `startWorkflowForFeature()` returns successfully THEN: The ✅ emoji appears on the developer's message in Discord within 5 seconds. | P0 | 1 | US-33 | — |
 | REQ-MA-02 | Reply with workflow ID on workflow started | When `handleMessage()` successfully creates a new Temporal workflow, it must post a plain-text reply in the thread containing the workflow ID. The reply format is: `Workflow started: {workflowId}`. | WHO: Developer GIVEN: A new workflow has been created WHEN: The ✅ reaction has been added THEN: A plain-text bot message appears in the thread reading `Workflow started: ptah-feature-{slug}-{n}`. The workflow ID matches what was returned by `startFeatureWorkflow()`. | P0 | 1 | US-33 | REQ-MA-01 |
 | REQ-MA-03 | React with ✅ on signal routed | When `handleMessage()` successfully routes a `user-answer` signal to an existing workflow, it must add a ✅ emoji reaction to the triggering message. No plain-text reply is posted — the reaction alone is sufficient. | WHO: Developer GIVEN: A workflow is paused waiting for a `user-answer` signal AND the developer posts their answer in the thread WHEN: `routeUserAnswer()` returns successfully THEN: The ✅ emoji appears on the developer's answer message. No additional bot reply is posted in the thread. | P0 | 1 | US-34 | — |
 | REQ-MA-04 | React with ❌ on Temporal operation failure | When `handleMessage()` encounters a Temporal failure (workflow query fails, workflow creation fails, or signal routing fails), it must add a ❌ emoji reaction to the triggering message. | WHO: Developer GIVEN: Ptah receives a message in a feature thread but the Temporal operation fails WHEN: The caught error is handled inside `handleMessage()` THEN: The ❌ emoji appears on the developer's message in Discord. | P0 | 1 | US-35 | — |
@@ -135,9 +135,9 @@ Reactions are preferred over replies for success cases because they attach to th
 
 | ID | Title | Description | Acceptance Criteria | Priority | Phase |
 |----|-------|-------------|---------------------|----------|-------|
-| REQ-NF-20-01 | Acknowledgement must not block Temporal operations | The `addReaction()` and `postPlainMessage()` calls must be awaited after the Temporal operation completes. They must not be called before the Temporal result is known, and their latency must not be added to the Temporal operation path. | WHO: Orchestrator GIVEN: A Temporal operation (workflow start or signal) is in progress WHEN: The Temporal call resolves THEN: The acknowledgement is sent after resolution. The Temporal operation is not delayed by the acknowledgement. | P0 | 1 |
-| REQ-NF-20-02 | Acknowledgement latency under 5 seconds | From the moment the Temporal operation resolves, the emoji reaction must appear in Discord within 5 seconds under normal network conditions. | WHO: Developer GIVEN: A message was processed successfully WHEN: The Temporal operation completes THEN: The ✅ or ❌ reaction is visible within 5 seconds. | P1 | 1 |
-| REQ-NF-20-03 | No double-acknowledgement | Each triggering message must receive at most one ✅ or ❌ reaction from Ptah. If `handleMessage()` is called more than once for the same message (due to retry or bug), the second call must not add a duplicate reaction. | WHO: Orchestrator GIVEN: `addReaction()` has already been called for a given message ID WHEN: A second `addReaction()` call is made for the same message and emoji THEN: Discord deduplicates the reaction (Discord's native behaviour). No application-layer deduplication is required. | P1 | 1 |
+| REQ-NF-17-01 | Acknowledgement must not block Temporal operations | The `addReaction()` and `postPlainMessage()` calls must be awaited after the Temporal operation completes. They must not be called before the Temporal result is known, and their latency must not be added to the Temporal operation path. | WHO: Orchestrator GIVEN: A Temporal operation (workflow start or signal) is in progress WHEN: The Temporal call resolves THEN: The acknowledgement is sent after resolution. The Temporal operation is not delayed by the acknowledgement. | P0 | 1 |
+| REQ-NF-17-02 | Acknowledgement latency under 5 seconds | From the moment the Temporal operation resolves, the emoji reaction must appear in Discord within 5 seconds under normal network conditions. | WHO: Developer GIVEN: A message was processed successfully WHEN: The Temporal operation completes THEN: The ✅ or ❌ reaction is visible within 5 seconds. | P1 | 1 |
+| REQ-NF-17-03 | No double-acknowledgement | Each triggering message must receive at most one ✅ or ❌ reaction from Ptah. If `handleMessage()` is called more than once for the same message (due to retry or bug), the second call must not add a duplicate reaction. | WHO: Orchestrator GIVEN: `addReaction()` has already been called for a given message ID WHEN: A second `addReaction()` call is made for the same message and emoji THEN: Discord deduplicates the reaction (Discord's native behaviour). No application-layer deduplication is required. | P1 | 1 |
 
 ---
 
@@ -158,8 +158,8 @@ Reactions are preferred over replies for success cases because they attach to th
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 7 | REQ-MA-01, REQ-MA-02, REQ-MA-03, REQ-MA-04, REQ-MA-05, REQ-MA-06, REQ-NF-20-01 |
-| P1 | 2 | REQ-NF-20-02, REQ-NF-20-03 |
+| P0 | 7 | REQ-MA-01, REQ-MA-02, REQ-MA-03, REQ-MA-04, REQ-MA-05, REQ-MA-06, REQ-NF-17-01 |
+| P1 | 2 | REQ-NF-17-02, REQ-NF-17-03 |
 | P2 | 0 | — |
 
 ### By Phase

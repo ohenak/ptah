@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | REQ-021 |
-| **Parent Document** | [REQ-015 — Temporal Foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) |
+| **Document ID** | REQ-016 |
+| **Parent Document** | [REQ-015 — Temporal Foundation](../../completed/015-temporal-foundation/015-REQ-temporal-foundation.md) |
 | **Version** | 1.2 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
@@ -16,7 +16,7 @@
 
 ## 1. Purpose
 
-Two coordination gaps discovered during feature 016 execution prevent the Temporal-based workflow from functioning correctly in production:
+Two coordination gaps discovered during messaging-abstraction feature execution prevent the Temporal-based workflow from functioning correctly in production:
 
 1. **Artifact isolation** — each agent creates a separate git branch, so downstream agents cannot read upstream artifacts. The engineer cannot see the PM's REQ; QA cannot see the engineer's TSPEC. The workflow is structurally broken for any multi-agent feature.
 
@@ -63,7 +63,7 @@ Both gaps must be resolved before any multi-agent feature can execute end-to-end
 | **US-01** | As an engineer agent, I want to read the PM's committed REQ document from git when my phase starts, so that I can see the upstream deliverable without it being in my local worktree. |
 | **US-02** | As a QA agent, I want to read both the PM's REQ and the engineer's TSPEC when my phase starts, so that I can produce test properties that trace to actual requirements. |
 | **US-03** | As a product manager agent, I want my commits to be available on the shared feature branch immediately after my phase completes, so that the next agent in the sequence can pull them. |
-| **US-04** | As a user, I want to send `@product-manager address feedback from docs/016-messaging-abstraction/CROSS-REVIEW-engineer-REQ.md` to a feature thread and have the PM agent re-run with that instruction, so that I can trigger ad-hoc revisions without waiting for the sequential workflow to reach the PM phase again. |
+| **US-04** | As a user, I want to send `@product-manager address feedback from docs/messaging-abstraction/CROSS-REVIEW-engineer-REQ.md` to a feature thread and have the PM agent re-run with that instruction, so that I can trigger ad-hoc revisions without waiting for the sequential workflow to reach the PM phase again. |
 | **US-05** | As a user, I want to receive a Discord acknowledgement when my @-mention message is dispatched to an agent, so that I know Ptah understood my intent and is acting on it. |
 | **US-06** | As a user, I want to receive a Discord error message if my @-mention names an agent that is not part of the current feature's workflow, so that I understand why nothing happened. |
 | **US-07** | As a user, I want to send multiple @-mention revision requests in quick succession and have them processed in order, so that I can queue up several instructions without waiting for each one to complete. |
@@ -121,11 +121,11 @@ The shared feature branch must already exist before any agent's worktree is crea
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: Agent eng is starting phase req-review for feature 016-messaging-abstraction,
-       and feat-016-messaging-abstraction already exists (per REQ-WB-05)
+GIVEN: Agent eng is starting phase req-review for feature messaging-abstraction,
+       and feat-messaging-abstraction already exists (per REQ-WB-05)
 WHEN:  invokeSkill creates the agent's worktree
-THEN:  A worktree is created at /tmp/ptah-worktrees/eng/016-messaging-abstraction/req-review
-       checked out at the HEAD of feat-016-messaging-abstraction,
+THEN:  A worktree is created at /tmp/ptah-worktrees/eng/messaging-abstraction/req-review
+       checked out at the HEAD of feat-messaging-abstraction,
        and no new branch is created
 ```
 
@@ -150,10 +150,10 @@ The `ArtifactCommitter` interface and its call site in `invokeSkill` must be upd
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: Agent pm has committed docs/016-messaging-abstraction/016-REQ-messaging-abstraction.md
-       in its worktree, which is checked out on feat-016-messaging-abstraction
+GIVEN: Agent pm has committed docs/messaging-abstraction/016-REQ-messaging-abstraction.md
+       in its worktree, which is checked out on feat-messaging-abstraction
 WHEN:  The post-skill commit step runs
-THEN:  The commit is pushed directly to feat-016-messaging-abstraction on the remote
+THEN:  The commit is pushed directly to feat-messaging-abstraction on the remote
        (no intermediate branch is created or merged),
        and the next agent can read the file by pulling that branch
 ```
@@ -181,11 +181,11 @@ The `hasUnmergedCommits` check used to short-circuit retries must also be keyed 
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: A Temporal activity retry occurs and /tmp/ptah-worktrees/eng/016-messaging-abstraction/req-review
-       already exists, checked out on feat-016-messaging-abstraction
+GIVEN: A Temporal activity retry occurs and /tmp/ptah-worktrees/eng/messaging-abstraction/req-review
+       already exists, checked out on feat-messaging-abstraction
 WHEN:  invokeSkill attempts to create the worktree
 THEN:  The activity detects the existing path and reuses it without error,
-       regardless of how many other worktrees may also be checked out on feat-016-messaging-abstraction
+       regardless of how many other worktrees may also be checked out on feat-messaging-abstraction
 ```
 
 ---
@@ -216,16 +216,16 @@ If the branch already exists (e.g., from a previous run or manual creation), the
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: Feature 016-messaging-abstraction is being started for the first time
-       and feat-016-messaging-abstraction does not exist on the remote
+GIVEN: Feature messaging-abstraction is being started for the first time
+       and feat-messaging-abstraction does not exist on the remote
 WHEN:  startWorkflowForFeature is called
-THEN:  feat-016-messaging-abstraction is created on the remote,
+THEN:  feat-messaging-abstraction is created on the remote,
        the Temporal workflow is then submitted,
        and the first agent's invokeSkill activity can successfully add a worktree
-       from feat-016-messaging-abstraction without error
+       from feat-messaging-abstraction without error
 
 WHO:   As the orchestration system
-GIVEN: feat-016-messaging-abstraction already exists on the remote
+GIVEN: feat-messaging-abstraction already exists on the remote
 WHEN:  startWorkflowForFeature is called
 THEN:  No duplicate branch creation is attempted, and the workflow starts normally
 ```
@@ -256,7 +256,7 @@ The `@{agent-id}` directive qualifies **only when it appears as the first token*
 ```
 WHO:   As the orchestration system
 GIVEN: A user sends "@product-manager address feedback from CROSS-REVIEW-engineer-REQ.md"
-       to the feature thread for 016-messaging-abstraction
+       to the feature thread for messaging-abstraction
 WHEN:  The message handler processes the message
 THEN:  The message is classified as an ad-hoc request targeting agent "pm",
        with the remainder of the message as the instruction payload
@@ -285,7 +285,7 @@ The orchestrator must be able to resolve the active Temporal workflow ID from th
 **Acceptance Criteria:**
 ```
 WHO:   As a user
-GIVEN: Feature 016-messaging-abstraction has an active workflow and pm is a participant
+GIVEN: Feature messaging-abstraction has an active workflow and pm is a participant
 WHEN:  The user sends "@pm address feedback from CROSS-REVIEW-engineer-REQ.md"
 THEN:  The workflow receives an adHocRevision signal for agent "pm",
        the pm agent is invoked with the instruction text,
@@ -311,11 +311,11 @@ If the `@{agent-id}` in the user's message does not match any agent registered i
 **Acceptance Criteria:**
 ```
 WHO:   As a user
-GIVEN: Feature 016-messaging-abstraction's workflow uses agents: pm, eng, qa
+GIVEN: Feature messaging-abstraction's workflow uses agents: pm, eng, qa
 WHEN:  The user sends "@designer create a mockup"
 THEN:  No Temporal signal is sent,
        and the bot replies in the Discord thread:
-       "Agent @designer is not part of the 016-messaging-abstraction workflow.
+       "Agent @designer is not part of the messaging-abstraction workflow.
         Known agents: pm, eng, qa."
 ```
 
@@ -365,10 +365,10 @@ If an `@agent-id` message arrives for a feature thread but no active Temporal wo
 **Acceptance Criteria:**
 ```
 WHO:   As a user
-GIVEN: Feature 016-messaging-abstraction's workflow has completed or does not exist
+GIVEN: Feature messaging-abstraction's workflow has completed or does not exist
 WHEN:  The user sends "@pm address feedback from CROSS-REVIEW-engineer-REQ.md"
 THEN:  No Temporal signal is sent,
-       and the bot replies: "No active workflow found for 016-messaging-abstraction."
+       and the bot replies: "No active workflow found for messaging-abstraction."
 ```
 
 ---
@@ -453,7 +453,7 @@ THEN:  The workflow automatically schedules eng-review and qa-cross-review to re
 | **Dependencies** | REQ-MR-02, REQ-MR-05 |
 
 **Description:**
-To send an `adHocRevision` signal or check for an active workflow, the orchestrator must know the Temporal workflow ID for a given feature. Rather than maintaining an in-memory map or querying Temporal's list API, workflow IDs must be **deterministically derived from the feature slug**: `ptah-{featureSlug}` (e.g., `ptah-016-messaging-abstraction`).
+To send an `adHocRevision` signal or check for an active workflow, the orchestrator must know the Temporal workflow ID for a given feature. Rather than maintaining an in-memory map or querying Temporal's list API, workflow IDs must be **deterministically derived from the feature slug**: `ptah-{featureSlug}` (e.g., `ptah-messaging-abstraction`).
 
 This approach has three advantages:
 1. No state to maintain — the orchestrator can reconstruct the workflow ID at any time from the feature slug.
@@ -465,16 +465,16 @@ Workflow IDs must be assigned this deterministic format when workflows are start
 **Acceptance Criteria:**
 ```
 WHO:   As the orchestration system
-GIVEN: A user sends "@pm address feedback" for feature 016-messaging-abstraction
+GIVEN: A user sends "@pm address feedback" for feature messaging-abstraction
 WHEN:  The orchestrator constructs the Temporal signal target
-THEN:  The workflow ID used is "ptah-016-messaging-abstraction",
+THEN:  The workflow ID used is "ptah-messaging-abstraction",
        no lookup table or query API is consulted,
        and if that workflow ID is not found in Temporal, the response follows REQ-MR-05
 
 WHO:   As the orchestration system
-GIVEN: startWorkflowForFeature is called for feature 016-messaging-abstraction
+GIVEN: startWorkflowForFeature is called for feature messaging-abstraction
 WHEN:  The Temporal workflow is submitted
-THEN:  The workflow is registered under the ID "ptah-016-messaging-abstraction"
+THEN:  The workflow is registered under the ID "ptah-messaging-abstraction"
 ```
 
 ---

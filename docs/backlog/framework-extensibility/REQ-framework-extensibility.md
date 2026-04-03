@@ -22,7 +22,7 @@ Today, Ptah has three extensibility limitations:
 
 1. **No library exports.** `@ohenak/ptah` is a CLI binary only. Embedding Ptah into another application requires spawning a subprocess — fragile and limiting. There is no programmatic API for creating workflows, sending signals, or handling events.
 
-2. **No lifecycle hooks.** After features 015 (config-driven phases) and 016 (messaging abstraction), adding new agents and phases is config-driven. But there is no mechanism for running custom logic at phase boundaries — e.g., "after implementation review is approved, run a deployment pipeline" or "before each review, lint the documents."
+2. **No lifecycle hooks.** After features 015 (config-driven phases) and messaging-abstraction, adding new agents and phases is config-driven. But there is no mechanism for running custom logic at phase boundaries — e.g., "after implementation review is approved, run a deployment pipeline" or "before each review, lint the documents."
 
 3. **Claude Code only.** The `SkillClient` only supports Claude Code invocations. Using a Python-based LangGraph agent, a shell script for linting, or an agent on another framework requires writing a Claude Code skill wrapper — inelegant and token-wasteful. The industry is converging on MCP for tool integration (97M+ monthly SDK downloads) and A2A for agent-to-agent communication (50+ partners in the Linux Foundation project).
 
