@@ -53,7 +53,7 @@ export async function createTemporalWorker(deps: WorkerDeps): Promise<Worker> {
   // Resolve the workflows module path relative to this file's location.
   // In the built output, this resolves to dist/src/temporal/workflows/feature-lifecycle.js
   const currentDir = dirname(fileURLToPath(import.meta.url));
-  const workflowsPath = resolve(currentDir, "./workflows/feature-lifecycle");
+  const workflowsPath = resolve(currentDir, "./workflows/feature-lifecycle.js");
 
   const worker = await Worker.create({
     connection,
