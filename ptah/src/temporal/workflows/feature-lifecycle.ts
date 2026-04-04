@@ -243,6 +243,9 @@ export function buildInitialWorkflowState(
     failureInfo: null,
     startedAt,
     updatedAt: startedAt,
+    featurePath: null,
+    worktreeRoot: null,
+    signOffs: {},
   };
 }
 

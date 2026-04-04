@@ -93,6 +93,14 @@ export interface FeatureWorkflowState {
   failureInfo: FailureInfo | null;
   startedAt: string;
   updatedAt: string;
+
+  // --- Feature Lifecycle Folders ---
+  /** Resolved feature folder path relative to worktree root (e.g. "docs/in-progress/my-feature/") */
+  featurePath: string | null;
+  /** Absolute path to the active worktree root (e.g. "/tmp/ptah-wt-abc123/") */
+  worktreeRoot: string | null;
+  /** Sign-off tracking: agent ID → ISO 8601 timestamp of LGTM */
+  signOffs: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------

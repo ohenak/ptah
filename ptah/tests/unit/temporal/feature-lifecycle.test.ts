@@ -319,6 +319,40 @@ describe("buildInitialWorkflowState", () => {
       })
     ).toThrow("startAtPhase 'nonexistent-phase' not found in workflow config");
   });
+
+  // A1: New fields for feature lifecycle folders
+  it("initializes featurePath as null", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+    });
+    expect(state.featurePath).toBeNull();
+  });
+
+  it("initializes worktreeRoot as null", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+    });
+    expect(state.worktreeRoot).toBeNull();
+  });
+
+  it("initializes signOffs as empty object", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+    });
+    expect(state.signOffs).toEqual({});
+  });
 });
 
 // ---------------------------------------------------------------------------

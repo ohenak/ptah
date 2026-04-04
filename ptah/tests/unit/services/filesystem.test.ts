@@ -96,3 +96,43 @@ describe("NodeFileSystem — copyFile (unit)", () => {
     await expect(fileSystem.copyFile("nonexistent.txt", "dest.txt")).rejects.toThrow();
   });
 });
+
+// A5: readDirMatching
+describe("NodeFileSystem — readDirMatching (unit)", () => {
+  let tmpDir: string;
+  let fileSystem: NodeFileSystem;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ptah-fs-test-"));
+    fileSystem = new NodeFileSystem(tmpDir);
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns entries matching the regex pattern", async () => {
+    const subdir = path.join(tmpDir, "docs");
+    await fs.mkdir(subdir);
+    await fs.writeFile(path.join(subdir, "REQ-my-feature.md"), "", "utf-8");
+    await fs.writeFile(path.join(subdir, "TSPEC-my-feature.md"), "", "utf-8");
+    await fs.writeFile(path.join(subdir, "notes.txt"), "", "utf-8");
+
+    const result = await fileSystem.readDirMatching("docs", /\.md$/);
+    expect(result.sort()).toEqual(["REQ-my-feature.md", "TSPEC-my-feature.md"]);
+  });
+
+  it("returns empty array when no entries match", async () => {
+    const subdir = path.join(tmpDir, "docs");
+    await fs.mkdir(subdir);
+    await fs.writeFile(path.join(subdir, "notes.txt"), "", "utf-8");
+
+    const result = await fileSystem.readDirMatching("docs", /\.md$/);
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when directory does not exist", async () => {
+    const result = await fileSystem.readDirMatching("nonexistent", /\.md$/);
+    expect(result).toEqual([]);
+  });
+});

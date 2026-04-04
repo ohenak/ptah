@@ -194,36 +194,6 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23] | [REQ-NF-14-05] | [FSPEC-TL-02](../014-tech-lead-orchestration/014-FSPEC-tech-lead-orchestration.md) | P1 | 14 | FSPEC Complete |
 
-| [US-01] (FLF) | [REQ-FS-01] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-01] (FLF) | [REQ-FS-02] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-02] (FLF) | [REQ-FS-03] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-03] (FLF) | [REQ-FS-04] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-01] (FLF) | [REQ-SK-01] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-05] (FLF) | [REQ-SK-02] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF) | [REQ-SK-03] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-03] (FLF) | [REQ-SK-04] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-05] (FLF) | [REQ-SK-05] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-05] (FLF) | [REQ-SK-06] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-05] (FLF) | [REQ-SK-07] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF), [US-03] (FLF) | [REQ-SK-08] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF) | [REQ-PR-01] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-03] (FLF) | [REQ-PR-02] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-03] (FLF) | [REQ-PR-03] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-03] (FLF) | [REQ-PR-04] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P1 | FLF | FSPEC Complete |
-| [US-02] (FLF), [US-03] (FLF) | [REQ-PR-05] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-04] (FLF) | [REQ-MG-01] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-03] (FLF), [US-04] (FLF) | [REQ-MG-02] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF), [US-04] (FLF) | [REQ-MG-03] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-04] (FLF) | [REQ-MG-04] | [FSPEC-MG-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-06] (FLF) | [REQ-WT-01] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-06] (FLF) | [REQ-WT-02] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-06] (FLF) | [REQ-WT-03] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-05] (FLF), [US-06] (FLF) | [REQ-WT-04] | [FSPEC-SK-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF), [US-03] (FLF), [US-06] (FLF) | [REQ-WT-05] | [FSPEC-WT-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P0 | FLF | FSPEC Complete |
-| [US-02] (FLF), [US-03] (FLF) | [REQ-NF-01] | Pending TSPEC | P0 | FLF | Pending Spec |
-| [US-02] (FLF), [US-03] (FLF) | [REQ-NF-02] | [FSPEC-PR-01](../backlog/feature-lifecycle-folders/FSPEC-feature-lifecycle-folders.md) | P1 | FLF | FSPEC Complete |
-| [US-05] (FLF) | [REQ-NF-03] | Pending TSPEC | P2 | FLF | Pending Spec |
-
 ---
 
 ## 3. Coverage Analysis
@@ -624,30 +594,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.7 | March 15, 2026 | Product Manager | Added FSPEC mappings for Phase 7 (Polish). 2 FSPECs created: FSPEC-DI-02 (thread archiving on resolution), FSPEC-EX-01 (configuration-driven agent extensibility). Phase 7 view updated with FSPEC column. Both Phase 7 requirements now FSPEC'd; pending TSPEC. |
 | 2.9 | March 19, 2026 | Product Manager | Phase 14 FSPEC complete. Added REQ-NF-14-05 (pre-flight infrastructure check) to REQ v1.4 (28 requirements total for Phase 14). Added REQ-PD-06 (cycle detection) row — previously missing from matrix. Updated all Phase 14 requirement rows: 22 of 29 requirements FSPEC'd (FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03 in 014-FSPEC-tech-lead-orchestration.md); 7 pending TSPEC (REQ-TL-01, REQ-TL-03, REQ-PR-04, REQ-NF-14-03, REQ-NF-14-04 and supporting). Total requirements: 164. |
 | 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
-| 3.1 | April 3, 2026 | Product Manager | Added feature 017 (Message Acknowledgement, formerly 020). 3 new user stories (US-33, US-34, US-35). 9 requirements added: MA domain (6 reqs: REQ-MA-01 through REQ-MA-06) + 3 non-functional (REQ-NF-17-01 through REQ-NF-17-03). All pending FSPEC/TSPEC. REQ at docs/in-progress/message-acknowledgement/REQ-message-acknowledgement.md. Total requirements: 172. |
-| 3.2 | April 3, 2026 | Product Manager | Added feature 016 (Agent Coordination, formerly 021). 6 new user stories (US-36 through US-41). 11 requirements added: WB domain (4 reqs: REQ-WB-01 through REQ-WB-04, shared branch strategy), MR domain (5 reqs: REQ-MR-01 through REQ-MR-05, ad-hoc message routing), NF domain (2 reqs: REQ-NF-01, REQ-NF-02). All pending FSPEC/TSPEC. REQ at docs/in-progress/agent-coordination/REQ-agent-coordination.md. Total requirements: 183. |
-| 3.3 | April 3, 2026 | Product Manager | REQ-016 v1.1 — closed all 3 open questions. Added 2 user stories (US-42, US-43). Added 2 requirements: REQ-MR-06 (signal queuing, P0) and REQ-MR-07 (automatic downstream cascade, P0). Total requirements: 185. |
-| 3.4 | April 3, 2026 | Product Manager | Renumbered features to reflect implementation order: 021→016, 020→017. Moved to docs/in-progress/ per lifecycle folder standard. REQ-016 v1.2 addressed engineer cross-review (F-01–F-09), added REQ-WB-05 and REQ-MR-08. Total requirements: 187. |
-
-### Phase 16 — Agent Coordination
-
-| Requirement | FSPEC | Specification | Priority | User Scenarios |
-|-------------|-------|---------------|----------|----------------|
-| [REQ-WB-01] | Pending | Pending | P0 | [US-36], [US-37], [US-38] |
-| [REQ-WB-02] | Pending | Pending | P0 | [US-36], [US-37], [US-38] |
-| [REQ-WB-03] | Pending | Pending | P0 | [US-38] |
-| [REQ-WB-04] | Pending | Pending | P0 | [US-36] |
-| [REQ-WB-05] | Pending | Pending | P0 | [US-36], [US-37], [US-38] |
-| [REQ-MR-01] | Pending | Pending | P0 | [US-39] |
-| [REQ-MR-02] | Pending | Pending | P0 | [US-39] |
-| [REQ-MR-03] | Pending | Pending | P1 | [US-41] |
-| [REQ-MR-04] | Pending | Pending | P1 | [US-40] |
-| [REQ-MR-05] | Pending | Pending | P1 | [US-41] |
-| [REQ-MR-06] | Pending | Pending | P0 | [US-42] |
-| [REQ-MR-07] | Pending | Pending | P0 | [US-43] |
-| [REQ-MR-08] | Pending | Pending | P0 | [US-39], [US-41] |
-| [REQ-NF-01] | Pending | Pending | P0 | [US-39] |
-| [REQ-NF-02] | Pending | Pending | P1 | [US-36], [US-37] |
+| 3.1 | April 3, 2026 | Product Manager | Added feature 020 (Message Acknowledgement). 3 new user stories (US-33, US-34, US-35). 9 requirements added: MA domain (6 reqs: REQ-MA-01 through REQ-MA-06) + 3 non-functional (REQ-NF-20-01 through REQ-NF-20-03). All pending FSPEC/TSPEC. REQ at docs/020-message-acknowledgement/020-REQ-message-acknowledgement.md. Total requirements: 172. |
 
 ---
 
