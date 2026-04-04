@@ -19,13 +19,13 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| A1 | Add `featurePath`, `worktreeRoot`, `signOffs` fields to `FeatureWorkflowState` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/types.ts` | ⬚ Not Started |
-| A2 | Extend `WorktreeRegistry` — add `workflowId`, `runId`, `activityId`, `createdAt` to `ActiveWorktree`; add `findByActivity` method | `ptah/tests/unit/orchestrator/worktree-registry.test.ts` | `ptah/src/orchestrator/worktree-registry.ts` | ⬚ Not Started |
-| A3 | Add `gitMvInWorktree` method to `GitClient` interface + `NodeGitClient` implementation | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ⬚ Not Started |
-| A4 | Add `listDirInWorktree` method to `GitClient` interface + `NodeGitClient` implementation | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ⬚ Not Started |
-| A5 | Add `readDirMatching` method to `FileSystem` interface + `NodeFileSystem` implementation | `ptah/tests/unit/services/filesystem.test.ts` | `ptah/src/services/filesystem.ts` | ⬚ Not Started |
-| A6 | Add `FakeFeatureResolver` and `FakeWorktreeManager` to test fixtures | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| A7 | Update existing fakes (`FakeGitClient`, `FakeFileSystem`, `FakeWorktreeRegistry`) with new methods | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| A1 | Add `featurePath`, `worktreeRoot`, `signOffs` fields to `FeatureWorkflowState` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/types.ts` | ✅ Done |
+| A2 | Extend `WorktreeRegistry` — add `workflowId`, `runId`, `activityId`, `createdAt` to `ActiveWorktree`; add `findByActivity` method | `ptah/tests/unit/orchestrator/worktree-registry.test.ts` | `ptah/src/orchestrator/worktree-registry.ts` | ✅ Done |
+| A3 | Add `gitMvInWorktree` method to `GitClient` interface + `NodeGitClient` implementation | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ✅ Done |
+| A4 | Add `listDirInWorktree` method to `GitClient` interface + `NodeGitClient` implementation | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ✅ Done |
+| A5 | Add `readDirMatching` method to `FileSystem` interface + `NodeFileSystem` implementation | `ptah/tests/unit/services/filesystem.test.ts` | `ptah/src/services/filesystem.ts` | ✅ Done |
+| A6 | Add `FakeFeatureResolver` and `FakeWorktreeManager` to test fixtures | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| A7 | Update existing fakes (`FakeGitClient`, `FakeFileSystem`, `FakeWorktreeRegistry`) with new methods | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
 
 ### Phase B: Feature Resolver Service
 
