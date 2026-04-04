@@ -8,7 +8,7 @@
 | **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
 | **Specifications** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md), [TSPEC-FLF](TSPEC-feature-lifecycle-folders.md) |
 | **Execution Plan** | [PLAN-FLF](PLAN-feature-lifecycle-folders.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 4, 2026 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -55,7 +55,7 @@ Properties are derived from REQ-FLF (v2.3), FSPEC-FLF (v1.1), and TSPEC-FLF (v1.
 
 | Category | Count | Requirements Covered | Test Level |
 |----------|-------|----------------------|------------|
-| Functional | 30 | REQ-FS-01..04, REQ-PR-01..05, REQ-SK-01..04, REQ-SK-06..08, REQ-MG-01..04, REQ-WT-01..02, REQ-WT-05, REQ-NF-03 | Unit |
+| Functional | 31 | REQ-FS-01..04, REQ-PR-01..05, REQ-SK-01..04, REQ-SK-06..08, REQ-MG-01..04, REQ-WT-01..02, REQ-WT-05, REQ-NF-03 | Unit |
 | Contract | 8 | REQ-SK-06, REQ-SK-07, REQ-WT-04 | Unit / Integration |
 | Error Handling | 12 | REQ-PR-01..05, REQ-SK-02, REQ-SK-06, REQ-WT-01..02, REQ-MG-01..04 | Unit |
 | Data Integrity | 7 | REQ-PR-02..04, REQ-MG-02..03 | Unit |
@@ -63,7 +63,7 @@ Properties are derived from REQ-FLF (v2.3), FSPEC-FLF (v1.1), and TSPEC-FLF (v1.
 | Idempotency | 6 | REQ-NF-02 | Unit / Integration |
 | Observability | 5 | REQ-SK-02, REQ-WT-02, REQ-NF-02 | Unit |
 | Negative | 18 | REQ-FS-02..03, REQ-PR-01..04, REQ-SK-02..08, REQ-WT-01..02, REQ-WT-05, REQ-MG-02..04 | Unit / Integration |
-| **Total** | **93** | | |
+| **Total** | **94** | | |
 
 ---
 
@@ -110,6 +110,7 @@ Core business logic and behavior.
 | PROP-MG-03 | `MigrateLifecycleCommand` must move remaining feature folders to `docs/in-progress/` when migration runs | [REQ-MG-03], [FSPEC-MG-01] | Unit | P0 |
 | PROP-MG-04 | `MigrateLifecycleCommand` must not move `requirements/`, `templates/`, `open-questions/`, or standalone files when migration runs | [REQ-MG-04], [FSPEC-MG-01] | Unit | P0 |
 | PROP-WT-01 | `WorktreeManager.create` must create a new git worktree at `/tmp/ptah-wt-{uuid}/` checked out on the feature branch when a skill invocation or promotion activity is prepared | [REQ-WT-01], [FSPEC-WT-01 BR-03] | Unit | P0 |
+| PROP-WT-19 | The orchestrator must destroy the skill invocation worktree via `WorktreeManager.destroy` in a finally block after the skill activity completes, regardless of whether the skill succeeded or failed | [REQ-WT-02], [FSPEC-WT-01 behavioral flow cleanup steps 6–8] | Unit | P0 |
 | PROP-NF-01 | `FeatureResolver.resolve` must fall back to searching `docs/{NNN}-{slug}/` or `docs/{slug}/` at the repository root when lifecycle folders do not exist and the feature is not found via lifecycle search | [REQ-NF-03] | Unit | P2 |
 
 ### 3.2 Contract Properties
@@ -174,7 +175,7 @@ Cross-module interactions, dependency wiring, and composition.
 | PROP-WT-11 | Composition root must instantiate `DefaultFeatureResolver` and `DefaultWorktreeManager` and inject them into the activity factory when the orchestrator starts | [TSPEC-FLF 4.4] | Integration | P0 |
 | PROP-WT-12 | Composition root must call `worktreeManager.cleanupDangling` after the Temporal client connects during orchestrator startup when the process initializes | [TSPEC-FLF 4.4] | Integration | P0 |
 
-### 3.8 Idempotency Properties
+### 3.6 Idempotency Properties
 
 Repeated operations produce the same result.
 
@@ -187,7 +188,7 @@ Repeated operations produce the same result.
 | PROP-NF-06 | `promoteInProgressToCompleted` Phase 2 must not make a commit when all files in the folder already have the NNN prefix | [FSPEC-PR-01 edge case: no files to rename] | Unit | P1 |
 | PROP-NF-07 | `promoteInProgressToCompleted` must not re-assign a different NNN when the destination folder with the original NNN already exists from a prior partial run | [REQ-NF-02], [FSPEC-PR-01 BR-05] | Unit | P1 |
 
-### 3.9 Observability Properties
+### 3.7 Observability Properties
 
 Logging, metrics, and error reporting.
 
@@ -258,7 +259,7 @@ Every requirement must map to at least one property. Gaps are flagged with reaso
 | REQ-MG-03 | PROP-MG-03, PROP-MG-09 | Full |
 | REQ-MG-04 | PROP-MG-04, PROP-MG-12 | Full |
 | REQ-WT-01 | PROP-WT-01, PROP-WT-15, PROP-WT-16 | Full |
-| REQ-WT-02 | PROP-WT-03, PROP-WT-04, PROP-WT-07, PROP-WT-08, PROP-WT-12, PROP-WT-14, PROP-WT-18 | Full |
+| REQ-WT-02 | PROP-WT-03, PROP-WT-04, PROP-WT-07, PROP-WT-08, PROP-WT-12, PROP-WT-14, PROP-WT-18, PROP-WT-19 | Full |
 | REQ-WT-03 | PROP-WT-09 | Full |
 | REQ-WT-04 | PROP-WT-05, PROP-SK-12, PROP-SK-13 | Full |
 | REQ-WT-05 | PROP-WT-10, PROP-WT-17 | Full |
@@ -270,10 +271,10 @@ Every requirement must map to at least one property. Gaps are flagged with reaso
 
 | Specification | Properties | Coverage |
 |---------------|------------|----------|
-| FSPEC-PR-01 | PROP-PR-01..PR-24, PROP-NF-02..NF-07, PROP-SK-05..SK-07 | Full |
-| FSPEC-SK-01 | PROP-SK-02..SK-20 | Full |
-| FSPEC-WT-01 | PROP-WT-01..WT-18 | Full |
-| FSPEC-MG-01 | PROP-MG-01..MG-14 | Full |
+| FSPEC-PR-01 | PROP-PR-01, PROP-PR-02, PROP-PR-03, PROP-PR-04, PROP-PR-05, PROP-PR-06, PROP-PR-07, PROP-PR-08, PROP-PR-09, PROP-PR-10, PROP-PR-11, PROP-PR-12, PROP-PR-13, PROP-PR-14, PROP-PR-15, PROP-PR-16, PROP-PR-17, PROP-PR-18, PROP-PR-19, PROP-PR-20, PROP-PR-21, PROP-PR-22, PROP-PR-23, PROP-PR-24, PROP-NF-02, PROP-NF-03, PROP-NF-04, PROP-NF-05, PROP-NF-06, PROP-NF-07, PROP-SK-05, PROP-SK-06, PROP-SK-07 | Full |
+| FSPEC-SK-01 | PROP-SK-02, PROP-SK-03, PROP-SK-04, PROP-SK-08, PROP-SK-09, PROP-SK-10, PROP-SK-11, PROP-SK-12, PROP-SK-13, PROP-SK-15, PROP-SK-16, PROP-SK-17, PROP-SK-18, PROP-SK-19 | Full |
+| FSPEC-WT-01 | PROP-WT-01, PROP-WT-02, PROP-WT-03, PROP-WT-04, PROP-WT-05, PROP-WT-06, PROP-WT-07, PROP-WT-08, PROP-WT-09, PROP-WT-10, PROP-WT-11, PROP-WT-12, PROP-WT-13, PROP-WT-14, PROP-WT-15, PROP-WT-16, PROP-WT-17, PROP-WT-18, PROP-WT-19 | Full |
+| FSPEC-MG-01 | PROP-MG-01, PROP-MG-02, PROP-MG-03, PROP-MG-04, PROP-MG-05, PROP-MG-06, PROP-MG-07, PROP-MG-08, PROP-MG-09, PROP-MG-10, PROP-MG-11, PROP-MG-12, PROP-MG-13, PROP-MG-14 | Full |
 
 ### 5.3 Coverage by Priority
 
@@ -294,16 +295,16 @@ Summary of how properties are distributed across the test pyramid.
        /----------\
       / Integration \      12 -- cross-module boundaries
      /----------------\
-    /    Unit Tests     \  81 -- fast, isolated, comprehensive
+    /    Unit Tests     \  82 -- fast, isolated, comprehensive
    /____________________\
 ```
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 81 | 87% |
+| Unit | 82 | 87% |
 | Integration | 12 | 13% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **93** | **100%** |
+| **Total** | **94** | **100%** |
 
 ---
 
@@ -331,6 +332,7 @@ Summary of how properties are distributed across the test pyramid.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 4, 2026 | Test Engineer | Initial properties document |
+| 1.1 | April 4, 2026 | Test Engineer | Address PM cross-review. F-01 (Medium): added PROP-WT-19 for normal-path skill invocation worktree cleanup; updated REQ-WT-02 coverage row and property summary count. F-02 (Low): renumbered sections 3.8→3.6 and 3.9→3.7 to eliminate gap. Q-01: replaced range notation in §5.2 with explicit property IDs. |
 
 ---
 
