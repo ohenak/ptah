@@ -22,6 +22,7 @@ import type {
   SkillActivityInput,
   SkillActivityResult,
 } from "../types.js";
+import type { FeatureResolver, FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
 
 // ---------------------------------------------------------------------------
 // Dependency injection interface
@@ -36,6 +37,7 @@ export interface SkillActivityDeps {
   agentRegistry: AgentRegistry;
   logger: Logger;
   config: PtahConfig;
+  featureResolver?: FeatureResolver;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,15 @@ export interface MergeWorktreeInput {
 }
 
 export type MergeResult = "merged" | "conflict";
+
+// ---------------------------------------------------------------------------
+// resolveFeaturePath Activity types
+// ---------------------------------------------------------------------------
+
+export interface ResolveFeaturePathInput {
+  featureSlug: string;
+  worktreeRoot: string;
+}
 
 // ---------------------------------------------------------------------------
 // Internal constants
@@ -385,7 +396,27 @@ export function createActivities(deps: SkillActivityDeps) {
     return "merged";
   }
 
-  return { invokeSkill, mergeWorktree };
+  // -------------------------------------------------------------------------
+  // resolveFeaturePath Activity (E10)
+  // Thin wrapper around FeatureResolver.resolve() for Temporal determinism.
+  // -------------------------------------------------------------------------
+
+  async function resolveFeaturePath(
+    input: ResolveFeaturePathInput,
+  ): Promise<FeatureResolverResult> {
+    const { featureSlug, worktreeRoot } = input;
+
+    if (!deps.featureResolver) {
+      throw ApplicationFailure.nonRetryable(
+        "FeatureResolver not configured in SkillActivityDeps",
+        "ConfigurationError",
+      );
+    }
+
+    return deps.featureResolver.resolve(featureSlug, worktreeRoot);
+  }
+
+  return { invokeSkill, mergeWorktree, resolveFeaturePath };
 }
 
 // ---------------------------------------------------------------------------

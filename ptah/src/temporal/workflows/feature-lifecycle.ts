@@ -41,8 +41,9 @@ import type { MergeResult, MergeWorktreeInput } from "../activities/skill-activi
 
 export interface ContextResolutionContext {
   featureSlug: string;
-  featurePrefix: string;
-  docsRoot?: string;
+  /** Resolved feature folder path, e.g. "docs/in-progress/my-feature/" */
+  featurePath: string;
+  docsRoot?: string; // kept for backward compat, ignored when featurePath is set
 }
 
 // ---------------------------------------------------------------------------
@@ -59,25 +60,40 @@ const DOC_TYPE_TOKENS: Record<string, string> = {
 };
 
 /**
+ * Extract the NNN prefix from a completed feature path.
+ *
+ * Given "docs/completed/015-my-feature/", extracts "015".
+ * Returns null if the path is not in completed/ or has no NNN prefix.
+ */
+export function extractCompletedPrefix(featurePath: string): string | null {
+  const match = featurePath.match(/docs\/completed\/([0-9]{3})-/);
+  return match ? match[1] : null;
+}
+
+/**
  * Resolve `{feature}/DOC_TYPE` references to actual file paths.
  *
- * | Reference          | Resolves To                                               |
- * |--------------------|-----------------------------------------------------------|
- * | {feature}/overview | docs/{prefix}-{slug}/overview.md                         |
- * | {feature}/REQ      | docs/{prefix}-{slug}/{prefix}-REQ-{slug}.md              |
- * | {feature}/FSPEC    | docs/{prefix}-{slug}/{prefix}-FSPEC-{slug}.md            |
- * | {feature}/TSPEC    | docs/{prefix}-{slug}/{prefix}-TSPEC-{slug}.md            |
- * | {feature}/PLAN     | docs/{prefix}-{slug}/{prefix}-PLAN-{slug}.md             |
- * | {feature}/PROPERTIES | docs/{prefix}-{slug}/{prefix}-PROPERTIES-{slug}.md     |
- * | other (no {feature}) | passed through unchanged                               |
+ * For backlog/in-progress features (unnumbered):
+ * | Reference            | Resolves To                          |
+ * |----------------------|--------------------------------------|
+ * | {feature}/overview   | {featurePath}overview.md             |
+ * | {feature}/REQ        | {featurePath}REQ-{slug}.md           |
+ * | {feature}/FSPEC      | {featurePath}FSPEC-{slug}.md         |
+ * | other (no {feature}) | passed through unchanged             |
+ *
+ * For completed features (NNN-prefixed):
+ * | Reference            | Resolves To                          |
+ * |----------------------|--------------------------------------|
+ * | {feature}/overview   | {featurePath}{NNN}-overview.md       |
+ * | {feature}/REQ        | {featurePath}{NNN}-REQ-{slug}.md     |
+ * | other (no {feature}) | passed through unchanged             |
  */
 export function resolveContextDocuments(
   refs: string[],
   ctx: ContextResolutionContext,
 ): string[] {
-  const docsRoot = ctx.docsRoot ?? "docs";
-  const { featureSlug, featurePrefix } = ctx;
-  const featureDir = `${docsRoot}/${featurePrefix}-${featureSlug}`;
+  const { featureSlug, featurePath } = ctx;
+  const nnnPrefix = extractCompletedPrefix(featurePath);
 
   return refs.map((ref) => {
     if (!ref.startsWith("{feature}/")) {
@@ -88,11 +104,15 @@ export function resolveContextDocuments(
     const docType = ref.slice("{feature}/".length);
 
     if (docType === "overview") {
-      return `${featureDir}/overview.md`;
+      return nnnPrefix
+        ? `${featurePath}${nnnPrefix}-overview.md`
+        : `${featurePath}overview.md`;
     }
 
     if (DOC_TYPE_TOKENS[docType]) {
-      return `${featureDir}/${featurePrefix}-${docType}-${featureSlug}.md`;
+      return nnnPrefix
+        ? `${featurePath}${nnnPrefix}-${docType}-${featureSlug}.md`
+        : `${featurePath}${docType}-${featureSlug}.md`;
     }
 
     // Unknown {feature}/X reference — pass through unchanged
@@ -191,6 +211,12 @@ export interface BuildInitialStateParams {
   startedAt: string;
   startAtPhase?: string;
   initialReviewState?: Record<string, ReviewState>;
+  /** Carried forward from continue-as-new payload */
+  featurePath?: string | null;
+  /** Carried forward from continue-as-new payload (always null — new run gets fresh worktrees) */
+  worktreeRoot?: string | null;
+  /** Carried forward from continue-as-new payload */
+  signOffs?: Record<string, string>;
 }
 
 /**
@@ -212,6 +238,9 @@ export function buildInitialWorkflowState(
     startedAt,
     startAtPhase,
     initialReviewState,
+    featurePath,
+    worktreeRoot,
+    signOffs,
   } = params;
 
   // Determine starting phase
@@ -243,9 +272,77 @@ export function buildInitialWorkflowState(
     failureInfo: null,
     startedAt,
     updatedAt: startedAt,
-    featurePath: null,
+    featurePath: featurePath ?? null,
+    worktreeRoot: worktreeRoot ?? null,
+    signOffs: signOffs ?? {},
+  };
+}
+
+// ---------------------------------------------------------------------------
+// E6: Sign-off tracking — record agent ID + timestamp on LGTM
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a sign-off in the workflow state.
+ * Called when a skill activity returns LGTM.
+ *
+ * @returns The updated signOffs record.
+ */
+export function recordSignOff(
+  signOffs: Record<string, string>,
+  agentId: string,
+  timestamp: string,
+): Record<string, string> {
+  return { ...signOffs, [agentId]: timestamp };
+}
+
+// ---------------------------------------------------------------------------
+// E7: Completion promotion trigger — detect both qa + pm sign-offs
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether both required sign-offs (qa and pm) are present.
+ * Returns true if completion promotion should be triggered.
+ */
+export function isCompletionReady(signOffs: Record<string, string>): boolean {
+  return signOffs.qa !== undefined && signOffs.pm !== undefined;
+}
+
+// ---------------------------------------------------------------------------
+// E8: Pre-invocation backlog promotion detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether a feature needs backlog→in-progress promotion
+ * before skill invocation.
+ *
+ * @returns true if lifecycle is "backlog" and needs promotion.
+ */
+export function needsBacklogPromotion(lifecycle: string): boolean {
+  return lifecycle === "backlog";
+}
+
+// ---------------------------------------------------------------------------
+// E9: continue-as-new payload builder
+// ---------------------------------------------------------------------------
+
+export interface ContinueAsNewPayload {
+  featurePath: string | null;
+  worktreeRoot: null; // always null — new run gets fresh worktrees
+  signOffs: Record<string, string>;
+}
+
+/**
+ * Build the continue-as-new payload carrying lifecycle state across CAN boundaries.
+ * worktreeRoot is always nulled — each new run creates its own worktrees.
+ */
+export function buildContinueAsNewPayload(
+  state: Pick<FeatureWorkflowState, "featurePath" | "signOffs">,
+): ContinueAsNewPayload {
+  return {
+    featurePath: state.featurePath,
     worktreeRoot: null,
-    signOffs: {},
+    signOffs: { ...state.signOffs },
   };
 }
 
@@ -1076,7 +1173,7 @@ async function runReviewCycle(params: {
   const crossReviewRefs = reviewState.reviewerStatuses
     ? Object.keys(reviewState.reviewerStatuses)
         .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
-        .map((id) => `docs/${state.featureSlug}/CROSS-REVIEW-${id}-${creationPhase.id}.md`)
+        .map((id) => `${state.featurePath}CROSS-REVIEW-${id}-${creationPhase.id}.md`)
     : [];
 
   const revisionInput = buildRevisionInput({

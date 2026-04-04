@@ -32,10 +32,15 @@ import {
   evaluateSkipCondition,
   buildInitialWorkflowState,
   resolveContextDocuments,
+  extractCompletedPrefix,
   computeReviewerList,
   mapRecommendationToStatus,
   buildInvokeSkillInput,
   buildRevisionInput,
+  recordSignOff,
+  isCompletionReady,
+  needsBacklogPromotion,
+  buildContinueAsNewPayload,
 } from "../../../src/temporal/workflows/feature-lifecycle.js";
 
 // ---------------------------------------------------------------------------
@@ -627,7 +632,7 @@ describe("buildRevisionInput", () => {
       agentId: "pm",
       featureSlug: "my-feature",
       featureConfig,
-      crossReviewRefs: ["docs/my-feature/CROSS-REVIEW-eng-REQ.md"],
+      crossReviewRefs: ["docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"],
     });
 
     expect(input.taskType).toBe("Revise");
@@ -639,7 +644,7 @@ describe("buildRevisionInput", () => {
     // cross-review refs are appended to context documents
     expect(input.contextDocumentRefs).toContain("{feature}/overview");
     expect(input.contextDocumentRefs).toContain("{feature}/REQ");
-    expect(input.contextDocumentRefs).toContain("docs/my-feature/CROSS-REVIEW-eng-REQ.md");
+    expect(input.contextDocumentRefs).toContain("docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md");
   });
 
   it("includes only cross-review refs when creation phase has no context_documents", () => {
@@ -650,10 +655,10 @@ describe("buildRevisionInput", () => {
       agentId: "pm",
       featureSlug: "my-feature",
       featureConfig: makeFeatureConfig(),
-      crossReviewRefs: ["docs/my-feature/CROSS-REVIEW-eng-REQ.md"],
+      crossReviewRefs: ["docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"],
     });
 
-    expect(input.contextDocumentRefs).toEqual(["docs/my-feature/CROSS-REVIEW-eng-REQ.md"]);
+    expect(input.contextDocumentRefs).toEqual(["docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"]);
   });
 });
 
@@ -662,88 +667,355 @@ describe("buildRevisionInput", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveContextDocuments", () => {
-  it("resolves {feature}/REQ to the feature's REQ document path", () => {
+  // E1: backlog/in-progress features — uses featurePath directly (no NNN prefix)
+  it("resolves {feature}/REQ to featurePath + REQ-slug for in-progress feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/REQ"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-REQ-my-feature.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/REQ-my-feature.md"]);
   });
 
-  it("resolves {feature}/FSPEC to the feature's FSPEC document path", () => {
+  it("resolves {feature}/FSPEC to featurePath + FSPEC-slug for backlog feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/FSPEC"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/backlog/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-FSPEC-my-feature.md"]);
+    expect(paths).toEqual(["docs/backlog/my-feature/FSPEC-my-feature.md"]);
   });
 
-  it("resolves {feature}/TSPEC to the feature's TSPEC document path", () => {
+  it("resolves {feature}/TSPEC for in-progress feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/TSPEC"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-TSPEC-my-feature.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/TSPEC-my-feature.md"]);
   });
 
-  it("resolves {feature}/PLAN to the feature's PLAN document path", () => {
+  it("resolves {feature}/PLAN for in-progress feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/PLAN"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-PLAN-my-feature.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/PLAN-my-feature.md"]);
   });
 
-  it("resolves {feature}/PROPERTIES to the feature's PROPERTIES document path", () => {
+  it("resolves {feature}/PROPERTIES for in-progress feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/PROPERTIES"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-PROPERTIES-my-feature.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/PROPERTIES-my-feature.md"]);
   });
 
-  it("resolves {feature}/overview to the feature overview path", () => {
+  it("resolves {feature}/overview to featurePath + overview.md for in-progress feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/overview"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/overview.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/overview.md"]);
   });
 
-  it("passes through absolute paths unchanged", () => {
+  it("passes through non-{feature} paths unchanged", () => {
     const paths = resolveContextDocuments(
-      ["docs/015-my-feature/CROSS-REVIEW-eng-REQ.md"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      ["docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"],
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/CROSS-REVIEW-eng-REQ.md"]);
+    expect(paths).toEqual(["docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"]);
   });
 
-  it("resolves multiple refs in order", () => {
+  it("resolves multiple refs in order for in-progress feature", () => {
     const paths = resolveContextDocuments(
-      ["{feature}/REQ", "{feature}/FSPEC", "docs/015-my-feature/CROSS-REVIEW-eng-REQ.md"],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      ["{feature}/REQ", "{feature}/FSPEC", "docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md"],
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
     expect(paths).toEqual([
-      "docs/015-my-feature/015-REQ-my-feature.md",
-      "docs/015-my-feature/015-FSPEC-my-feature.md",
-      "docs/015-my-feature/CROSS-REVIEW-eng-REQ.md",
+      "docs/in-progress/my-feature/REQ-my-feature.md",
+      "docs/in-progress/my-feature/FSPEC-my-feature.md",
+      "docs/in-progress/my-feature/CROSS-REVIEW-eng-REQ.md",
     ]);
   });
 
   it("returns an empty array for an empty input", () => {
     const paths = resolveContextDocuments(
       [],
-      { featureSlug: "my-feature", docsRoot: "docs", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
     );
     expect(paths).toEqual([]);
   });
 
-  it("uses 'docs' as default docsRoot when not provided", () => {
+  // E2: completed features — extracts NNN and applies prefix to all doc types
+  it("resolves {feature}/REQ with NNN prefix for completed feature", () => {
     const paths = resolveContextDocuments(
       ["{feature}/REQ"],
-      { featureSlug: "my-feature", featurePrefix: "015" }
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
     );
-    expect(paths).toEqual(["docs/015-my-feature/015-REQ-my-feature.md"]);
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-REQ-my-feature.md"]);
+  });
+
+  it("resolves {feature}/overview with NNN prefix for completed feature", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/overview"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-overview.md"]);
+  });
+
+  it("resolves {feature}/FSPEC with NNN prefix for completed feature", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/FSPEC"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-FSPEC-my-feature.md"]);
+  });
+
+  it("resolves {feature}/TSPEC with NNN prefix for completed feature", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/TSPEC"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-TSPEC-my-feature.md"]);
+  });
+
+  it("resolves {feature}/PLAN with NNN prefix for completed feature", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/PLAN"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-PLAN-my-feature.md"]);
+  });
+
+  it("resolves {feature}/PROPERTIES with NNN prefix for completed feature", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/PROPERTIES"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual(["docs/completed/015-my-feature/015-PROPERTIES-my-feature.md"]);
+  });
+
+  it("resolves multiple refs for completed feature with NNN prefix", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/overview", "{feature}/REQ", "{feature}/FSPEC"],
+      { featureSlug: "my-feature", featurePath: "docs/completed/015-my-feature/" }
+    );
+    expect(paths).toEqual([
+      "docs/completed/015-my-feature/015-overview.md",
+      "docs/completed/015-my-feature/015-REQ-my-feature.md",
+      "docs/completed/015-my-feature/015-FSPEC-my-feature.md",
+    ]);
+  });
+
+  it("passes through unknown {feature}/X references unchanged", () => {
+    const paths = resolveContextDocuments(
+      ["{feature}/UNKNOWN"],
+      { featureSlug: "my-feature", featurePath: "docs/in-progress/my-feature/" }
+    );
+    expect(paths).toEqual(["{feature}/UNKNOWN"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2: extractCompletedPrefix
+// ---------------------------------------------------------------------------
+
+describe("extractCompletedPrefix", () => {
+  it("extracts NNN from completed feature path", () => {
+    expect(extractCompletedPrefix("docs/completed/015-my-feature/")).toBe("015");
+  });
+
+  it("returns null for in-progress feature path", () => {
+    expect(extractCompletedPrefix("docs/in-progress/my-feature/")).toBeNull();
+  });
+
+  it("returns null for backlog feature path", () => {
+    expect(extractCompletedPrefix("docs/backlog/my-feature/")).toBeNull();
+  });
+
+  it("extracts NNN from completed path with different numbers", () => {
+    expect(extractCompletedPrefix("docs/completed/001-first-feature/")).toBe("001");
+    expect(extractCompletedPrefix("docs/completed/999-last-feature/")).toBe("999");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E5: buildInitialWorkflowState — CAN payload fields
+// ---------------------------------------------------------------------------
+
+describe("buildInitialWorkflowState — CAN payload support", () => {
+  it("uses featurePath from CAN payload when provided", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+      featurePath: "docs/in-progress/my-feature/",
+    });
+    expect(state.featurePath).toBe("docs/in-progress/my-feature/");
+  });
+
+  it("uses signOffs from CAN payload when provided", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+      signOffs: { qa: "2026-04-01T10:00:00Z" },
+    });
+    expect(state.signOffs).toEqual({ qa: "2026-04-01T10:00:00Z" });
+  });
+
+  it("uses null worktreeRoot from CAN payload", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+      worktreeRoot: null,
+    });
+    expect(state.worktreeRoot).toBeNull();
+  });
+
+  it("defaults featurePath to null when CAN payload omits it", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+    });
+    expect(state.featurePath).toBeNull();
+  });
+
+  it("defaults signOffs to empty object when CAN payload omits it", () => {
+    const phases: PhaseDefinition[] = [makePhase({ id: "req-creation" })];
+    const state = buildInitialWorkflowState({
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      workflowConfig: makeConfig(phases),
+      startedAt: "2026-04-02T00:00:00Z",
+    });
+    expect(state.signOffs).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E6: recordSignOff
+// ---------------------------------------------------------------------------
+
+describe("recordSignOff", () => {
+  it("records agent ID and timestamp in signOffs", () => {
+    const signOffs = {};
+    const updated = recordSignOff(signOffs, "qa", "2026-04-02T10:00:00Z");
+    expect(updated).toEqual({ qa: "2026-04-02T10:00:00Z" });
+  });
+
+  it("adds to existing signOffs without mutating the original", () => {
+    const signOffs = { qa: "2026-04-02T10:00:00Z" };
+    const updated = recordSignOff(signOffs, "pm", "2026-04-02T11:00:00Z");
+    expect(updated).toEqual({
+      qa: "2026-04-02T10:00:00Z",
+      pm: "2026-04-02T11:00:00Z",
+    });
+    // Original is not mutated
+    expect(signOffs).toEqual({ qa: "2026-04-02T10:00:00Z" });
+  });
+
+  it("overwrites existing sign-off for the same agent", () => {
+    const signOffs = { qa: "2026-04-02T10:00:00Z" };
+    const updated = recordSignOff(signOffs, "qa", "2026-04-02T12:00:00Z");
+    expect(updated).toEqual({ qa: "2026-04-02T12:00:00Z" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E7: isCompletionReady
+// ---------------------------------------------------------------------------
+
+describe("isCompletionReady", () => {
+  it("returns true when both qa and pm have signed off", () => {
+    expect(isCompletionReady({
+      qa: "2026-04-02T10:00:00Z",
+      pm: "2026-04-02T11:00:00Z",
+    })).toBe(true);
+  });
+
+  it("returns false when only qa has signed off", () => {
+    expect(isCompletionReady({ qa: "2026-04-02T10:00:00Z" })).toBe(false);
+  });
+
+  it("returns false when only pm has signed off", () => {
+    expect(isCompletionReady({ pm: "2026-04-02T11:00:00Z" })).toBe(false);
+  });
+
+  it("returns false when signOffs is empty", () => {
+    expect(isCompletionReady({})).toBe(false);
+  });
+
+  it("returns true even when extra agents have signed off", () => {
+    expect(isCompletionReady({
+      qa: "2026-04-02T10:00:00Z",
+      pm: "2026-04-02T11:00:00Z",
+      eng: "2026-04-02T12:00:00Z",
+    })).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E8: needsBacklogPromotion
+// ---------------------------------------------------------------------------
+
+describe("needsBacklogPromotion", () => {
+  it("returns true when lifecycle is 'backlog'", () => {
+    expect(needsBacklogPromotion("backlog")).toBe(true);
+  });
+
+  it("returns false when lifecycle is 'in-progress'", () => {
+    expect(needsBacklogPromotion("in-progress")).toBe(false);
+  });
+
+  it("returns false when lifecycle is 'completed'", () => {
+    expect(needsBacklogPromotion("completed")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E9: buildContinueAsNewPayload
+// ---------------------------------------------------------------------------
+
+describe("buildContinueAsNewPayload", () => {
+  it("carries featurePath and signOffs, nulls worktreeRoot", () => {
+    const state = {
+      featurePath: "docs/in-progress/my-feature/" as string | null,
+      signOffs: { qa: "2026-04-02T10:00:00Z" },
+    };
+    const payload = buildContinueAsNewPayload(state);
+    expect(payload).toEqual({
+      featurePath: "docs/in-progress/my-feature/",
+      worktreeRoot: null,
+      signOffs: { qa: "2026-04-02T10:00:00Z" },
+    });
+  });
+
+  it("preserves null featurePath", () => {
+    const state = {
+      featurePath: null,
+      signOffs: {},
+    };
+    const payload = buildContinueAsNewPayload(state);
+    expect(payload.featurePath).toBeNull();
+    expect(payload.worktreeRoot).toBeNull();
+    expect(payload.signOffs).toEqual({});
+  });
+
+  it("creates a shallow copy of signOffs (not the same reference)", () => {
+    const signOffs = { qa: "2026-04-02T10:00:00Z", pm: "2026-04-02T11:00:00Z" };
+    const state = { featurePath: "docs/in-progress/my-feature/" as string | null, signOffs };
+    const payload = buildContinueAsNewPayload(state);
+    expect(payload.signOffs).not.toBe(signOffs);
+    expect(payload.signOffs).toEqual(signOffs);
   });
 });
 
