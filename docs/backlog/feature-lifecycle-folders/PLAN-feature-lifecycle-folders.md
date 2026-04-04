@@ -31,14 +31,14 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| B1 | Feature found in `in-progress/` — returns correct path and lifecycle | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B2 | Feature found in `backlog/` — returns correct path and lifecycle | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B3 | Feature found in `completed/` — strips NNN prefix for slug matching | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B4 | Feature not found in any folder — returns `{ found: false }` without throwing | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B5 | Slug found in multiple folders — logs warning, returns first match per search order | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B6 | Filesystem error on a lifecycle folder — logs warning, treats folder as empty, continues | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B7 | Worktree root with trailing slash — normalizes correctly | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
-| B8 | Empty `completed/` folder and missing `docs/` directory — returns not-found | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ⬚ Not Started |
+| B1 | Feature found in `in-progress/` — returns correct path and lifecycle | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B2 | Feature found in `backlog/` — returns correct path and lifecycle | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B3 | Feature found in `completed/` — strips NNN prefix for slug matching | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B4 | Feature not found in any folder — returns `{ found: false }` without throwing | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B5 | Slug found in multiple folders — logs warning, returns first match per search order | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B6 | Filesystem error on a lifecycle folder — logs warning, treats folder as empty, continues | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B7 | Worktree root with trailing slash — normalizes correctly | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
+| B8 | Empty `completed/` folder and missing `docs/` directory — returns not-found | `ptah/tests/unit/orchestrator/feature-resolver.test.ts` | `ptah/src/orchestrator/feature-resolver.ts` | ✅ Done |
 
 ### Phase C: WorktreeManager
 

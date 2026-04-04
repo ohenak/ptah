@@ -119,17 +119,25 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async readDir(path: string): Promise<string[]> {
-    const filenames: string[] = [];
+    const entries = new Set<string>();
     const prefix = path.endsWith("/") ? path : path + "/";
     for (const filePath of this.files.keys()) {
       if (filePath.startsWith(prefix)) {
         const rest = filePath.slice(prefix.length);
         if (!rest.includes("/")) {
-          filenames.push(rest);
+          entries.add(rest);
         }
       }
     }
-    return filenames;
+    for (const dirPath of this.dirs) {
+      if (dirPath.startsWith(prefix)) {
+        const rest = dirPath.slice(prefix.length);
+        if (rest && !rest.includes("/")) {
+          entries.add(rest);
+        }
+      }
+    }
+    return [...entries];
   }
 
   joinPath(...segments: string[]): string {
