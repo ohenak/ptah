@@ -44,13 +44,13 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | `create` — generates UUID path, calls `git worktree add`, registers in registry | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C2 | `create` — retries with new UUID on collision (first attempt fails, second succeeds) | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C3 | `create` — throws non-retryable error after two failed attempts | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C4 | `destroy` — calls `git worktree remove --force`, deregisters from registry | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C5 | `destroy` — logs error but does not throw when removal fails | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C6 | `cleanupDangling` — prunes worktrees not matching active executions, skips non-ptah worktrees | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
-| C7 | `cleanupDangling` — runs `git worktree prune` after sweep | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
+| C1 | `create` — generates UUID path, calls `git worktree add`, registers in registry | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C2 | `create` — retries with new UUID on collision (first attempt fails, second succeeds) | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C3 | `create` — throws non-retryable error after two failed attempts | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C4 | `destroy` — calls `git worktree remove --force`, deregisters from registry | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C5 | `destroy` — logs error but does not throw when removal fails | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C6 | `cleanupDangling` — prunes worktrees not matching active executions, skips non-ptah worktrees | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
+| C7 | `cleanupDangling` — runs `git worktree prune` after sweep | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
 
 ### Phase D: Promotion Activities
 
