@@ -98,16 +98,16 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| G1 | Pre-flight: error when `docs/` does not exist | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G2 | Pre-flight: error when working tree is not clean | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G3 | Pre-flight: error when lifecycle folders are already non-empty | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G4 | Create lifecycle directories with `.gitkeep` files | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G5 | Migrate completed features — move NNN-prefixed folders to `docs/completed/` | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G6 | Migrate in-progress features — move remaining folders to `docs/in-progress/` | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G7 | Skip non-feature directories (requirements/, templates/, open-questions/) | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G8 | Commit migration with correct message | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
-| G9 | CLI entry point for migration script | — | `ptah/src/bin/ptah-migrate-lifecycle.ts` | ⬚ Not Started |
-| G10 | Integration test: full migration with real FS + git | `ptah/tests/integration/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ⬚ Not Started |
+| G1 | Pre-flight: error when `docs/` does not exist | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G2 | Pre-flight: error when working tree is not clean | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G3 | Pre-flight: error when lifecycle folders are already non-empty | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G4 | Create lifecycle directories with `.gitkeep` files | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G5 | Migrate completed features — move NNN-prefixed folders to `docs/completed/` | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G6 | Migrate in-progress features — move remaining folders to `docs/in-progress/` | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G7 | Skip non-feature directories (requirements/, templates/, open-questions/) | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G8 | Commit migration with correct message | `ptah/tests/unit/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
+| G9 | CLI entry point for migration script | — | `ptah/bin/ptah-migrate-lifecycle.ts` | ✅ Done |
+| G10 | Integration test: full migration with real FS + git | `ptah/tests/integration/commands/migrate-lifecycle.test.ts` | `ptah/src/commands/migrate-lifecycle.ts` | ✅ Done |
 
 ### Phase H: Skill File Updates
 

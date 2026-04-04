@@ -22,6 +22,8 @@ export interface FileSystem {
 
   // --- Feature Lifecycle Folders ---
   readDirMatching(dirPath: string, pattern: RegExp): Promise<string[]>;
+  /** Returns only directory entry names (not files) directly under dirPath. */
+  listDirs(dirPath: string): Promise<string[]>;
 }
 
 export class NodeFileSystem implements FileSystem {
@@ -94,6 +96,15 @@ export class NodeFileSystem implements FileSystem {
     try {
       const entries = await fs.readdir(path.resolve(this._cwd, dirPath));
       return entries.filter((entry) => pattern.test(entry));
+    } catch {
+      return [];
+    }
+  }
+
+  async listDirs(dirPath: string): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(path.resolve(this._cwd, dirPath), { withFileTypes: true });
+      return entries.filter((e) => e.isDirectory()).map((e) => e.name);
     } catch {
       return [];
     }

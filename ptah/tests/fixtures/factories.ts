@@ -177,6 +177,21 @@ export class FakeFileSystem implements FileSystem {
     const entries = await this.readDir(dirPath);
     return entries.filter((entry) => pattern.test(entry));
   }
+
+  async listDirs(dirPath: string): Promise<string[]> {
+    // Return only entries that are registered as directories
+    const prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+    const result: string[] = [];
+    for (const dir of this.dirs) {
+      if (dir.startsWith(prefix)) {
+        const rest = dir.slice(prefix.length);
+        if (rest && !rest.includes("/")) {
+          result.push(rest);
+        }
+      }
+    }
+    return result;
+  }
 }
 
 export class FakeGitClient implements GitClient {
