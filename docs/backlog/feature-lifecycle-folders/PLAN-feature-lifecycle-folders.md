@@ -75,16 +75,16 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E1 | Update `resolveContextDocuments` — uses `featurePath` from state for backlog/in-progress features | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E2 | Update `resolveContextDocuments` — extracts NNN and applies prefix for completed features (all doc types including overview) | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E3 | Update `crossReviewPath` — accepts `featurePath` instead of `featureSlug` | `ptah/tests/unit/orchestrator/cross-review-parser.test.ts` | `ptah/src/orchestrator/pdlc/cross-review-parser.ts` | ⬚ Not Started |
-| E4 | Update cross-review path construction in workflow (line 1076) — use `state.featurePath` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E5 | Update `buildInitialWorkflowState` — initialize `featurePath: null`, `worktreeRoot: null`, `signOffs: {}` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E6 | Sign-off tracking — record agent ID + timestamp in `state.signOffs` on LGTM | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E7 | Completion promotion trigger — detect both `qa` + `pm` sign-offs, invoke promotion activity | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E8 | Pre-invocation backlog promotion — detect backlog lifecycle, run promotion before skill invocation | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E9 | `continue-as-new` handling — carry `featurePath` and `signOffs` in CAN payload; null `worktreeRoot` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E10 | Add `resolveFeaturePath` thin activity — wraps `FeatureResolver.resolve()` for workflow determinism | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
+| E1 | Update `resolveContextDocuments` — uses `featurePath` from state for backlog/in-progress features | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E2 | Update `resolveContextDocuments` — extracts NNN and applies prefix for completed features (all doc types including overview) | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E3 | Update `crossReviewPath` — accepts `featurePath` instead of `featureSlug` | `ptah/tests/unit/orchestrator/cross-review-parser.test.ts` | `ptah/src/orchestrator/pdlc/cross-review-parser.ts` | ✅ Done |
+| E4 | Update cross-review path construction in workflow (line 1076) — use `state.featurePath` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E5 | Update `buildInitialWorkflowState` — initialize `featurePath: null`, `worktreeRoot: null`, `signOffs: {}` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E6 | Sign-off tracking — record agent ID + timestamp in `state.signOffs` on LGTM | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E7 | Completion promotion trigger — detect both `qa` + `pm` sign-offs, invoke promotion activity | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E8 | Pre-invocation backlog promotion — detect backlog lifecycle, run promotion before skill invocation | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E9 | `continue-as-new` handling — carry `featurePath` and `signOffs` in CAN payload; null `worktreeRoot` | `ptah/tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E10 | Add `resolveFeaturePath` thin activity — wraps `FeatureResolver.resolve()` for workflow determinism | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
 
 ### Phase F: Activity Wiring — Skill Activity Updates and Composition Root
 

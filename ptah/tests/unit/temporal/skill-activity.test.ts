@@ -18,6 +18,7 @@ import {
   FakeContextAssembler,
   FakeAgentRegistry,
   FakeLogger,
+  FakeFeatureResolver,
   defaultTestConfig,
   makeRegisteredAgent,
 } from "../../fixtures/factories.js";
@@ -715,5 +716,64 @@ describe("mergeWorktree Activity (C7)", () => {
     });
 
     expect(gitClient.removedWorktrees).toContain("/tmp/worktree/eng");
+  });
+});
+
+// ===========================================================================
+// E10: resolveFeaturePath activity
+// ===========================================================================
+
+describe("resolveFeaturePath activity", () => {
+  it("delegates to FeatureResolver.resolve() with correct arguments", async () => {
+    const fakeResolver = new FakeFeatureResolver();
+    fakeResolver.setResult("my-feature", {
+      found: true,
+      path: "docs/in-progress/my-feature/",
+      lifecycle: "in-progress",
+    });
+
+    const deps = makeDeps({ featureResolver: fakeResolver });
+    const { resolveFeaturePath } = createActivities(deps);
+
+    const result = await resolveFeaturePath({
+      featureSlug: "my-feature",
+      worktreeRoot: "/tmp/ptah-wt-abc123",
+    });
+
+    expect(result).toEqual({
+      found: true,
+      path: "docs/in-progress/my-feature/",
+      lifecycle: "in-progress",
+    });
+    expect(fakeResolver.resolveCalls).toEqual([
+      { slug: "my-feature", worktreeRoot: "/tmp/ptah-wt-abc123" },
+    ]);
+  });
+
+  it("returns not-found result when feature is not resolved", async () => {
+    const fakeResolver = new FakeFeatureResolver();
+    fakeResolver.setResult("nonexistent", { found: false, slug: "nonexistent" });
+
+    const deps = makeDeps({ featureResolver: fakeResolver });
+    const { resolveFeaturePath } = createActivities(deps);
+
+    const result = await resolveFeaturePath({
+      featureSlug: "nonexistent",
+      worktreeRoot: "/tmp/ptah-wt-xyz",
+    });
+
+    expect(result).toEqual({ found: false, slug: "nonexistent" });
+  });
+
+  it("throws non-retryable error when featureResolver is not configured", async () => {
+    const deps = makeDeps({ featureResolver: undefined });
+    const { resolveFeaturePath } = createActivities(deps);
+
+    await expect(
+      resolveFeaturePath({
+        featureSlug: "my-feature",
+        worktreeRoot: "/tmp/ptah-wt-abc",
+      })
+    ).rejects.toThrow("FeatureResolver not configured in SkillActivityDeps");
   });
 });

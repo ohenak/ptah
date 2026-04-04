@@ -150,11 +150,13 @@ export function agentIdToSkillName(agentId: string): string | null {
 
 /**
  * Derive expected cross-review file path.
+ *
+ * @param featurePath Resolved feature folder path, e.g. "docs/in-progress/my-feature/"
  */
 export function crossReviewPath(
-  featureSlug: string,
+  featurePath: string,
   skillName: string,
   documentType: string,
 ): string {
-  return `docs/${featureSlug}/CROSS-REVIEW-${skillName}-${documentType}.md`;
+  return `${featurePath}CROSS-REVIEW-${skillName}-${documentType}.md`;
 }
