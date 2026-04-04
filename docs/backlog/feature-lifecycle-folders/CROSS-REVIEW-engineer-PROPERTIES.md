@@ -3,143 +3,89 @@
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Senior Full-Stack Engineer (eng) |
-| **Document Reviewed** | PROPERTIES-feature-lifecycle-folders.md (v1.1) |
+| **Document Reviewed** | PROPERTIES-feature-lifecycle-folders.md (v1.2) |
 | **References** | TSPEC-FLF v1.2, PLAN-FLF v1.1 |
 | **Review Date** | April 4, 2026 |
+| **Review Version** | v2 (re-review) |
 | **Recommendation** | **Needs revision** |
+
+---
+
+## Prior Finding Resolution Summary
+
+| Finding | Severity | Status |
+|---------|----------|--------|
+| F-01 — `resolveFeaturePath` activity entirely uncovered | High | **Resolved** — PROP-SK-21 (contract) and PROP-SK-22 (workflow enforces activity dispatch) added |
+| F-02 — PROP-WT-06 ambiguous about retry-once before throwing | High | **Resolved** — PROP-WT-06 now requires both attempts to fail; PROP-WT-20 covers the retry-succeeds path |
+| F-03 — PROP-PR-09 and PROP-PR-10 test level mismatch | Medium | **Resolved** — PROP-PR-09 rephrased as interaction invariant; PROP-PR-27 added at Integration level; PROP-PR-10 reclassified to Integration |
+| F-04 — `FakeWorktreeManager` has no destroy failure injection | Medium | **Partially addressed** — documented as Gap #6 in §7, but TSPEC §7.2 is unchanged; PROP-WT-07 remains untestable with the canonical fake (see F-04 below) |
+| F-05 — `resolveContextDocuments` updated behavior has no properties | Medium | **Resolved** — PROP-SK-23, PROP-SK-24, PROP-SK-25 added |
+| F-06 — `PromotionResult` contract has no property | Medium | **Resolved** — PROP-PR-25, PROP-PR-26 added for `promoteBacklogToInProgress`; PROP-SK-26 added for workflow state update |
+| F-07 — PROP-SK-19 labeled Unit but verifiable only at Integration | Low | **Resolved** — PROP-SK-19 reclassified to Integration |
+| F-08 — No integration property for startup crash-recovery happy path | Low | **Resolved** — PROP-WT-21 added at Integration level |
 
 ---
 
 ## Findings
 
-### F-01 — High: `resolveFeaturePath` thin activity is entirely uncovered
+### F-04 — Medium: `FakeWorktreeManager` destroy failure injection still unaddressed in TSPEC
 
-TSPEC §5.8 explicitly specifies that `FeatureResolver.resolve()` must be wrapped in a thin `resolveFeaturePath` activity rather than called directly in workflow code, to satisfy Temporal's determinism constraint. PLAN task E10 implements this activity. However, no property in the PROPERTIES document covers this activity's existence or contract:
+The v1.2 change log acknowledges this as Gap #6 in PROPERTIES §7, recommending that TSPEC §7.2 add a `destroyShouldFail: boolean` (or `destroyError?: Error`) field to `FakeWorktreeManager`. However, the TSPEC §7.2 definition itself has not been updated. The `FakeWorktreeManager.destroy()` method still always succeeds silently.
 
-- No property verifies that the workflow calls `resolveFeaturePath` as a Temporal activity (not calling `FeatureResolver.resolve()` inline in workflow code).
-- No property verifies the input/output shape of `resolveFeaturePath` (it should accept `{ featureSlug, featureBranch, workflowId, runId }` and return `FeatureResolverResult`).
-- No property verifies that the workflow uses the activity's returned `FeatureResolverResult` to populate `state.featurePath`.
+Until TSPEC §7.2 is updated, PROP-WT-07 ("must log the error and not throw when `git worktree remove` fails") has no canonical test double capable of simulating the failure path. Implementers will either write a one-off stub not covered by this specification, or leave PROP-WT-07 untested. The gap acknowledgement in PROPERTIES does not substitute for the TSPEC fix.
 
-This is a direct gap between TSPEC and PROPERTIES for a component the TSPEC explicitly calls out as architecturally required. Bypassing this pattern (calling resolve() inline) would violate Temporal non-determinism rules and could cause workflow replay failures — an invisible correctness bug that passes all existing tests.
-
-**Required action:** Add a contract property verifying the `resolveFeaturePath` activity's input/output shape, and an integration or workflow-unit property verifying the workflow calls it as an activity (not inline).
+**Required action:** Update TSPEC §7.2 `FakeWorktreeManager` to add `destroyShouldFail: boolean` (defaulting to `false`) and a corresponding `destroyError?: Error` field; update `destroy()` to conditionally throw or reject when `destroyShouldFail` is true. Until TSPEC is updated, this finding remains open.
 
 ---
 
-### F-02 — High: `WorktreeManager.create` UUID collision retry has no property
+### F-09 — Low: `PromotionResult` contract not covered for `promoteInProgressToCompleted`
 
-TSPEC §5.3 (Create algorithm) documents that on UUID collision (first `git worktree add` attempt fails and the path already exists), the manager retries exactly once with a new UUID, and throws `ApplicationFailure.nonRetryable` if the second attempt also fails. PLAN tasks C2 and C3 implement these two branches. No property covers either:
+F-06 from the prior review noted the absence of `PromotionResult` contract properties for both promotion activities. The v1.2 response added PROP-PR-25 and PROP-PR-26 for `promoteBacklogToInProgress` only. The `promoteInProgressToCompleted` activity also returns a `PromotionResult` (TSPEC §5.2.2 step 2.i: `{ featurePath: "docs/completed/{NNN}-{slug}/", promoted: true }`), but no corresponding contract property exists for it.
 
-- PROP-WT-06 covers the case where `git worktree add` fails (maps to C3 — throws non-retryable), but its wording — "must throw `ApplicationFailure.nonRetryable` when `git worktree add` fails" — is ambiguous about whether this applies after one failure or after two failures. The algorithm requires a retry on the first failure; throwing immediately on the first failure would be wrong.
-- No property covers the retry behavior itself (C2): that `create` retries with a new UUID on the first failure, succeeds on the second attempt, and returns a valid `WorktreeHandle`.
+This means the return contract for the completion promotion activity is unspecified. An implementer could return the wrong `featurePath` format or omit the `promoted` field without any property failing. Given that PROP-SK-26 reads `PromotionResult.featurePath` from this activity to update workflow state, the correctness of the returned value is load-bearing.
 
-An implementer reading only PROP-WT-06 could reasonably implement immediate non-retryable failure on the first `git worktree add` error, which would break the retry behavior silently.
-
-**Required action:** Clarify PROP-WT-06 to specify "after two failed attempts" and add a new property covering the single-retry behavior.
+**Required action:** Add a contract property for `promoteInProgressToCompleted` return value specifying `{ featurePath: "docs/completed/{NNN}-{slug}/", promoted: true }`.
 
 ---
 
-### F-03 — Medium: PROP-PR-09 and PROP-PR-10 test level mismatch
+### F-10 — Low: PROP-WT-20 retry condition is underspecified relative to TSPEC §5.3
 
-**PROP-PR-09** ("Both promotion activities must use `git mv` for all folder moves and file renames") is labeled Unit. With a `FakeGitClient`, a unit test can only verify that `gitMvInWorktree` was called with the correct arguments — it cannot verify that `git mv` actually preserves history. The TSPEC §7.3 integration test #10 explicitly requires "verify `git log --follow`", confirming that history preservation is the behavioral invariant. The unit-level property should be rephrased as "calls `gitMvInWorktree`" (an interaction test), and a corresponding integration property should exist to verify actual git history is preserved. Without the integration property, the history guarantee (REQ-NF-01) has no automated enforcement.
+TSPEC §5.3 (Create algorithm) specifies the retry fires only on a path-collision failure: "if fails and worktreePath already exists (UUID collision, negligible probability)." PROP-WT-20 mirrors this correctly. However, PROP-WT-06 covers the double-failure case ("both the first and second attempts fail") without constraining whether the second attempt is still triggered when the first failure was not a collision (e.g., branch not found, git not installed). As written, an implementer reading PROP-WT-06 and PROP-WT-20 together could produce code that always retries on any first failure, then throws after the second — which would be incorrect for non-collision errors that should be non-retryable immediately (or retryable by Temporal, not by the UUID loop).
 
-**PROP-PR-10** ("must produce 2-3 git commits") is labeled Unit but cannot be verified with a FakeGitClient. Commit count is an emergent property of the real git state, not a call-count on the fake. A unit test can only verify that the commit method was called 2-3 times; it cannot verify that commits actually landed. This belongs at integration level, or the property description should be rewritten to be explicitly an interaction property ("must call the commit method 2-3 times").
+There is no property covering "must throw `ApplicationFailure.nonRetryable` immediately (without retry) when the first `git worktree add` failure is not a path-collision error."
 
-**Required action:** Reclassify PROP-PR-09 as Integration (or split into one interaction-level unit property + one integration property for history), and reclassify PROP-PR-10 as Integration.
-
----
-
-### F-04 — Medium: `FakeWorktreeManager` has no failure injection mechanism for destroy
-
-TSPEC §7.2 defines the `FakeWorktreeManager` with a `destroy` method that always succeeds silently. PROP-WT-07 requires testing that `WorktreeManager.destroy` logs and does not throw when `git worktree remove` fails. PLAN C5 implements this test case. However, the proposed `FakeWorktreeManager` cannot simulate a destroy failure — there is no `shouldFailOnDestroy` flag or equivalent.
-
-This means unit tests for PROP-WT-07 must either: (a) not use `FakeWorktreeManager` (defeating the point of the fake), or (b) use a one-off hand-coded stub that is not documented. Either approach creates inconsistency between the test double specification and the actual tests that will be written.
-
-This is a gap in the test double design that will cause friction during implementation and may result in PROP-WT-07 being tested with a less rigorous approach than intended.
-
-**Required action:** The `FakeWorktreeManager` definition in TSPEC §7.2 should include a `destroyShouldFail: boolean` or `destroyError?: Error` field. Update any property referencing destroy failure to note which test double configuration is expected.
+**Required action:** Add a property or clarifying note to PROP-WT-06 specifying that the internal UUID-retry loop applies only to path-already-exists collisions; other first-attempt failures should propagate immediately as non-retryable.
 
 ---
 
-### F-05 — Medium: `resolveContextDocuments` updated behavior (TSPEC §5.5) has no properties
+### Q-01 (Carried over — unanswered)
 
-TSPEC §5.5 defines a substantially changed `resolveContextDocuments` function with a new interface (`ContextResolutionContext` with `featurePath` field) and a new resolution table that distinguishes backlog/in-progress paths (unnumbered) from completed paths (NNN-prefixed, including `overview.md`). PLAN tasks E1 and E2 implement and test this. However, no PROP-XX entries cover this behavior:
+Q-02 from the v1 review was not addressed in v1.2 and is not mentioned in the change log. Restating:
 
-- No property verifies that `resolveContextDocuments` resolves `{feature}/REQ` to `{featurePath}REQ-{slug}.md` for backlog/in-progress features.
-- No property verifies that `resolveContextDocuments` resolves `{feature}/REQ` to `{featurePath}{NNN}-REQ-{slug}.md` for completed features.
-- No property verifies the NNN extraction from `featurePath` (e.g., extracting `015` from `docs/completed/015-my-feature/`).
-- No property verifies that `overview.md` gets the NNN prefix for completed features (this is explicitly called out in TSPEC §5.5 as a design decision).
+PROP-PR-19 ("Phase 3 internal ref update regex must match `[text](filename.md)` and `[text](./filename.md)` patterns only...") is a behavioral property that can be verified by string transformation tests. The regex itself is published in TSPEC §5.2.2. Should the property additionally enumerate negative-match cases (confirming the regex does NOT match wiki-style links, `[text][ref]` reference links, HTML anchors, etc.) as part of the property specification, or is the existing wording considered sufficient given PROP-PR-23 already specifies what must NOT be matched?
 
-These behaviors are tested in PLAN (E1, E2) but are orphaned — they have no corresponding PROP-XX properties and no entries in the coverage matrix. An implementer or future reviewer cannot trace these tests back to a documented invariant.
-
-**Required action:** Add properties for context resolution path construction for both lifecycle stages (backlog/in-progress and completed), including NNN extraction logic and `overview.md` prefix handling.
-
----
-
-### F-06 — Medium: `PromotionResult` contract has no property
-
-TSPEC §5.2.1 defines the `PromotionResult` type: `{ featurePath: string; promoted: boolean }`. The `promoted` field distinguishes a real move (`true`) from an idempotent skip (`false`). No property covers this return type contract:
-
-- No property verifies that `promoteBacklogToInProgress` returns `promoted: true` and the correct `featurePath` on a successful move.
-- No property verifies that `promoteBacklogToInProgress` returns `promoted: false` and the in-progress path on an idempotent skip (PROP-NF-02 covers the side-effect, but not the return value).
-- No property verifies that the workflow uses `PromotionResult.featurePath` to update `state.featurePath` after promotion.
-
-The `promoted` boolean is used by callers to decide whether to log an idempotency message (PROP-PR-20), so the contract is load-bearing, not decorative.
-
-**Required action:** Add contract properties for `PromotionResult` shape and for how the workflow consumes the result.
-
----
-
-### F-07 — Low: PROP-SK-19 test level is Unit but the behavior is only verifiable at Integration
-
-PROP-SK-19 ("Activities must not re-invoke the feature resolver independently when the resolved path is already stored in workflow state") is labeled Unit. This is an architectural invariant about the interaction between the workflow state and multiple activities — it is not verifiable by testing a single activity in isolation. To verify this property, a test must run multiple activities in sequence and confirm the resolver is called only once. That is an integration or workflow-level test by definition. Labeling it Unit implies it can be verified with a single fake-injected call, which it cannot.
-
-**Required action:** Reclassify PROP-SK-19 as Integration.
-
----
-
-### F-08 — Low: No property covers `WorktreeManager.cleanupDangling` startup integration path
-
-PROP-WT-12 ("Composition root must call `worktreeManager.cleanupDangling` after the Temporal client connects") is Integration level and covers the composition root wiring. PROP-WT-08 ("must log a warning and skip the cleanup sweep when the Temporal server is unreachable") is Unit level. However, no integration property covers the happy-path startup sweep: that `cleanupDangling` is actually called with live active execution data and prunes real dangling worktrees on startup. This is specifically the crash-recovery scenario described in TSPEC §5.4. The unit-level properties (PROP-WT-14, PROP-WT-18) cover the pruning logic in isolation, but the wiring from orchestrator startup → Temporal query → `cleanupDangling(Set)` is not integration-tested as a composed behavior.
-
-**Required action:** Add an integration property (or note this as a known gap with rationale) for the startup crash-recovery cleanup flow.
-
----
-
-## Clarification Questions
-
-### Q-01
-
-PROP-SK-16 ("No module other than `FeatureResolver` must independently construct lifecycle-based feature paths") is labeled Unit and listed as a negative property. How is this verified in a unit test? This is an architectural constraint — verifying it requires either static analysis, a linter rule, or an architectural fitness function. A standard Vitest unit test cannot assert the absence of path construction in other modules. What is the intended test mechanism for PROP-SK-16?
-
-### Q-02
-
-PROP-PR-05 ("Phase 3 must update markdown links matching `[text](filename.md)` and `[text](./filename.md)`") is listed at Unit level. The implementation uses a regex on raw file content (TSPEC §5.2.2). Should the property specify the regex match pattern, or is verifying the output transformation (before/after string comparison) considered sufficient? Asking because the regex itself is published in TSPEC §5.2.2 and is a testable invariant that could have its own property.
-
-### Q-03
-
-TSPEC §5.4 (crash-recovery algorithm) states: "Since the registry doesn't survive a crash, check by querying Temporal: for each execution in activeExecutions, check if any activity metadata references this worktreePath." This implies the matching is done by interrogating Temporal's activity metadata — but `cleanupDangling` accepts only `activeExecutions: Set<string>` (formatted as `"workflowId:runId"`). How does the implementation cross-reference `worktreePath` against this Set when the registry is empty after a crash? Is there a secondary lookup mechanism not yet specified? This affects whether PROP-WT-18 can actually be implemented as described.
+This is a property completeness question, not a blocking gap — the pair of PROP-PR-19 (positive match) and PROP-PR-23 (negative match) together cover the regex behavior. No action required unless the author considers PROP-PR-23 insufficient.
 
 ---
 
 ## Positive Observations
 
-- **Test double design is production-quality.** The `FakeFeatureResolver` and `FakeWorktreeManager` in TSPEC §7.2 are thoughtfully designed with call recording (`resolveCalls`, `createCalls`, `destroyCalls`) that supports both behavior verification and interaction testing without over-engineering. The `setResult` pattern on `FakeFeatureResolver` avoids hard-coded responses while keeping fakes simple.
+- **F-01 and F-02 resolutions are precise and correct.** PROP-SK-22 correctly targets the integration boundary between workflow code and Temporal activity dispatch — the wording "must invoke `resolveFeaturePath` via `executeActivity` ... and must not call `FeatureResolver.resolve()` directly in workflow code" is exactly the invariant needed to prevent Temporal determinism violations. PROP-WT-06's updated wording is unambiguous: "it must not throw after a single failure (one retry is required)."
 
-- **Protocol-based DI is consistently applied.** Every new module (`FeatureResolver`, `WorktreeManager`, `MigrateLifecycleCommand`) is defined as an interface before its implementation, and all properties correctly target the interface (not the concrete class). This means unit tests exercise the contract, not the implementation detail — which is exactly right for a TDD-first approach.
+- **PROP-WT-20 is a strong addition.** Specifying both the triggering condition (UUID collision) and the expected outcome (succeeds on second attempt) makes the retry behavior fully testable as a unit property with a `FakeGitClient` configured to fail-then-succeed.
 
-- **Idempotency properties are exceptional.** PROP-NF-02 through PROP-NF-07 cover partial-failure scenarios at a granularity that is usually omitted in property documents. The Phase-1-complete + Phase-2-partial retry scenario (PROP-NF-05) is particularly rigorous and directly maps to a Temporal retry condition.
+- **The three new context-resolution properties (PROP-SK-23, SK-24, SK-25) are well-scoped.** Splitting backlog/in-progress vs. completed into separate properties, and isolating NNN extraction as its own invariant (PROP-SK-25), matches the three distinct branches in the TSPEC §5.5 algorithm. Each property is independently testable.
 
-- **Error handling properties correctly distinguish retryable vs non-retryable.** PROP-PR-12 (non-retryable on `git mv` failure), PROP-PR-13 (retryable on `git push` failure), and PROP-WT-06 (non-retryable on `git worktree add` failure) align precisely with the TSPEC §6 error table. This specificity is exactly what an implementer needs to correctly configure `ApplicationFailure`.
+- **PROP-SK-26 closes the data-flow loop.** The addition of "Workflow must update `state.featurePath` from the `featurePath` field of the `PromotionResult`" directly ties the promotion activity contract to the workflow state contract, which is the integration seam most likely to be broken during refactoring.
 
-- **Negative properties encode architectural guardrails.** PROP-SK-20 (only orchestrator runs promotions), PROP-WT-15 (skill agents never touch main working tree), and PROP-WT-16 (no shared worktrees) are the kind of invariants that catch design drift during refactoring. They are well-placed as negative properties rather than buried in prose.
+- **Gap documentation in §7 is appropriately candid.** Gap #5 (crash-recovery worktree-to-execution matching design gap) is a genuine TSPEC deficiency accurately identified. Naming it explicitly in the PROPERTIES gap table is the right call — it prevents an implementer from discovering this ambiguity during a TDD red phase with no guidance.
 
-- **The acknowledged gap for concurrent NNN assignment (§7 Gap #2) is technically accurate.** The Temporal scheduling model means concurrent promotions are unlikely in practice, but the fact the document flags this explicitly and recommends an integration test for it demonstrates awareness of the distributed systems edge case.
+- **The total property count (105, 89 Unit / 16 Integration) reflects substantive improvements.** The new additions are well-distributed across categories and not padded.
 
 ---
 
 ## Recommendation
 
-**Needs revision.** F-01 (High) — the `resolveFeaturePath` activity is entirely uncovered despite being architecturally required for Temporal determinism. F-02 (High) — PROP-WT-06's ambiguity could cause an implementer to skip the collision retry, breaking the specified algorithm. F-03 through F-06 (Medium) — test level mismatches, an incomplete test double, missing context-resolution properties, and a missing return-type contract collectively leave several integration points without automated enforcement.
+**Needs revision.** One Medium finding remains open: F-04 (FakeWorktreeManager destroy failure injection) was documented as a gap in PROPERTIES but the TSPEC §7.2 fix has not been applied, leaving PROP-WT-07 still untestable with the canonical test double. Two Low findings are new: F-09 (missing `PromotionResult` contract for `promoteInProgressToCompleted`) and F-10 (PROP-WT-06 and PROP-WT-20 together are underspecified for non-collision first-attempt failures).
 
-Address F-01 and F-02 as blockers. F-03 through F-06 should also be resolved before implementation begins to avoid rework. Q-03 requires a design answer before PROP-WT-18 can be reliably implemented.
+F-09 and F-10 can be addressed in a targeted patch to PROPERTIES without a full revision cycle. F-04 requires a coordinated update to TSPEC §7.2. Once those three issues are resolved, the document is otherwise approvable — the two High findings and four of the five Medium findings from v1 have been cleanly addressed.
