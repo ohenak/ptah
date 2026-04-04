@@ -19,6 +19,8 @@ import {
   FakeAgentRegistry,
   FakeLogger,
   FakeFeatureResolver,
+  FakeWorktreeManager,
+  FakeFileSystem,
   defaultTestConfig,
   makeRegisteredAgent,
 } from "../../fixtures/factories.js";
@@ -111,6 +113,8 @@ function makeDeps(overrides?: Partial<SkillActivityDeps>): SkillActivityDeps {
   ]);
   const logger = new FakeLogger();
   const config = makeConfig();
+  const worktreeManager = new FakeWorktreeManager();
+  const fs = new FakeFileSystem();
 
   return {
     skillInvoker,
@@ -121,6 +125,8 @@ function makeDeps(overrides?: Partial<SkillActivityDeps>): SkillActivityDeps {
     agentRegistry,
     logger,
     config,
+    worktreeManager,
+    fs,
     ...overrides,
   };
 }
@@ -229,6 +235,7 @@ describe("invokeSkill — idempotency check (C1)", () => {
 describe("invokeSkill — worktree creation, context assembly, skill invocation (C2)", () => {
   it("creates a worktree on the feature branch", async () => {
     const deps = makeDeps();
+    const worktreeManager = deps.worktreeManager as FakeWorktreeManager;
     const gitClient = deps.gitClient as FakeGitClient;
     const routingEngine = deps.routingEngine as FakeRoutingEngine;
 
@@ -238,8 +245,9 @@ describe("invokeSkill — worktree creation, context assembly, skill invocation 
     const { invokeSkill } = createActivities(deps);
     await invokeSkill(makeDefaultInput());
 
-    expect(gitClient.createdWorktrees).toHaveLength(1);
-    expect(gitClient.createdWorktrees[0]!.branch).toContain("ptah/my-feature/eng/tspec-creation");
+    // WorktreeManager is now responsible for worktree creation (F1)
+    expect(worktreeManager.createCalls).toHaveLength(1);
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature");
   });
 
   it("assembles context with contextDocumentRefs", async () => {
@@ -584,7 +592,7 @@ describe("invokeSkill — error classification (C6)", () => {
   it("cleans up worktree on error (finally block)", async () => {
     const deps = makeDeps();
     const skillInvoker = deps.skillInvoker as FakeSkillInvoker;
-    const gitClient = deps.gitClient as FakeGitClient;
+    const worktreeManager = deps.worktreeManager as FakeWorktreeManager;
 
     skillInvoker.invokeError = new Error("Subprocess crashed");
 
@@ -596,8 +604,8 @@ describe("invokeSkill — error classification (C6)", () => {
       // expected
     }
 
-    // Worktree should be cleaned up
-    expect(gitClient.removedWorktrees.length).toBeGreaterThanOrEqual(1);
+    // Worktree should be cleaned up via WorktreeManager.destroy() (F1)
+    expect(worktreeManager.destroyCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("handles 429 rate limit with internal retry (BR-26)", async () => {
@@ -775,5 +783,171 @@ describe("resolveFeaturePath activity", () => {
         worktreeRoot: "/tmp/ptah-wt-abc",
       })
     ).rejects.toThrow("FeatureResolver not configured in SkillActivityDeps");
+  });
+});
+
+// ===========================================================================
+// F1: invokeSkill delegates worktree creation to WorktreeManager
+// ===========================================================================
+
+describe("invokeSkill — WorktreeManager delegation (F1)", () => {
+  it("creates worktree via WorktreeManager.create() instead of inline path", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput());
+
+    // WorktreeManager.create() should have been called
+    expect(worktreeManager.createCalls).toHaveLength(1);
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature");
+  });
+
+  it("uses WorktreeHandle.path as the worktree path for context assembly and invocation", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+    const skillInvoker = deps.skillInvoker as FakeSkillInvoker;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput());
+
+    // The worktree path used for invocation should be the one from WorktreeManager
+    expect(skillInvoker.invokeCalls).toHaveLength(1);
+    expect(skillInvoker.invokeCalls[0]!.worktreePath).toMatch(/^\/tmp\/ptah-wt-fake-/);
+  });
+
+  it("destroys worktree via WorktreeManager.destroy() after successful single-agent merge", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/test.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    // WorktreeManager.destroy() should have been called
+    expect(worktreeManager.destroyCalls).toHaveLength(1);
+    expect(worktreeManager.destroyCalls[0]).toMatch(/^\/tmp\/ptah-wt-fake-/);
+  });
+
+  it("destroys worktree via WorktreeManager.destroy() on error", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const skillInvoker = deps.skillInvoker as FakeSkillInvoker;
+
+    skillInvoker.invokeError = new Error("Subprocess crashed");
+
+    const { invokeSkill } = createActivities(deps);
+
+    try {
+      await invokeSkill(makeDefaultInput());
+    } catch {
+      // expected
+    }
+
+    // WorktreeManager.destroy() should have been called in the finally block
+    expect(worktreeManager.destroyCalls).toHaveLength(1);
+    expect(worktreeManager.destroyCalls[0]).toMatch(/^\/tmp\/ptah-wt-fake-/);
+  });
+
+  it("does NOT destroy worktree on ROUTE_TO_USER (worktree preserved for reuse)", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "ROUTE_TO_USER", question: "What format?" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput());
+
+    expect(result.routingSignalType).toBe("ROUTE_TO_USER");
+    // Worktree should NOT be destroyed (preserved for future use)
+    expect(worktreeManager.destroyCalls).toHaveLength(0);
+  });
+
+  it("does NOT destroy worktree for fork/join dispatch (worktree preserved for merge)", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/test.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput({ forkJoin: true }));
+
+    expect(result.routingSignalType).toBe("LGTM");
+    // Fork/join: worktree should NOT be destroyed (will be merged later)
+    expect(worktreeManager.destroyCalls).toHaveLength(0);
+  });
+
+  it("does not call gitClient.createWorktree directly (delegated to WorktreeManager)", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput());
+
+    // gitClient.createWorktree should NOT be called directly by invokeSkill
+    // (it's now delegated to WorktreeManager)
+    expect(gitClient.createdWorktrees).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// F2: SkillActivityDeps includes worktreeManager and fs
+// ===========================================================================
+
+describe("SkillActivityDeps — new dependencies (F2)", () => {
+  it("accepts worktreeManager in deps and uses it for worktree creation", async () => {
+    const worktreeManager = new FakeWorktreeManager();
+    const deps = makeDeps({ worktreeManager });
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput());
+
+    expect(worktreeManager.createCalls).toHaveLength(1);
+  });
+
+  it("accepts fs in deps without error", async () => {
+    const fs = new FakeFileSystem();
+    const deps = makeDeps({ fs });
+
+    // Should not throw — fs is accepted as a valid dependency
+    const { invokeSkill } = createActivities(deps);
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const result = await invokeSkill(makeDefaultInput());
+    expect(result.routingSignalType).toBe("LGTM");
   });
 });

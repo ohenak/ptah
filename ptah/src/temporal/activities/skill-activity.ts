@@ -23,6 +23,8 @@ import type {
   SkillActivityResult,
 } from "../types.js";
 import type { FeatureResolver, FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
+import type { WorktreeManager } from "../../orchestrator/worktree-manager.js";
+import type { FileSystem } from "../../services/filesystem.js";
 
 // ---------------------------------------------------------------------------
 // Dependency injection interface
@@ -38,6 +40,8 @@ export interface SkillActivityDeps {
   logger: Logger;
   config: PtahConfig;
   featureResolver?: FeatureResolver;
+  worktreeManager?: WorktreeManager;
+  fs?: FileSystem;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +109,7 @@ export function createActivities(deps: SkillActivityDeps) {
       isRevision,
     } = input;
 
+    const featureBranch = `feat-${featureSlug}`;
     const worktreeBranch = `ptah/${featureSlug}/${agentId}/${phaseId}`;
     const worktreeBasePath = `/tmp/ptah-worktrees/${agentId}/${featureSlug}/${phaseId}`;
 
@@ -132,16 +137,47 @@ export function createActivities(deps: SkillActivityDeps) {
 
     // ------------------------------------------------------------------
     // Step 2: Create worktree (FSPEC-TF-01 step 3)
+    // Delegate to WorktreeManager when available; fall back to inline for
+    // backward compatibility.
     // ------------------------------------------------------------------
-    let worktreePath = worktreeBasePath;
-    try {
-      await gitClient.createWorktree(worktreeBranch, worktreePath);
-    } catch (err) {
-      // If worktree already exists (from prior ROUTE_TO_USER), reuse it
-      if (existingWorktree) {
-        worktreePath = existingWorktree.path;
-      } else {
-        throw err;
+    let worktreePath: string;
+    let useWorktreeManager = false;
+
+    if (deps.worktreeManager) {
+      // Obtain Temporal activity context identifiers for registry tracking
+      let workflowId = "unknown";
+      let runId = "unknown";
+      let activityId = "unknown";
+      try {
+        const ctx = Context.current();
+        const info = ctx.info;
+        workflowId = info.workflowExecution.workflowId;
+        runId = info.workflowExecution.runId;
+        activityId = info.activityId;
+      } catch {
+        // Context.current() may not be available in tests
+      }
+
+      const handle = await deps.worktreeManager.create(
+        featureBranch,
+        workflowId,
+        runId,
+        activityId,
+      );
+      worktreePath = handle.path;
+      useWorktreeManager = true;
+    } else {
+      // Legacy inline worktree creation
+      worktreePath = worktreeBasePath;
+      try {
+        await gitClient.createWorktree(worktreeBranch, worktreePath);
+      } catch (err) {
+        // If worktree already exists (from prior ROUTE_TO_USER), reuse it
+        if (existingWorktree) {
+          worktreePath = existingWorktree.path;
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -273,7 +309,7 @@ export function createActivities(deps: SkillActivityDeps) {
       const commitResult = await artifactCommitter.commitAndMerge({
         worktreePath,
         branch: worktreeBranch,
-        featureBranch: `feat-${featureSlug}`,
+        featureBranch,
         artifactChanges,
         agentId,
         threadName: `${featureSlug} — ${phaseId}`,
@@ -288,10 +324,14 @@ export function createActivities(deps: SkillActivityDeps) {
       }
 
       // Clean up worktree after successful single-agent merge
-      try {
-        await gitClient.removeWorktree(worktreePath);
-      } catch {
-        // Best-effort cleanup
+      if (useWorktreeManager && deps.worktreeManager) {
+        await deps.worktreeManager.destroy(worktreePath);
+      } else {
+        try {
+          await gitClient.removeWorktree(worktreePath);
+        } catch {
+          // Best-effort cleanup
+        }
       }
 
       return {
@@ -310,10 +350,14 @@ export function createActivities(deps: SkillActivityDeps) {
         (err as unknown as Record<string, unknown>).routingSignalType === "ROUTE_TO_USER";
 
       if (!isRouteToUser) {
-        try {
-          await gitClient.removeWorktree(worktreePath);
-        } catch {
-          // Best-effort cleanup
+        if (useWorktreeManager && deps.worktreeManager) {
+          await deps.worktreeManager.destroy(worktreePath);
+        } else {
+          try {
+            await gitClient.removeWorktree(worktreePath);
+          } catch {
+            // Best-effort cleanup
+          }
         }
       }
 

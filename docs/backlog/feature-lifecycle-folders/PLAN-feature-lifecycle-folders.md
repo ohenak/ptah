@@ -56,20 +56,20 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| D1 | `promoteBacklogToInProgress` — normal flow: git mv, commit, push, returns updated path | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D2 | `promoteBacklogToInProgress` — idempotent skip: feature already in in-progress | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D3 | `promoteBacklogToInProgress` — not found error: feature not in backlog or in-progress | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D4 | `promoteBacklogToInProgress` — worktree destroyed in finally block (success and failure) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D5 | `promoteInProgressToCompleted` — Phase 1: NNN assignment (max+1, zero-pad), folder move | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D6 | `promoteInProgressToCompleted` — Phase 1 idempotency: folder already exists in completed, skips move | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D7 | `promoteInProgressToCompleted` — NNN = "001" when completed/ is empty | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D8 | `promoteInProgressToCompleted` — NNN gap handling (e.g., 001, 003 → next is 004) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D9 | `promoteInProgressToCompleted` — Phase 2: file rename (all files get NNN prefix, including overview.md) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D10 | `promoteInProgressToCompleted` — Phase 2 idempotency: already-prefixed files are skipped | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D11 | `promoteInProgressToCompleted` — Phase 3: internal reference update (markdown links to renamed files) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D12 | `promoteInProgressToCompleted` — Phase 3: cross-feature links left unchanged | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D13 | `promoteInProgressToCompleted` — Phase 3: parse error on internal ref update logs warning, continues | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| D14 | `promoteInProgressToCompleted` — worktree destroyed in finally block | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
+| D1 | `promoteBacklogToInProgress` — normal flow: git mv, commit, push, returns updated path | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D2 | `promoteBacklogToInProgress` — idempotent skip: feature already in in-progress | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D3 | `promoteBacklogToInProgress` — not found error: feature not in backlog or in-progress | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D4 | `promoteBacklogToInProgress` — worktree destroyed in finally block (success and failure) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D5 | `promoteInProgressToCompleted` — Phase 1: NNN assignment (max+1, zero-pad), folder move | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D6 | `promoteInProgressToCompleted` — Phase 1 idempotency: folder already exists in completed, skips move | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D7 | `promoteInProgressToCompleted` — NNN = "001" when completed/ is empty | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D8 | `promoteInProgressToCompleted` — NNN gap handling (e.g., 001, 003 → next is 004) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D9 | `promoteInProgressToCompleted` — Phase 2: file rename (all files get NNN prefix, including overview.md) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D10 | `promoteInProgressToCompleted` — Phase 2 idempotency: already-prefixed files are skipped | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D11 | `promoteInProgressToCompleted` — Phase 3: internal reference update (markdown links to renamed files) | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D12 | `promoteInProgressToCompleted` — Phase 3: cross-feature links left unchanged | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D13 | `promoteInProgressToCompleted` — Phase 3: parse error on internal ref update logs warning, continues | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| D14 | `promoteInProgressToCompleted` — worktree destroyed in finally block | `ptah/tests/unit/orchestrator/promotion-activity.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
 
 ### Phase E: Workflow Integration — Context Resolution, Cross-Review Paths, Sign-Off
 
@@ -90,9 +90,9 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| F1 | Update `invokeSkill` activity — delegate worktree creation to `WorktreeManager.create()` | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| F2 | Update `SkillActivityDeps` — add `featureResolver`, `worktreeManager`, `fs` dependencies | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| F3 | Update composition root in `start.ts` — wire `DefaultFeatureResolver` + `DefaultWorktreeManager`; add startup cleanup | — | `ptah/src/commands/start.ts` | ⬚ Not Started |
+| F1 | Update `invokeSkill` activity — delegate worktree creation to `WorktreeManager.create()` | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| F2 | Update `SkillActivityDeps` — add `featureResolver`, `worktreeManager`, `fs` dependencies | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| F3 | Update composition root in `start.ts` — wire `DefaultFeatureResolver` + `DefaultWorktreeManager`; add startup cleanup | — | `ptah/bin/ptah.ts` | ✅ Done |
 
 ### Phase G: Migration Script
 
