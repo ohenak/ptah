@@ -500,4 +500,48 @@ describe("NodeGitClient — Phase 4 artifact commit operations (unit)", () => {
       expect(result).toBe(false);
     });
   });
+
+  // A3: gitMvInWorktree
+  describe("gitMvInWorktree", () => {
+    it("runs git mv with cwd set to the worktree path", async () => {
+      setupExecFileMock([{ stdout: "" }]);
+
+      await client.gitMvInWorktree("/tmp/wt-123", "docs/backlog/my-feature", "docs/in-progress/my-feature");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn.mock.calls[0][0]).toBe("git");
+      expect(mockFn.mock.calls[0][1]).toEqual(["mv", "docs/backlog/my-feature", "docs/in-progress/my-feature"]);
+      expect(mockFn.mock.calls[0][2]).toEqual({ cwd: "/tmp/wt-123" });
+    });
+
+    it("throws a descriptive error when git mv fails", async () => {
+      setupExecFileMock([{ error: new Error("fatal: not under version control") }]);
+
+      await expect(
+        client.gitMvInWorktree("/tmp/wt-123", "src", "dest"),
+      ).rejects.toThrow("git mv in worktree failed");
+    });
+  });
+
+  // A4: listDirInWorktree
+  describe("listDirInWorktree", () => {
+    it("lists directory contents at worktreePath/dirPath", async () => {
+      const os = await import("node:os");
+      const fsPromises = await import("node:fs/promises");
+      const nodePath = await import("node:path");
+
+      const tmpDir = await fsPromises.mkdtemp(nodePath.join(os.tmpdir(), "ptah-git-test-"));
+      const subDir = nodePath.join(tmpDir, "docs", "in-progress");
+      await fsPromises.mkdir(subDir, { recursive: true });
+      await fsPromises.writeFile(nodePath.join(subDir, "file-a.md"), "", "utf-8");
+      await fsPromises.writeFile(nodePath.join(subDir, "file-b.md"), "", "utf-8");
+
+      try {
+        const result = await client.listDirInWorktree(tmpDir, "docs/in-progress");
+        expect(result.sort()).toEqual(["file-a.md", "file-b.md"]);
+      } finally {
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

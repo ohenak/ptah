@@ -19,6 +19,11 @@ export interface FileSystem {
   // --- Phase 11: PDLC State Machine ---
   rename(oldPath: string, newPath: string): Promise<void>;
   copyFile(src: string, dest: string): Promise<void>;
+
+  // --- Feature Lifecycle Folders ---
+  readDirMatching(dirPath: string, pattern: RegExp): Promise<string[]>;
+  /** Returns only directory entry names (not files) directly under dirPath. */
+  listDirs(dirPath: string): Promise<string[]>;
 }
 
 export class NodeFileSystem implements FileSystem {
@@ -85,5 +90,23 @@ export class NodeFileSystem implements FileSystem {
       path.resolve(this._cwd, src),
       path.resolve(this._cwd, dest),
     );
+  }
+
+  async readDirMatching(dirPath: string, pattern: RegExp): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(path.resolve(this._cwd, dirPath));
+      return entries.filter((entry) => pattern.test(entry));
+    } catch {
+      return [];
+    }
+  }
+
+  async listDirs(dirPath: string): Promise<string[]> {
+    try {
+      const entries = await fs.readdir(path.resolve(this._cwd, dirPath), { withFileTypes: true });
+      return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    } catch {
+      return [];
+    }
   }
 }

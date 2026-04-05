@@ -85,14 +85,22 @@ The result is your **feature-slug**.
 
 ### Step 3 — Check for existing folder
 
+Check the backlog first, then scan all lifecycle folders (in-progress → completed) in case the feature has been promoted:
+
 ```bash
-test -d docs/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+test -d docs/backlog/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
 ```
 
-- **EXISTS** → Skip to Step 9. Do NOT create any files or folders.
-- **NOT_FOUND** → Continue to Step 3.5.
+If NOT_FOUND, also check:
+```bash
+test -d docs/in-progress/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+test -d docs/completed/*-{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
+```
 
-> **Idempotency scope:** For **numbered threads** (feature-slug matches `^[0-9]{3}-`), `feature-slug` equals `full-folder-name`, so this check reliably detects the existing folder on every subsequent invocation. For **unnumbered threads**, `feature-slug` does not include the NNN prefix added in Step 4B, so this check will not detect the previously created folder — a known limitation documented as AF-R8 in TSPEC §10.1.
+- **EXISTS** (in any folder) → Skip to Step 9. Do NOT create any files or folders.
+- **NOT_FOUND** (in all folders) → Continue to Step 3.5.
+
+> **Idempotency scope:** Because backlog features are always unnumbered, `feature-slug` is always the exact folder name in `docs/backlog/`. The Step 3 check reliably detects the folder on every subsequent invocation (AF-R8 no longer applies).
 
 ### Step 3.5 — Verify docs/ exists
 
@@ -100,47 +108,35 @@ test -d docs/{feature-slug} && echo "EXISTS" || echo "NOT_FOUND"
 test -d docs && echo "OK" || echo "MISSING"
 ```
 
-- **OK** → Continue to Step 4.
+- **OK** → Continue to Step 5.
 - **MISSING** → Report the following error in your response and **halt** (do not proceed to task selection):
 
   > `docs/ directory not found. Please run 'ptah init' to scaffold the project structure before invoking the PM skill.`
 
-### Step 4 — Determine NNN prefix
-
-**Condition A — Numbered thread** (feature-slug starts with `^[0-9]{3}-`):
-- The NNN is already embedded. Your `full-folder-name` = `feature-slug`.
-- Example: `"009-auto-feature-bootstrap"` → `full-folder-name = "009-auto-feature-bootstrap"`
-
-**Condition B — Unnumbered thread** (feature-slug does NOT start with `^[0-9]{3}-`):
-1. Run: `ls docs/ | grep -E '^[0-9]{3}-' | sort | tail -1`
-2. If output is non-empty: `NNN = (first 3 chars of output, cast to int) + 1`, zero-padded to 3 digits
-3. If output is empty (no numbered folders): `NNN = "001"`
-4. `full-folder-name = "{NNN}-{feature-slug}"`
-
 ### Step 5 — Log
 
 ```
-[ptah:pm] Bootstrapping feature folder: docs/{full-folder-name}/
+[ptah:pm] Bootstrapping feature folder: docs/backlog/{feature-slug}/
 ```
 
 ### Step 6 — Create feature folder
 
 ```bash
-mkdir -p docs/{full-folder-name}
+mkdir -p docs/backlog/{feature-slug}
 ```
 
 - If `mkdir` **succeeds** (or folder already exists due to a race condition) → continue to Step 7.
 - If `mkdir` **fails** → Report error in your response and **halt**:
 
-  > `Failed to create feature folder docs/{full-folder-name}/: {error details}. Please check filesystem permissions.`
+  > `Failed to create feature folder docs/backlog/{feature-slug}/: {error details}. Please check filesystem permissions.`
 
 ### Step 7 — Synthesize overview.md content
 
 Construct the file content:
 
 **Title line (deterministic):**
-Replace all hyphens in `full-folder-name` with spaces, then title-case each word.
-`"009-auto-feature-bootstrap"` → `# 009 Auto Feature Bootstrap`
+Replace all hyphens in `feature-slug` with spaces, then title-case each word.
+`"auto-feature-bootstrap"` → `# Auto Feature Bootstrap`
 
 **Body (1–3 sentences):**
 Summarize the feature using the thread name and the user's initial message. Keep it factual and concise — this is Layer 1 reference context for all subsequent skills.
@@ -152,13 +148,13 @@ Summarize the feature using the thread name and the user's initial message. Keep
 First, check if the file already exists (race condition protection):
 
 ```bash
-test -f docs/{full-folder-name}/overview.md && echo "EXISTS" || echo "NOT_FOUND"
+test -f docs/backlog/{feature-slug}/overview.md && echo "EXISTS" || echo "NOT_FOUND"
 ```
 
 - **EXISTS** → Log `[ptah:pm] overview.md already exists — skipping write.` Skip to Step 9.
-- **NOT_FOUND** → Write synthesized content to `docs/{full-folder-name}/overview.md` using the **Write tool**. This write must complete before any task work begins (REQ-AF-NF-01).
+- **NOT_FOUND** → Write synthesized content to `docs/backlog/{feature-slug}/overview.md` using the **Write tool**. This write must complete before any task work begins (REQ-AF-NF-01).
   - If the write **fails** → Report error in your response and **halt**:
-    > `Failed to write docs/{full-folder-name}/overview.md: {error details}. The folder was created but overview.md is missing.`
+    > `Failed to write docs/backlog/{feature-slug}/overview.md: {error details}. The folder was created but overview.md is missing.`
 
 ### Step 9 — Proceed to Task Selection
 
@@ -399,16 +395,27 @@ When referencing other items within documents, use the ID directly in square bra
 
 ```
 docs/
-├── {NNN}-{feature-name}/                  # Feature-based folder
-│   ├── overview.md                        # Problem description (input)
-│   ├── {NNN}-REQ-{feature-name}.md        # Requirements document (PM-owned)
-│   ├── {NNN}-FSPEC-{feature-name}.md      # Functional specifications (PM-owned)
-│   ├── ANALYSIS-{feature-name}.md         # Analysis documents (engineer-owned)
-│   ├── {NNN}-TSPEC-{feature-name}.md      # Technical specifications (engineer-owned)
-│   ├── {NNN}-PLAN-{feature}.md             # Execution plans (engineer-owned)
-│   ├── {NNN}-PROPERTIES-{feature}.md      # Test properties (TE-owned)
-│   ├── REVIEW-{document-type}-{feature}.md # Review documents (TE-owned)
-│   └── CROSS-REVIEW-{skill}-{doc-type}.md # Cross-skill review feedback
+├── backlog/
+│   └── {feature-slug}/                    # Unnumbered — features not yet started
+│       ├── overview.md
+│       ├── REQ-{feature-slug}.md          # Requirements document (PM-owned)
+│       ├── FSPEC-{feature-slug}.md        # Functional specifications (PM-owned)
+│       └── CROSS-REVIEW-{skill}-{doc-type}.md
+├── in-progress/
+│   └── {feature-slug}/                    # Unnumbered — features actively being worked on
+│       ├── overview.md
+│       ├── REQ-{feature-slug}.md
+│       ├── FSPEC-{feature-slug}.md
+│       ├── TSPEC-{feature-slug}.md        # Technical specifications (engineer-owned)
+│       ├── PLAN-{feature-slug}.md         # Execution plans (engineer-owned)
+│       ├── PROPERTIES-{feature-slug}.md   # Test properties (TE-owned)
+│       └── CROSS-REVIEW-{skill}-{doc-type}.md
+├── completed/
+│   └── {NNN}-{feature-slug}/             # NNN-prefixed — completed features
+│       ├── {NNN}-overview.md
+│       ├── {NNN}-REQ-{feature-slug}.md
+│       ├── {NNN}-FSPEC-{feature-slug}.md
+│       └── ...                           # All files are NNN-prefixed on promotion
 ├── requirements/
 │   ├── 001-REQ-PTAH.md                    # Master requirements document
 │   └── traceability-matrix.md             # User Story → Requirement → Spec mapping
@@ -419,6 +426,11 @@ docs/
     ├── properties-template.md
     └── traceability-matrix-template.md
 ```
+
+**Document naming convention:**
+- Backlog and in-progress: files are unnumbered (e.g., `REQ-my-feature.md`)
+- Completed: ALL files are NNN-prefixed, including `overview.md` (e.g., `015-overview.md`, `015-REQ-my-feature.md`)
+- NNN is assigned only upon promotion to completed by the orchestrator — skills never assign NNN
 
 ---
 

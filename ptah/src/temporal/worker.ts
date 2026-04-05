@@ -25,6 +25,8 @@ export interface WorkerActivities {
   sendNotification: (...args: any[]) => Promise<any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mergeWorktree: (...args: any[]) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolveFeaturePath: (...args: any[]) => Promise<any>;
 }
 
 /**

@@ -380,14 +380,31 @@ This skill operates alongside the Backend Engineer, Frontend Engineer, and Produ
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Requirements | `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md` | What must be built (acceptance criteria) |
-| Functional Specs | `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional) |
+| Requirements | `docs/{lifecycle}/{feature-slug}/REQ-{feature-slug}.md` | What must be built (acceptance criteria) |
+| Functional Specs | `docs/{lifecycle}/{feature-slug}/FSPEC-{feature-slug}.md` | Behavioral flows and business rules (PM-owned, optional) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
-| Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (protocols, algorithms, error handling) |
-| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-{feature-name}.md` | Task breakdown with test files |
+| Technical Specs | `docs/{lifecycle}/{feature-slug}/TSPEC-{feature-slug}.md` | How it will be built (protocols, algorithms, error handling) |
+| Execution Plans | `docs/{lifecycle}/{feature-slug}/PLAN-{feature-slug}.md` | Task breakdown with test files |
 | Properties Template | `docs/templates/properties-template.md` | Standard format for all properties documents |
-| Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Properties documents (produced by this skill) |
-| TE Reviews | `docs/{NNN}-{feature-name}/REVIEW-*.md` | Review documents produced by this skill |
+| Test Properties | `docs/{lifecycle}/{feature-slug}/PROPERTIES-{feature-slug}.md` | Properties documents (produced by this skill) |
+| TE Reviews | `docs/{lifecycle}/{feature-slug}/REVIEW-*.md` | Review documents produced by this skill |
+
+> **Note:** `{lifecycle}` is one of `backlog`, `in-progress`, or `completed`. The feature folder path is provided by the orchestrator via workflow state — do not construct lifecycle paths independently. For `completed` features, all files are prefixed with `{NNN}-`.
+
+### File Organization
+
+```
+docs/
+├── backlog/
+│   └── {feature-slug}/           # Unnumbered — features not yet started
+├── in-progress/
+│   └── {feature-slug}/           # Unnumbered — features actively being worked on
+├── completed/
+│   └── {NNN}-{feature-slug}/     # NNN-prefixed — completed features
+│       └── {NNN}-*.md            # All files NNN-prefixed on promotion
+├── requirements/
+└── templates/
+```
 
 ### ID Conventions
 
@@ -400,13 +417,6 @@ This skill operates alongside the Backend Engineer, Frontend Engineer, and Produ
 - Property IDs use the same domain prefix as the requirements they trace to
 - Properties are numbered sequentially within their domain
 - IDs are immutable once assigned
-
-### Document Numbering
-
-Documents are prefixed with a sequential number (`{NNN}-`) to group related artifacts:
-- `002-TSPEC-ptah-discord-bot.md`
-- `002-PLAN-ptah-discord-bot.md`
-- `002-PROPERTIES-ptah-discord-bot.md`
 
 ---
 

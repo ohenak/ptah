@@ -17,6 +17,8 @@ import type { ClaudeCodeInvokeFn } from "../src/services/claude-code.js";
 import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer.js";
 import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
 import { InMemoryWorktreeRegistry } from "../src/orchestrator/worktree-registry.js";
+import { DefaultFeatureResolver } from "../src/orchestrator/feature-resolver.js";
+import { DefaultWorktreeManager } from "../src/orchestrator/worktree-manager.js";
 import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
 import { MigrateCommand } from "../src/commands/migrate.js";
 import { TemporalClientWrapperImpl } from "../src/temporal/client.js";
@@ -170,6 +172,17 @@ async function main(): Promise<void> {
       const contextAssembler = new DefaultContextAssembler(fs, tokenCounter, logger);
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
       const worktreeRegistry = new InMemoryWorktreeRegistry();
+      const featureResolver = new DefaultFeatureResolver(fs, logger);
+      const worktreeManager = new DefaultWorktreeManager(git, worktreeRegistry, logger);
+
+      // Startup sweep: prune dangling ptah worktrees from previous crashes.
+      // At startup we have no known active executions, so pass an empty set.
+      try {
+        await worktreeManager.cleanupDangling(new Set());
+        logger.info("Startup worktree cleanup complete");
+      } catch (err) {
+        logger.warn(`Startup worktree cleanup failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+      }
 
       // Phase 4: Artifact commit pipeline services (AsyncMutex no longer needed at top level)
       const { AsyncMutex } = await import("../src/orchestrator/merge-lock.js");
@@ -202,6 +215,9 @@ async function main(): Promise<void> {
         agentRegistry,
         logger,
         config,
+        featureResolver,
+        worktreeManager,
+        fs,
       });
       const notificationActivities = createNotificationActivities({ discordClient: discord, logger, config });
 
@@ -213,6 +229,7 @@ async function main(): Promise<void> {
           activities: {
             invokeSkill: skillActivities.invokeSkill,
             mergeWorktree: skillActivities.mergeWorktree,
+            resolveFeaturePath: skillActivities.resolveFeaturePath,
             sendNotification: notificationActivities.sendNotification,
           },
           logger,

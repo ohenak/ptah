@@ -46,6 +46,8 @@ import type {
   TaskType,
 } from "../../src/types.js";
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
+import type { FeatureResolver, FeatureResolverResult } from "../../src/orchestrator/feature-resolver.js";
+import type { WorktreeManager, WorktreeHandle } from "../../src/orchestrator/worktree-manager.js";
 import type { AgentRegistry } from "../../src/orchestrator/agent-registry.js";
 import type { Message } from "discord.js";
 import * as nodePath from "node:path";
@@ -117,17 +119,25 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async readDir(path: string): Promise<string[]> {
-    const filenames: string[] = [];
+    const entries = new Set<string>();
     const prefix = path.endsWith("/") ? path : path + "/";
     for (const filePath of this.files.keys()) {
       if (filePath.startsWith(prefix)) {
         const rest = filePath.slice(prefix.length);
         if (!rest.includes("/")) {
-          filenames.push(rest);
+          entries.add(rest);
         }
       }
     }
-    return filenames;
+    for (const dirPath of this.dirs) {
+      if (dirPath.startsWith(prefix)) {
+        const rest = dirPath.slice(prefix.length);
+        if (rest && !rest.includes("/")) {
+          entries.add(rest);
+        }
+      }
+    }
+    return [...entries];
   }
 
   joinPath(...segments: string[]): string {
@@ -161,6 +171,26 @@ export class FakeFileSystem implements FileSystem {
       throw error;
     }
     this.files.set(dest, content);
+  }
+
+  async readDirMatching(dirPath: string, pattern: RegExp): Promise<string[]> {
+    const entries = await this.readDir(dirPath);
+    return entries.filter((entry) => pattern.test(entry));
+  }
+
+  async listDirs(dirPath: string): Promise<string[]> {
+    // Return only entries that are registered as directories
+    const prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+    const result: string[] = [];
+    for (const dir of this.dirs) {
+      if (dir.startsWith(prefix)) {
+        const rest = dir.slice(prefix.length);
+        if (rest && !rest.includes("/")) {
+          result.push(rest);
+        }
+      }
+    }
+    return result;
   }
 }
 
@@ -342,7 +372,10 @@ export class FakeGitClient implements GitClient {
     this.deletedBranches.push(branch);
   }
 
+  listWorktreesError: Error | null = null;
+
   async listWorktrees(): Promise<WorktreeInfo[]> {
+    if (this.listWorktreesError) throw this.listWorktreesError;
     return this.worktrees;
   }
 
@@ -403,6 +436,24 @@ export class FakeGitClient implements GitClient {
   async branchExists(branch: string): Promise<boolean> {
     this.branchExistsCalls.push(branch);
     return this.branchExistsResult;
+  }
+
+  // Feature Lifecycle Folders
+  gitMvInWorktreeCalls: Array<{ worktreePath: string; source: string; destination: string }> = [];
+  gitMvInWorktreeError: Error | null = null;
+  listDirInWorktreeResult: string[] = [];
+  listDirInWorktreeCalls: Array<{ worktreePath: string; dirPath: string }> = [];
+  listDirInWorktreeError: Error | null = null;
+
+  async gitMvInWorktree(worktreePath: string, source: string, destination: string): Promise<void> {
+    this.gitMvInWorktreeCalls.push({ worktreePath, source, destination });
+    if (this.gitMvInWorktreeError) throw this.gitMvInWorktreeError;
+  }
+
+  async listDirInWorktree(worktreePath: string, dirPath: string): Promise<string[]> {
+    this.listDirInWorktreeCalls.push({ worktreePath, dirPath });
+    if (this.listDirInWorktreeError) throw this.listDirInWorktreeError;
+    return this.listDirInWorktreeResult;
   }
 }
 
@@ -997,13 +1048,18 @@ export function createBotMessageNoRouting(content = "Progress update"): ThreadMe
 
 export class FakeWorktreeRegistry implements WorktreeRegistry {
   worktrees: ActiveWorktree[] = [];
-  register(worktreePath: string, branch: string): void {
-    this.worktrees.push({ worktreePath, branch });
+  register(entry: ActiveWorktree): void {
+    // Remove existing entry with same path (overwrite behavior)
+    this.worktrees = this.worktrees.filter(w => w.worktreePath !== entry.worktreePath);
+    this.worktrees.push(entry);
   }
   deregister(worktreePath: string): void {
     this.worktrees = this.worktrees.filter(w => w.worktreePath !== worktreePath);
   }
   getAll(): ReadonlyArray<ActiveWorktree> { return this.worktrees; }
+  findByActivity(activityId: string): ActiveWorktree | undefined {
+    return this.worktrees.find(w => w.activityId === activityId);
+  }
   size(): number { return this.worktrees.length; }
 }
 
@@ -1382,6 +1438,49 @@ export function defaultFeatureWorkflowState(
     failureInfo: null,
     startedAt: "2026-04-02T00:00:00Z",
     updatedAt: "2026-04-02T00:00:00Z",
+    featurePath: null,
+    worktreeRoot: null,
+    signOffs: {},
     ...overrides,
   };
+}
+
+// --- Feature Lifecycle Folders: New fakes ---
+
+export class FakeFeatureResolver implements FeatureResolver {
+  private results = new Map<string, FeatureResolverResult>();
+  resolveCalls: Array<{ slug: string; worktreeRoot: string }> = [];
+
+  /** Pre-configure a result for a given slug */
+  setResult(slug: string, result: FeatureResolverResult): void {
+    this.results.set(slug, result);
+  }
+
+  async resolve(slug: string, worktreeRoot: string): Promise<FeatureResolverResult> {
+    this.resolveCalls.push({ slug, worktreeRoot });
+    const result = this.results.get(slug);
+    if (result) return result;
+    return { found: false, slug };
+  }
+}
+
+export class FakeWorktreeManager implements WorktreeManager {
+  createCalls: Array<{ featureBranch: string; workflowId: string; runId: string; activityId: string }> = [];
+  destroyCalls: string[] = [];
+  cleanupCalls: Set<string>[] = [];
+  worktreeCounter = 0;
+
+  async create(featureBranch: string, workflowId: string, runId: string, activityId: string): Promise<WorktreeHandle> {
+    this.createCalls.push({ featureBranch, workflowId, runId, activityId });
+    this.worktreeCounter++;
+    return { path: `/tmp/ptah-wt-fake-${this.worktreeCounter}/`, branch: `ptah-wt-fake-${this.worktreeCounter}` };
+  }
+
+  async destroy(worktreePath: string): Promise<void> {
+    this.destroyCalls.push(worktreePath);
+  }
+
+  async cleanupDangling(activeExecutions: Set<string>): Promise<void> {
+    this.cleanupCalls.push(activeExecutions);
+  }
 }

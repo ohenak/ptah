@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { readdir } from "node:fs/promises";
+import * as path from "node:path";
 
 const execFileAsync = promisify(execFile);
 
@@ -34,6 +36,10 @@ export interface GitClient {
   resetHardInWorktree(worktreePath: string): Promise<void>;
   cleanInWorktree(worktreePath: string): Promise<void>;
   addAllInWorktree(worktreePath: string): Promise<void>;
+
+  // --- Feature Lifecycle Folders ---
+  gitMvInWorktree(worktreePath: string, source: string, destination: string): Promise<void>;
+  listDirInWorktree(worktreePath: string, dirPath: string): Promise<string[]>;
 
   // --- Phase 10 ---
   createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void>;
@@ -317,11 +323,28 @@ export class NodeGitClient implements GitClient {
     await execFileAsync("git", ["-C", worktreePath, "add", "-A"], {});
   }
 
+  // --- Feature Lifecycle Folders ---
+
+  async gitMvInWorktree(worktreePath: string, source: string, destination: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["mv", source, destination], { cwd: worktreePath });
+    } catch (error: unknown) {
+      throw new Error(
+        `git mv in worktree failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async listDirInWorktree(worktreePath: string, dirPath: string): Promise<string[]> {
+    const fullPath = path.join(worktreePath, dirPath);
+    return readdir(fullPath);
+  }
+
   // --- Phase 10 ---
 
-  async createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void> {
+  async createWorktreeFromBranch(newBranch: string, wtPath: string, baseBranch: string): Promise<void> {
     try {
-      await execFileAsync("git", ["worktree", "add", "-b", newBranch, path, baseBranch], {
+      await execFileAsync("git", ["worktree", "add", "-b", newBranch, wtPath, baseBranch], {
         cwd: this.cwd,
       });
     } catch (error: unknown) {
