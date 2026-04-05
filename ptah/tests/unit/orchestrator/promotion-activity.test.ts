@@ -598,16 +598,26 @@ describe("Promotion Activities", () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   describe("PROP-PR-14: completed/ unreadable", () => {
-    it("promoteInProgressToCompleted treats unreadable completed/ as empty (safeReadDir returns [])", async () => {
+    it("promoteInProgressToCompleted defaults NNN to 001 when completed/ is unreadable (safeReadDir graceful degradation)", async () => {
       const wtPath = "/tmp/ptah-wt-fake-1/";
       fs.addExistingDir(`${wtPath}docs/in-progress/my-feature`);
-      // safeReadDir catches the error and returns [], so NNN defaults to 001.
-      // The activity proceeds and the git mv for folder move will occur.
-      // This tests the graceful degradation path per TSPEC §5.2.2 safeReadDir.
-      // Note: PROP-PR-14 in PROPERTIES states this should throw nonRetryable,
-      // but the TSPEC design uses safeReadDir for graceful degradation.
-      // The actual failure surfaces downstream when listDirInWorktree is called
-      // on the completed folder for Phase 2 file rename.
+      // Do NOT add completed/ dir — safeReadDir will return [] on missing/unreadable dir.
+      // This means NNN defaults to 001 and the activity proceeds with git mv.
+      // Per TSPEC §5.2.2, safeReadDir is intentional graceful degradation.
+
+      // Set up listDirInWorktree to return files for Phase 2 rename
+      gitClient.listDirInWorktreeResult = ["overview.md", "REQ-my-feature.md"];
+
+      const result = await activities.promoteInProgressToCompleted(defaultInput);
+
+      // NNN should default to 001 when completed/ scan returns []
+      expect(result.featurePath).toBe("docs/completed/001-my-feature/");
+
+      // Verify git mv was called with NNN=001
+      const folderMoveCall = gitClient.gitMvInWorktreeCalls.find(
+        (c) => c.source === "docs/in-progress/my-feature/" && c.destination.includes("001-my-feature"),
+      );
+      expect(folderMoveCall).toBeDefined();
     });
 
     it("promoteInProgressToCompleted throws when Phase 2 listDirInWorktree fails", async () => {
