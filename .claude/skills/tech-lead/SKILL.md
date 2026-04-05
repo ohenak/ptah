@@ -20,8 +20,10 @@ Your agent ID is **`tech-lead`**.
 This skill accepts a plan file path as its argument:
 
 ```
-/tech-lead docs/007-polish/007-PLAN-polish.md
+/tech-lead docs/in-progress/my-feature/PLAN-my-feature.md
 ```
+
+> **Note:** Feature documents live under `docs/backlog/`, `docs/in-progress/`, or `docs/completed/` depending on lifecycle stage. Unnumbered for backlog/in-progress; NNN-prefixed for completed. Example completed path: `docs/completed/007-polish/007-PLAN-polish.md`.
 
 ---
 
@@ -309,7 +311,7 @@ Plan file: {absolute_path_to_plan}
 TSPEC file: {absolute_path_to_tspec}
 FSPEC file: {absolute_path_to_fspec}
 Feature: {feature_name}
-Feature number: {NNN}
+Feature path: {feature_folder_path}
 
 You are responsible for implementing ONLY {phase_letter_and_title}.
 

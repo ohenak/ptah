@@ -673,12 +673,44 @@ This skill operates downstream of the Product Manager skill. The key documents t
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| Requirements | `docs/{NNN}-{feature-name}/{NNN}-REQ-{feature-name}.md` | What must be built (acceptance criteria) |
-| Functional Specs | `docs/{NNN}-{feature-name}/{NNN}-FSPEC-{feature-name}.md` | Behavioral flows and business rules (PM-owned, optional) |
+| Requirements | `docs/{lifecycle}/{feature-slug}/REQ-{feature-slug}.md` | What must be built (acceptance criteria) |
+| Functional Specs | `docs/{lifecycle}/{feature-slug}/FSPEC-{feature-slug}.md` | Behavioral flows and business rules (PM-owned, optional) |
 | Traceability | `docs/requirements/traceability-matrix.md` | User Story → Requirement → Specification mapping |
-| Technical Specs | `docs/{NNN}-{feature-name}/{NNN}-TSPEC-{feature-name}.md` | How it will be built (produced by this skill) |
-| Execution Plans | `docs/{NNN}-{feature-name}/{NNN}-PLAN-{feature-name}.md` | Task breakdown (produced by this skill) |
-| Test Properties | `docs/{NNN}-{feature-name}/{NNN}-PROPERTIES-{feature-name}.md` | Testable invariants (produced by Test Engineer) |
+| Technical Specs | `docs/{lifecycle}/{feature-slug}/TSPEC-{feature-slug}.md` | How it will be built (produced by this skill) |
+| Execution Plans | `docs/{lifecycle}/{feature-slug}/PLAN-{feature-slug}.md` | Task breakdown (produced by this skill) |
+| Test Properties | `docs/{lifecycle}/{feature-slug}/PROPERTIES-{feature-slug}.md` | Testable invariants (produced by Test Engineer) |
+
+> **Note:** `{lifecycle}` is one of `backlog`, `in-progress`, or `completed`. The feature folder path is provided by the orchestrator via workflow state — do not construct lifecycle paths independently. For `completed` features, all files are prefixed with `{NNN}-` (e.g., `015-REQ-my-feature.md`).
+
+### File Organization
+
+```
+docs/
+├── backlog/
+│   └── {feature-slug}/           # Unnumbered — features not yet started
+│       ├── overview.md
+│       ├── REQ-{feature-slug}.md
+│       └── ...
+├── in-progress/
+│   └── {feature-slug}/           # Unnumbered — features actively being worked on
+│       ├── overview.md
+│       ├── REQ-{feature-slug}.md
+│       ├── TSPEC-{feature-slug}.md
+│       ├── PLAN-{feature-slug}.md
+│       └── ...
+├── completed/
+│   └── {NNN}-{feature-slug}/     # NNN-prefixed — completed features
+│       ├── {NNN}-overview.md
+│       ├── {NNN}-REQ-{feature-slug}.md
+│       └── ...                   # All files are NNN-prefixed on promotion
+├── requirements/
+└── templates/
+```
+
+**Document naming convention:**
+- Backlog and in-progress: files are unnumbered (e.g., `REQ-my-feature.md`)
+- Completed: ALL files are NNN-prefixed (e.g., `015-REQ-my-feature.md`)
+- NNN is assigned only upon promotion to completed by the orchestrator
 
 ### ID Conventions
 
@@ -687,15 +719,6 @@ This skill operates downstream of the Product Manager skill. The key documents t
 | Requirement | `REQ-{DOMAIN}-{NUMBER}` | `REQ-DI-01` |
 | Technical Specification | `TSPEC-{feature-name}` | `TSPEC-ptah-discord-bot` |
 | Property | `PROP-{DOMAIN}-{NUMBER}` | `PROP-DI-01` |
-
-### Document Numbering
-
-Documents are prefixed with a sequential number (`{NNN}-`) to establish ordering:
-- `001-TSPEC-ptah-init.md`
-- `002-TSPEC-ptah-discord-bot.md`
-- `002-PLAN-ptah-discord-bot.md`
-
-The number groups related documents (TSPEC, PLAN, PROPERTIES) for the same feature.
 
 ---
 

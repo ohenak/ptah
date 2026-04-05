@@ -113,10 +113,10 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| H1 | Update PM SKILL.md — Phase 0 algorithm (Steps 3-8 paths to `docs/backlog/`, remove NNN logic) + File Organization section | — | `.claude/skills/product-manager/SKILL.md` | ⬚ Not Started |
-| H2 | Update Engineer SKILL.md — File Organization section + document path references | — | `.claude/skills/engineer/SKILL.md` | ⬚ Not Started |
-| H3 | Update Tech Lead SKILL.md — File Organization section + document path references | — | `.claude/skills/tech-lead/SKILL.md` | ⬚ Not Started |
-| H4 | Update Test Engineer SKILL.md — File Organization section + document path references | — | `.claude/skills/test-engineer/SKILL.md` | ⬚ Not Started |
+| H1 | Update PM SKILL.md — Phase 0 algorithm (Steps 3-8 paths to `docs/backlog/`, remove NNN logic) + File Organization section | — | `.claude/skills/product-manager/SKILL.md` | ✅ Done |
+| H2 | Update Engineer SKILL.md — File Organization section + document path references | — | `.claude/skills/engineer/SKILL.md` | ✅ Done |
+| H3 | Update Tech Lead SKILL.md — File Organization section + document path references | — | `.claude/skills/tech-lead/SKILL.md` | ✅ Done |
+| H4 | Update Test Engineer SKILL.md — File Organization section + document path references | — | `.claude/skills/test-engineer/SKILL.md` | ✅ Done |
 
 ### Phase I: Integration Tests
 
