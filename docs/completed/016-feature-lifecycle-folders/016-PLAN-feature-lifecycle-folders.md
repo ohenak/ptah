@@ -2,9 +2,9 @@
 
 | Field | Detail |
 |-------|--------|
-| **Technical Specification** | [TSPEC-FLF v1.2](TSPEC-feature-lifecycle-folders.md) |
-| **Requirements** | [REQ-FLF v2.4](REQ-feature-lifecycle-folders.md) |
-| **Functional Specification** | [FSPEC-FLF v1.1](FSPEC-feature-lifecycle-folders.md) |
+| **Technical Specification** | [TSPEC-FLF v1.2](016-TSPEC-feature-lifecycle-folders.md) |
+| **Requirements** | [REQ-FLF v2.4](016-REQ-feature-lifecycle-folders.md) |
+| **Functional Specification** | [FSPEC-FLF v1.1](016-FSPEC-feature-lifecycle-folders.md) |
 | **Version** | 1.1 |
 | **Date** | April 4, 2026 |
 | **Status** | Draft |

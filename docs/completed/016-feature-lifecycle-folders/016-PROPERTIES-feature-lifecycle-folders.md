@@ -5,9 +5,9 @@
 | Field | Detail |
 |-------|--------|
 | **Document ID** | PROPERTIES-FLF |
-| **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
-| **Specifications** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md), [TSPEC-FLF](TSPEC-feature-lifecycle-folders.md) |
-| **Execution Plan** | [PLAN-FLF](PLAN-feature-lifecycle-folders.md) |
+| **Requirements** | [REQ-FLF](016-REQ-feature-lifecycle-folders.md) |
+| **Specifications** | [FSPEC-FLF](016-FSPEC-feature-lifecycle-folders.md), [TSPEC-FLF](016-TSPEC-feature-lifecycle-folders.md) |
+| **Execution Plan** | [PLAN-FLF](016-PLAN-feature-lifecycle-folders.md) |
 | **Version** | 1.2 |
 | **Date** | April 4, 2026 |
 | **Author** | Test Engineer |
@@ -43,9 +43,9 @@ Properties are derived from REQ-FLF (v2.3), FSPEC-FLF (v1.1), and TSPEC-FLF (v1.
 
 | Input | Count | Source |
 |-------|-------|--------|
-| Requirements analyzed | 29 | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
-| Specifications analyzed | 6 | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md), [TSPEC-FLF](TSPEC-feature-lifecycle-folders.md) |
-| Plan tasks reviewed | N/A | [PLAN-FLF](PLAN-feature-lifecycle-folders.md) |
+| Requirements analyzed | 29 | [REQ-FLF](016-REQ-feature-lifecycle-folders.md) |
+| Specifications analyzed | 6 | [FSPEC-FLF](016-FSPEC-feature-lifecycle-folders.md), [TSPEC-FLF](016-TSPEC-feature-lifecycle-folders.md) |
+| Plan tasks reviewed | N/A | [PLAN-FLF](016-PLAN-feature-lifecycle-folders.md) |
 | Integration boundaries identified | 5 | Resolver+Promotion, Workflow+Activities, WorktreeManager+GitClient, Migration+GitClient, CompositionRoot |
 | Implementation files reviewed | 0 | N/A -- not yet implemented |
 

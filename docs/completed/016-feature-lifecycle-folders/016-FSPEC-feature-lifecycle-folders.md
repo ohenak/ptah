@@ -5,7 +5,7 @@
 | Field | Detail |
 |-------|--------|
 | **Document ID** | FSPEC-FLF |
-| **Parent Document** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
+| **Parent Document** | [REQ-FLF](016-REQ-feature-lifecycle-folders.md) |
 | **Version** | 1.1 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |

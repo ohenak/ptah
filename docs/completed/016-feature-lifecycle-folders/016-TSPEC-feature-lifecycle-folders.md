@@ -5,8 +5,8 @@
 | Field | Detail |
 |-------|--------|
 | **Document ID** | TSPEC-FLF |
-| **Requirements** | [REQ-FLF](REQ-feature-lifecycle-folders.md) |
-| **Functional Specification** | [FSPEC-FLF](FSPEC-feature-lifecycle-folders.md) |
+| **Requirements** | [REQ-FLF](016-REQ-feature-lifecycle-folders.md) |
+| **Functional Specification** | [FSPEC-FLF](016-FSPEC-feature-lifecycle-folders.md) |
 | **Version** | 1.2 |
 | **Date** | April 4, 2026 |
 | **Status** | Draft |
