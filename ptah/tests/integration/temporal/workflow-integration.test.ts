@@ -128,6 +128,9 @@ interface MockActivities {
   invokeSkill: (input: SkillActivityInput) => Promise<SkillActivityResult>;
   mergeWorktree: (input: MergeWorktreeInput) => Promise<MergeResult>;
   sendNotification: (input: NotificationInput) => Promise<void>;
+  resolveFeaturePath: (input: { featureSlug: string; worktreeRoot: string }) => Promise<{ found: boolean; path?: string; lifecycle?: string; slug?: string }>;
+  promoteBacklogToInProgress: (input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) => Promise<{ featurePath: string; promoted: boolean }>;
+  promoteInProgressToCompleted: (input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) => Promise<{ featurePath: string; promoted: boolean }>;
 }
 
 /** Notifications captured during each test */
@@ -152,6 +155,18 @@ function makeMockActivities(): MockActivities {
     async sendNotification(input: NotificationInput): Promise<void> {
       capturedNotifications.push(input);
       if (activityOverrides.sendNotification) return activityOverrides.sendNotification(input);
+    },
+    async resolveFeaturePath(input: { featureSlug: string; worktreeRoot: string }) {
+      if (activityOverrides.resolveFeaturePath) return activityOverrides.resolveFeaturePath(input);
+      return { found: true, path: `docs/in-progress/${input.featureSlug}/`, lifecycle: "in-progress" };
+    },
+    async promoteBacklogToInProgress(input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) {
+      if (activityOverrides.promoteBacklogToInProgress) return activityOverrides.promoteBacklogToInProgress(input);
+      return { featurePath: `docs/in-progress/${input.featureSlug}/`, promoted: true };
+    },
+    async promoteInProgressToCompleted(input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) {
+      if (activityOverrides.promoteInProgressToCompleted) return activityOverrides.promoteInProgressToCompleted(input);
+      return { featurePath: `docs/completed/001-${input.featureSlug}/`, promoted: true };
     },
   };
 }

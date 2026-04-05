@@ -27,6 +27,10 @@ export interface WorkerActivities {
   mergeWorktree: (...args: any[]) => Promise<any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolveFeaturePath: (...args: any[]) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  promoteBacklogToInProgress: (...args: any[]) => Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  promoteInProgressToCompleted: (...args: any[]) => Promise<any>;
 }
 
 /**

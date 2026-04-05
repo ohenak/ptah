@@ -33,7 +33,9 @@ import type {
   ForkJoinAgentResult,
   StartWorkflowParams,
 } from "../types.js";
-import type { MergeResult, MergeWorktreeInput } from "../activities/skill-activity.js";
+import type { MergeResult, MergeWorktreeInput, ResolveFeaturePathInput } from "../activities/skill-activity.js";
+import type { FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
+import type { PromotionInput, PromotionResult } from "../../orchestrator/promotion-activity.js";
 
 // ---------------------------------------------------------------------------
 // Context document resolution context
@@ -520,6 +522,9 @@ interface WorkflowActivities {
   invokeSkill(input: SkillActivityInput): Promise<SkillActivityResult>;
   mergeWorktree(input: MergeWorktreeInput): Promise<MergeResult>;
   sendNotification(input: NotificationInput): Promise<void>;
+  resolveFeaturePath(input: ResolveFeaturePathInput): Promise<FeatureResolverResult>;
+  promoteBacklogToInProgress(input: PromotionInput): Promise<PromotionResult>;
+  promoteInProgressToCompleted(input: PromotionInput): Promise<PromotionResult>;
 }
 
 // Proxy activities — wired to the Temporal task queue at runtime.
@@ -528,6 +533,9 @@ const {
   invokeSkill,
   mergeWorktree,
   sendNotification,
+  resolveFeaturePath,
+  promoteBacklogToInProgress,
+  promoteInProgressToCompleted,
 } = wf.proxyActivities<WorkflowActivities>({
   startToCloseTimeout: "30 minutes",
   heartbeatTimeout: "120 seconds",
@@ -755,6 +763,9 @@ async function dispatchSingleAgent(params: {
   }
 
   // LGTM or TASK_COMPLETE — advance
+  if (result.routingSignalType === "LGTM") {
+    recordSignOff(state.signOffs, agentId, new Date().toISOString());
+  }
   state.activeAgentIds = [];
   _state = state;
   return result;
@@ -904,6 +915,9 @@ async function dispatchForkJoin(params: {
       );
       // Update the result
       if (reinvokeResult.routingSignalType === "LGTM" || reinvokeResult.routingSignalType === "TASK_COMPLETE") {
+        if (reinvokeResult.routingSignalType === "LGTM") {
+          recordSignOff(state.signOffs, agentId, new Date().toISOString());
+        }
         agentResults[agentId] = {
           status: "success",
           worktreePath: reinvokeResult.worktreePath,
@@ -1232,7 +1246,37 @@ export async function featureLifecycleWorkflow(
   wf.setHandler(workflowStateQuery, () => _state!);
 
   // Get workflow ID for notification routing
-  const workflowId = wf.workflowInfo().workflowId;
+  const workflowInfo = wf.workflowInfo();
+  const workflowId = workflowInfo.workflowId;
+  const runId = workflowInfo.runId;
+  const featureBranch = `feat-${featureSlug}`;
+
+  // ── E10: Resolve feature path at workflow start ──────────────────────
+  // Uses the FeatureResolver activity to locate the feature folder across
+  // lifecycle directories. Stores result in state for all subsequent phases.
+  if (state.featurePath === null) {
+    const resolveResult = await resolveFeaturePath({
+      featureSlug,
+      worktreeRoot: ".",  // main working tree root
+    });
+
+    if (resolveResult.found) {
+      state.featurePath = resolveResult.path;
+
+      // ── E8: Auto-promote from backlog if needed ────────────────────
+      if (needsBacklogPromotion(resolveResult.lifecycle)) {
+        const promotionResult = await promoteBacklogToInProgress({
+          featureSlug,
+          featureBranch,
+          workflowId,
+          runId,
+        });
+        state.featurePath = promotionResult.featurePath;
+      }
+    }
+
+    _state = state;
+  }
 
   // D2: Main workflow loop — iterate through phases
   while (true) {
@@ -1358,6 +1402,18 @@ export async function featureLifecycleWorkflow(
     if (nextPhaseId === null) break;
     state.currentPhaseId = nextPhaseId;
     state.phaseStatus = "running";
+    _state = state;
+  }
+
+  // ── E7: Completion promotion — trigger when both qa + pm have signed off ──
+  if (isCompletionReady(state.signOffs) && state.featurePath !== null) {
+    const completionResult = await promoteInProgressToCompleted({
+      featureSlug,
+      featureBranch,
+      workflowId,
+      runId,
+    });
+    state.featurePath = completionResult.featurePath;
     _state = state;
   }
 
