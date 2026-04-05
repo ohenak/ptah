@@ -83,7 +83,7 @@ describe("Promotion Activities", () => {
           {
             worktreePath: wtPath,
             remote: "origin",
-            branch: "feat-my-feature",
+            branch: "HEAD:refs/heads/feat-my-feature",
           },
         ]);
 

@@ -63,20 +63,23 @@ export class DefaultWorktreeManager implements WorktreeManager {
     for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
       const uuid = randomUUID();
       const worktreePath = `${PTAH_WORKTREE_PREFIX}${uuid}/`;
+      const worktreeBranch = `ptah-wt-${uuid}`;
 
       try {
-        await this.gitClient.createWorktree(featureBranch, worktreePath);
+        // Create a new branch from the feature branch and check it out in the worktree.
+        // We use a unique branch per worktree to avoid conflicts with the existing feature branch.
+        await this.gitClient.createWorktreeFromBranch(worktreeBranch, worktreePath, featureBranch);
 
         this.registry.register({
           worktreePath,
-          branch: featureBranch,
+          branch: worktreeBranch,
           workflowId,
           runId,
           activityId,
           createdAt: new Date().toISOString(),
         });
 
-        return { path: worktreePath, branch: featureBranch };
+        return { path: worktreePath, branch: worktreeBranch };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(

@@ -113,8 +113,8 @@ export function createPromotionActivities(deps: PromotionActivityDeps) {
         `chore(lifecycle): promote ${featureSlug} backlog → in-progress`,
       );
 
-      // Push
-      await gitClient.pushInWorktree(wtPath, "origin", featureBranch);
+      // Push worktree branch to remote as the feature branch
+      await gitClient.pushInWorktree(wtPath, "origin", `HEAD:refs/heads/${featureBranch}`);
 
       return {
         featurePath: `docs/in-progress/${featureSlug}/`,
@@ -284,8 +284,8 @@ export function createPromotionActivities(deps: PromotionActivityDeps) {
         }
       }
 
-      // Push
-      await gitClient.pushInWorktree(wtPath, "origin", featureBranch);
+      // Push worktree branch to remote as the feature branch
+      await gitClient.pushInWorktree(wtPath, "origin", `HEAD:refs/heads/${featureBranch}`);
 
       return {
         featurePath: completedFeatureDir,

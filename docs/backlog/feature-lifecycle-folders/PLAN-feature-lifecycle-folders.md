@@ -122,8 +122,8 @@ Implement lifecycle-based folder organization for `docs/` (backlog → in-progre
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| I1 | Integration test: backlog→in-progress promotion pipeline (real FS + git) | `ptah/tests/integration/orchestrator/promotion-pipeline.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
-| I2 | Integration test: in-progress→completed promotion pipeline (real FS + git, verify `git log --follow`) | `ptah/tests/integration/orchestrator/promotion-pipeline.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ⬚ Not Started |
+| I1 | Integration test: backlog→in-progress promotion pipeline (real FS + git) | `ptah/tests/integration/orchestrator/promotion-pipeline.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
+| I2 | Integration test: in-progress→completed promotion pipeline (real FS + git, verify `git log --follow`) | `ptah/tests/integration/orchestrator/promotion-pipeline.test.ts` | `ptah/src/orchestrator/promotion-activity.ts` | ✅ Done |
 
 Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green) | 🔵 Refactored | ✅ Done
 
