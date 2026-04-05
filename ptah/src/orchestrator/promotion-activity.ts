@@ -101,11 +101,18 @@ export function createPromotionActivities(deps: PromotionActivityDeps) {
       }
 
       // Move from backlog to in-progress
-      await gitClient.gitMvInWorktree(
-        wtPath,
-        `docs/backlog/${featureSlug}/`,
-        `docs/in-progress/${featureSlug}/`,
-      );
+      try {
+        await gitClient.gitMvInWorktree(
+          wtPath,
+          `docs/backlog/${featureSlug}/`,
+          `docs/in-progress/${featureSlug}/`,
+        );
+      } catch (err) {
+        throw ApplicationFailure.nonRetryable(
+          `git mv failed for ${featureSlug}: ${err instanceof Error ? err.message : String(err)}`,
+          "GitMvError",
+        );
+      }
 
       // Commit
       await gitClient.commitInWorktree(
@@ -173,11 +180,18 @@ export function createPromotionActivities(deps: PromotionActivityDeps) {
         }
 
         // git mv folder
-        await gitClient.gitMvInWorktree(
-          wtPath,
-          `docs/in-progress/${featureSlug}/`,
-          `docs/completed/${nnn}-${featureSlug}/`,
-        );
+        try {
+          await gitClient.gitMvInWorktree(
+            wtPath,
+            `docs/in-progress/${featureSlug}/`,
+            `docs/completed/${nnn}-${featureSlug}/`,
+          );
+        } catch (err) {
+          throw ApplicationFailure.nonRetryable(
+            `git mv failed for ${featureSlug}: ${err instanceof Error ? err.message : String(err)}`,
+            "GitMvError",
+          );
+        }
 
         // Commit Phase 1
         await gitClient.commitInWorktree(
@@ -204,11 +218,18 @@ export function createPromotionActivities(deps: PromotionActivityDeps) {
           const newName = `${nnnPrefix}${file}`;
           renameMap.set(file, newName);
 
-          await gitClient.gitMvInWorktree(
-            wtPath,
-            `${completedFeatureDir}${file}`,
-            `${completedFeatureDir}${newName}`,
-          );
+          try {
+            await gitClient.gitMvInWorktree(
+              wtPath,
+              `${completedFeatureDir}${file}`,
+              `${completedFeatureDir}${newName}`,
+            );
+          } catch (err) {
+            throw ApplicationFailure.nonRetryable(
+              `git mv failed renaming ${file} to ${newName}: ${err instanceof Error ? err.message : String(err)}`,
+              "GitMvError",
+            );
+          }
           anyRenamed = true;
         }
       }

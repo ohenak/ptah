@@ -107,7 +107,16 @@ export class DefaultWorktreeManager implements WorktreeManager {
   }
 
   async cleanupDangling(activeExecutions: Set<string>): Promise<void> {
-    const worktrees = await this.gitClient.listWorktrees();
+    let worktrees;
+    try {
+      worktrees = await this.gitClient.listWorktrees();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[ptah:startup] Skipping worktree cleanup — failed to list worktrees: ${message}`,
+      );
+      return;
+    }
 
     // Skip the first entry (main working tree)
     const nonMainWorktrees = worktrees.slice(1);

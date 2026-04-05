@@ -194,4 +194,29 @@ describe("DefaultWorktreeManager", () => {
       expect(gitClient.prunedPrefixes).toHaveLength(1);
     });
   });
+
+  // ─── PROP-WT-08: cleanupDangling logs warning when listWorktrees fails ───
+  describe("PROP-WT-08: cleanupDangling graceful degradation", () => {
+    it("logs warning and does not throw when listWorktrees fails", async () => {
+      gitClient.listWorktreesError = new Error("Temporal server unreachable");
+
+      // Should NOT throw
+      await expect(manager.cleanupDangling(new Set())).resolves.toBeUndefined();
+
+      // Should have logged a warning
+      const warnLogs = logger.entriesAt("WARN");
+      expect(warnLogs.length).toBeGreaterThanOrEqual(1);
+      expect(warnLogs.some((e) => e.message.includes("Skipping worktree cleanup"))).toBe(true);
+      expect(warnLogs.some((e) => e.message.includes("Temporal server unreachable"))).toBe(true);
+    });
+
+    it("does not call pruneWorktrees when listWorktrees fails", async () => {
+      gitClient.listWorktreesError = new Error("connection refused");
+
+      await manager.cleanupDangling(new Set());
+
+      // pruneWorktrees should NOT have been called
+      expect(gitClient.prunedPrefixes).toHaveLength(0);
+    });
+  });
 });

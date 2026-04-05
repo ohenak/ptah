@@ -372,7 +372,10 @@ export class FakeGitClient implements GitClient {
     this.deletedBranches.push(branch);
   }
 
+  listWorktreesError: Error | null = null;
+
   async listWorktrees(): Promise<WorktreeInfo[]> {
+    if (this.listWorktreesError) throw this.listWorktreesError;
     return this.worktrees;
   }
 
@@ -1470,7 +1473,7 @@ export class FakeWorktreeManager implements WorktreeManager {
   async create(featureBranch: string, workflowId: string, runId: string, activityId: string): Promise<WorktreeHandle> {
     this.createCalls.push({ featureBranch, workflowId, runId, activityId });
     this.worktreeCounter++;
-    return { path: `/tmp/ptah-wt-fake-${this.worktreeCounter}/`, branch: featureBranch };
+    return { path: `/tmp/ptah-wt-fake-${this.worktreeCounter}/`, branch: `ptah-wt-fake-${this.worktreeCounter}` };
   }
 
   async destroy(worktreePath: string): Promise<void> {
