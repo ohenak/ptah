@@ -1,183 +1,125 @@
-# Cross-Review: Test Engineer -- Implementation Review
+# Cross-Review: Test Engineer -- Implementation Review (v2 Re-Review)
 
 ## Feature Lifecycle Folders
 
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Test Engineer (qa) |
-| **Review Type** | Post-implementation code review (testing perspective) |
+| **Review Type** | Re-review of implementation fixes (v2) |
 | **Date** | April 5, 2026 |
 | **Branch** | `feat-feature-lifecycle-folders` |
-| **PROPERTIES Version** | v1.2 (105 properties) |
+| **Fix Commits** | `1cb3772`, `823f0b0` |
+| **Base Comparison** | `bd27db4..823f0b0` |
 
 ---
 
 ## Test Suite Status
 
-All tests pass. The full suite completed in 9.50 seconds:
+All tests pass:
 
-- **54 test files** passed (0 failed)
-- **1037 tests** passed, **1 skipped** (1038 total)
-- No flaky or intermittent failures observed
-
----
-
-## Coverage Analysis
-
-### Well-Covered Property Categories
-
-| Category | Assessment | Notes |
-|----------|------------|-------|
-| **Functional -- Feature Resolver (PROP-FS/SK)** | Strong | `feature-resolver.test.ts` covers search order (B1-B4), NNN prefix stripping (B3), trailing slash normalization (B7), empty/missing dirs (B8), and multi-match warning (B5). Maps cleanly to PROP-SK-02, SK-03, SK-04, SK-08, SK-09, SK-10, SK-11, SK-15, SK-17, SK-18. |
-| **Functional -- Promotion (PROP-PR)** | Strong | `promotion-activity.test.ts` covers backlog-to-IP (D1), idempotent skip (D2), not-found error (D3), worktree cleanup in finally (D4), NNN assignment max+1 (D5), NNN idempotency (D6), NNN=001 (D7), gap handling (D8), Phase 2 file rename (D9), Phase 2 idempotency (D10), Phase 3 internal ref update (D11), cross-feature links unchanged (D12), Phase 3 parse error handling (D13), and git mv failure (PROP-PR-12). Maps to PROP-PR-01 through PR-09, PR-16 through PR-19, PR-25, PR-26, and many negative/idempotency properties. |
-| **Functional -- Worktree Manager (PROP-WT)** | Strong | `worktree-manager.test.ts` covers creation (C1), UUID retry on collision (C2), double-failure throw (C3), destroy happy path (C4), destroy-swallows-error (C5), cleanupDangling with active/dangling/non-ptah discrimination (C6), and prune-after-sweep (C7). Maps to PROP-WT-01, WT-02, WT-03, WT-04, WT-06, WT-07, WT-13, WT-14, WT-17, WT-18, WT-20. |
-| **Functional -- Migration (PROP-MG)** | Strong | `migrate-lifecycle.test.ts` covers pre-flight (dirty tree, existing dirs, docs missing), lifecycle directory creation with .gitkeep, NNN-prefixed to completed, remaining to in-progress, skipping system dirs, commit message. Maps to PROP-MG-01 through MG-07, MG-10, MG-12, MG-13. |
-| **Functional -- Workflow helpers** | Strong | `feature-lifecycle.test.ts` covers `resolveContextDocuments` for backlog/in-progress/completed paths (PROP-SK-23, SK-24, SK-25), `extractCompletedPrefix`, `recordSignOff`, `isCompletionReady` (PROP-SK-06, SK-07), `needsBacklogPromotion` (PROP-SK-05), `buildContinueAsNewPayload` (PROP-PR-24), and workflow determinism (no Date.now/Math.random/node:fs imports). |
-| **Integration -- Promotion Pipeline** | Strong | `promotion-pipeline.test.ts` tests real git operations: backlog-to-IP folder move + push, idempotent re-run, IP-to-completed with NNN assignment, file rename with NNN prefix, and `git log --follow` history preservation (PROP-PR-27). |
-| **Integration -- Migration** | Adequate | `migrate-lifecycle.test.ts` (integration) tests real git repo migration with commit verification. |
-| **Contract** | Strong | Return types verified with `satisfies FeatureResolverResult`, `PromotionResult` shape assertions, `WorktreeHandle` fields, and `WorktreeRegistry` metadata in unit tests. |
-| **Data Integrity** | Strong | NNN calculation, zero-padding, rename map construction, and regex matching all tested explicitly. |
-| **Error Handling** | Mostly covered | See findings below for gaps. |
-| **Negative** | Mostly covered | PROP-PR-21 (no rename on B2IP), PROP-PR-22 (no NNN reuse), PROP-PR-23 (cross-feature links unchanged), PROP-SK-17 (no throw on not-found), PROP-SK-18 (no fallback to main root), PROP-WT-17 (fresh worktree per activity), PROP-MG-12 (system dirs excluded), PROP-MG-13 (no renumber). |
-
-### Categories with Gaps
-
-| Category | Gap | Severity |
-|----------|-----|----------|
-| Error Handling | PROP-PR-13 (retryable error on push failure) has no test | Medium |
-| Error Handling | PROP-WT-08 (cleanupDangling when Temporal unreachable) has no test | Medium |
-| Error Handling | PROP-MG-08 (rename conflict on duplicate name) has no test | Medium |
-| Functional | PROP-NF-01 (legacy fallback to `docs/{slug}/` when lifecycle folders missing) has no test | Low |
-| Functional | PROP-SK-01 (PM skill Phase 0 creates in backlog/) has no test | Low |
-| Negative | PROP-SK-16 (architectural constraint: only FeatureResolver constructs paths) has no test | Low |
-| Negative | PROP-SK-19 (activities must not re-invoke resolver when path in state) is not directly tested | Low |
-| Negative | PROP-SK-20 (Claude agents must not execute promotions directly) is not directly tested | Low |
-| Negative | PROP-WT-15 (must not modify main working tree) is not directly tested | Low |
-| Negative | PROP-WT-16 (concurrent skills must not share worktree) is not directly tested | Low |
-| Integration | PROP-SK-12, SK-13, SK-14 (workflow stores featurePath, activities use path.join, crossReviewPath uses featurePath) are tested indirectly via workflow helper tests but lack a direct integration test showing end-to-end state flow | Low |
-| Integration | PROP-WT-09 (resolver searches under worktreeRoot, not main tree) is implicitly tested but not labeled | Low |
-| Integration | PROP-WT-11, WT-12 (composition root wiring) have no test | Low |
-| Integration | PROP-WT-21 (startup crash-recovery with real dangling worktrees) has no dedicated integration test | Low |
-| Integration | PROP-NF-05 (partial Phase 1 + Phase 2 retry produces identical final state) has no integration test | Low |
-| Observability | PROP-MG-11 (migration summary output) has no explicit assertion on summary format | Low |
+- **55 test files**, **1051 passed**, 1 skipped, 0 failures
+- Duration: 9.86s
+- No regressions introduced by the fix commits
 
 ---
 
-## Findings
+## Prior Findings Resolution Status
 
-### F-01: No test for PROP-PR-13 -- retryable error on push failure (Medium)
+| ID | Severity | Property | Finding Summary | Status |
+|----|----------|----------|-----------------|--------|
+| F-01 | Medium | PROP-PR-13 | No test for retryable `ApplicationFailure` on `git push` failure | **Resolved** |
+| F-02 | Medium | PROP-WT-08 | No test for `cleanupDangling` graceful degradation when Temporal unreachable | **Resolved** |
+| F-03 | Medium | PROP-MG-08 | No test for migration rename conflict (NNN-prefix collision) | **Resolved** |
+| F-04 | Low | PROP-PR-12 | Test didn't verify `ApplicationFailure.nonRetryable` classification on `git mv` failure | **Resolved** |
+| F-05 | Low | PROP-PR-14 | Implementation uses `safeReadDir` fallback vs. property's `ApplicationFailure.nonRetryable` throw | **Partially Resolved** |
+| F-06 | Low | — | `FakeWorktreeManager` branch name hardcoded to `"main"` | **Resolved** |
 
-**Property:** `PROP-PR-13` -- Both promotion activities must throw a retryable `ApplicationFailure` when `git push` fails (remote conflict).
+### Resolution Details
 
-**File:** `ptah/tests/unit/orchestrator/promotion-activity.test.ts`
+#### F-01: PROP-PR-13 — Retryable push failure (Resolved)
 
-**Issue:** There is no test that sets `gitClient.pushInWorktreeError` to simulate a push failure and asserts that the thrown error is a retryable `ApplicationFailure` (as opposed to non-retryable). The test for `PROP-PR-12` (git mv failure) exists at line 525, but the analogous push-failure test is absent. This distinction matters because Temporal retries retryable failures but permanently fails non-retryable ones -- incorrect classification would cause the wrong runtime behavior.
+Two new tests added in `ptah/tests/unit/orchestrator/promotion-activity.test.ts` under `"PROP-PR-13: push failure is retryable (not nonRetryable)"`:
 
-**Recommendation:** Add tests for both `promoteBacklogToInProgress` and `promoteInProgressToCompleted` that inject a push error and verify `(err as { nonRetryable: boolean }).nonRetryable === false` (or that the error lacks the `nonRetryable` flag entirely).
+- `promoteBacklogToInProgress throws retryable error on push failure` (line ~569): Sets `gitClient.pushInWorktreeError`, catches the error, and asserts `errObj.nonRetryable` is NOT `true`. This correctly verifies the Temporal retry distinction.
+- `promoteInProgressToCompleted throws retryable error on push failure` (line ~580): Same pattern for the completed promotion path.
 
----
+Both tests explicitly verify the retryable/nonRetryable classification, which is the critical Temporal behavior concern.
 
-### F-02: No test for PROP-WT-08 -- cleanupDangling when Temporal unreachable (Medium)
+#### F-02: PROP-WT-08 — cleanupDangling graceful degradation (Resolved)
 
-**Property:** `PROP-WT-08` -- `WorktreeManager.cleanupDangling` must log a warning and skip the cleanup sweep when the Temporal server is unreachable during startup.
+Two new tests in `ptah/tests/unit/orchestrator/worktree-manager.test.ts` under `"PROP-WT-08: cleanupDangling graceful degradation"`:
 
-**File:** `ptah/tests/unit/orchestrator/worktree-manager.test.ts`
+- `logs warning and does not throw when listWorktrees fails` (line ~200): Sets `gitClient.listWorktreesError`, asserts `resolves.toBeUndefined()`, and verifies WARN log contains "Skipping worktree cleanup" with the original error message.
+- `does not call pruneWorktrees when listWorktrees fails` (line ~211): Verifies `gitClient.prunedPrefixes` is empty, confirming no downstream side effects.
 
-**Issue:** The `cleanupDangling` tests (C6, C7) only cover the happy path where `listWorktrees()` succeeds. There is no test simulating `listWorktrees()` throwing (e.g., Temporal client connection failure) and verifying that the method logs a warning rather than propagating the exception. This is a P0 error-handling property.
+Source change in `ptah/src/orchestrator/worktree-manager.ts` wraps `listWorktrees()` in try/catch with a warn log and early return. Clean implementation.
 
-**Recommendation:** Add a test that sets `gitClient.listWorktreesError` (may need to add this injection point to `FakeGitClient`) and asserts that `cleanupDangling` resolves without throwing and produces a warning log.
+#### F-03: PROP-MG-08 — Migration rename conflict (Resolved)
 
----
+Two new tests in `ptah/tests/unit/commands/migrate-lifecycle.test.ts` under `"PROP-MG-08: rename conflict"`:
 
-### F-03: No test for PROP-MG-08 -- rename conflict during migration (Medium)
+- `detects when two NNN-prefixed folders map to the same slug in completed/` (line ~319): Creates `docs/001-my-feature` and `docs/002-my-feature`, verifies both are moved independently (`completedMoved === 2`). This correctly validates that NNN-prefixed folders retain their distinct prefixes in `completed/`.
+- `detects when an unnumbered folder collides with an NNN-prefixed folder's slug in in-progress` (line ~333): Creates `docs/001-my-feature` and `docs/my-feature`, verifies they route to different lifecycle folders (1 completed, 1 in-progress). No actual collision.
 
-**Property:** `PROP-MG-08` -- `MigrateLifecycleCommand` must exit with code 1 when a file-rename conflict occurs (duplicate name after NNN-prefix stripping).
+The tests confirm the implementation's collision-avoidance strategy rather than testing for an error path, which is appropriate given the design (NNN prefixes are preserved, preventing collisions).
 
-**File:** `ptah/tests/unit/commands/migrate-lifecycle.test.ts`
+#### F-04: PROP-PR-12 — nonRetryable classification on git mv failure (Resolved)
 
-**Issue:** None of the G1-G8 test groups cover the scenario where two folders would collide after stripping NNN prefixes (e.g., `docs/my-feature/` and `docs/001-my-feature/` both mapping to `my-feature`). This is a P0 error-handling property.
+Two new tests in `ptah/tests/unit/orchestrator/promotion-activity.test.ts` under `"PROP-PR-12: git mv failure throws nonRetryable"`:
 
-**Recommendation:** Add a test with both `docs/my-feature` and `docs/001-my-feature` as inputs and verify the command throws or exits with an appropriate error message about the naming conflict.
+- `promoteBacklogToInProgress throws nonRetryable ApplicationFailure when git mv fails` (line ~527): Verifies `errObj.name === "ApplicationFailure"`, `errObj.nonRetryable === true`, and message contains "git mv failed".
+- `promoteInProgressToCompleted throws nonRetryable ApplicationFailure when git mv fails during folder move` (line ~541): Same assertions for the completed path.
 
----
+Source code in `ptah/src/orchestrator/promotion-activity.ts` now wraps all three `gitMvInWorktree` call sites in try/catch and rethrows as `ApplicationFailure.nonRetryable(...)`. Complete coverage.
 
-### F-04: PROP-PR-12 test does not verify non-retryable classification (Low)
+#### F-05: PROP-PR-14 — safeReadDir vs. nonRetryable throw (Partially Resolved)
 
-**Property:** `PROP-PR-12` -- Both promotion activities must throw `ApplicationFailure.nonRetryable` when `git mv` fails.
+Two tests added under `"PROP-PR-14: completed/ unreadable"`:
 
-**File:** `ptah/tests/unit/orchestrator/promotion-activity.test.ts`, line 525-538
+- `promoteInProgressToCompleted treats unreadable completed/ as empty (safeReadDir returns [])` (line ~601): **This test has an empty body** -- no `await`, no assertions. It is purely a comment block explaining the design rationale. While the comment correctly describes the TSPEC vs. PROPERTIES mismatch, an empty test is misleading because it will always pass.
+- `promoteInProgressToCompleted throws when Phase 2 listDirInWorktree fails` (line ~613): Sets `gitClient.listDirInWorktreeError` and asserts the error propagates. This correctly tests the downstream failure path.
 
-**Issue:** The test at line 525 asserts `(err as Error).message.toContain("git mv")` but does not verify that the error has `nonRetryable: true`, unlike the D3 test (line 147-157) which properly checks both `name === "ApplicationFailure"` and `nonRetryable === true`. This makes the test weaker than the property requires. Currently the implementation re-throws the raw git error rather than wrapping it in `ApplicationFailure.nonRetryable`, so the test may be passing for the wrong reason.
+The design decision (safeReadDir graceful degradation vs. nonRetryable throw) is documented in the test comment, which addresses the finding's concern. However, the empty test body is a minor issue.
 
-**Recommendation:** Add assertions for `(err as Error).name === "ApplicationFailure"` and `(err as { nonRetryable: boolean }).nonRetryable === true` to the PROP-PR-12 test. Also verify the implementation wraps git mv errors in `ApplicationFailure.nonRetryable`.
+#### F-06: FakeWorktreeManager branch name (Resolved)
 
----
-
-### F-05: PROP-PR-14 test exists but is incomplete -- only tests promoteInProgressToCompleted (Low)
-
-**Property:** `PROP-PR-14` -- `promoteInProgressToCompleted` must throw `ApplicationFailure.nonRetryable` when `docs/completed/` is unreadable.
-
-**File:** `ptah/tests/unit/orchestrator/promotion-activity.test.ts`, line 553+
-
-**Issue:** The test description references PROP-PR-14 (confirmed by grep), but the implementation uses `safeReadDir` (line 302 of `promotion-activity.ts`) which catches errors and returns an empty array. This means an unreadable `completed/` would silently default to NNN=001 rather than throw. The test and implementation may not align with the property's intent.
-
-**Recommendation:** Verify whether the PROPERTIES document intends this to be a hard failure (as stated) or a graceful degradation. If it should be a hard failure, the implementation needs to be updated to throw when `completed/` exists but is unreadable.
-
----
-
-### F-06: FakeWorktreeManager.create returns featureBranch as branch, not a ptah-wt-{uuid} branch (Low)
-
-**File:** `ptah/tests/fixtures/factories.ts`, line 1473
-
-**Issue:** `FakeWorktreeManager.create` returns `{ path: "/tmp/ptah-wt-fake-N/", branch: featureBranch }` where `branch` is the feature branch name (e.g., `feat-my-feature`). The real `DefaultWorktreeManager` returns a unique `ptah-wt-{uuid}` branch name (as tested in `worktree-manager.test.ts` C1). This discrepancy means tests using `FakeWorktreeManager` operate against a different branch naming contract than production.
-
-**Recommendation:** Update `FakeWorktreeManager.create` to return `branch: "ptah-wt-fake-N"` to match the production behavior more closely. This is low severity because no current test depends on the branch name from the fake.
+`FakeWorktreeManager.create()` in `ptah/tests/fixtures/factories.ts` (line ~1476) now returns `branch: \`ptah-wt-fake-${this.worktreeCounter}\`` instead of `"main"`. This correctly mirrors `DefaultWorktreeManager.create()` which returns a unique worktree branch name (`ptah-wt-${uuid}`), not the feature branch.
 
 ---
 
-## Clarification Questions
+## New Findings
 
-### Q-01: PROP-PR-14 vs safeReadDir behavior
+| ID | Severity | Location | Finding |
+|----|----------|----------|---------|
+| F-07 | Low | `promotion-activity.test.ts:601` | Empty test body for PROP-PR-14 safeReadDir path |
 
-The PROPERTIES document states that `promoteInProgressToCompleted` must throw `ApplicationFailure.nonRetryable` when `docs/completed/` is unreadable (PROP-PR-14). However, the implementation wraps the `readDir` call in `safeReadDir` which returns `[]` on any error. Should this be treated as a bug in the implementation, or should PROP-PR-14 be revised to reflect the graceful-degradation design?
+### F-07 (Low): Empty test body for PROP-PR-14 safeReadDir graceful degradation
 
-### Q-02: PROP-SK-01 testing approach
+**File:** `ptah/tests/unit/orchestrator/promotion-activity.test.ts`, line 601
 
-PROP-SK-01 (PM skill Phase 0 creates features in `backlog/`) describes behavior that exists in the PM skill's init template, not in the feature-lifecycle-folders implementation files. Should this property be tested here, or is it expected to be covered by existing PM skill tests?
+The test `"promoteInProgressToCompleted treats unreadable completed/ as empty (safeReadDir returns [])"` has no executable statements -- no `await`, no `expect`. It reads as documentation but will always pass regardless of implementation changes. This should either:
+
+1. Be converted to an actual test that sets up a filesystem where `completed/` is unreadable and verifies the NNN defaults to `001`, or
+2. Be renamed to a `// TODO` comment or `it.todo(...)` to make the "not yet implemented" status explicit.
 
 ---
 
 ## Positive Observations
 
-1. **Test isolation is excellent.** All unit tests use `FakeFileSystem`, `FakeGitClient`, `FakeWorktreeManager`, and `FakeLogger` with no cross-test state leakage. Each test sets up its own preconditions.
+1. **Thorough error classification testing.** The new PROP-PR-12 and PROP-PR-13 tests form a clear retryable/nonRetryable boundary, which is essential for correct Temporal retry behavior.
 
-2. **Test doubles are well-designed.** `FakeFileSystem` faithfully simulates directory/file state with `addExistingDir`/`addExisting`/`getFile` methods. `FakeGitClient` provides fine-grained error injection points (`gitMvInWorktreeError`, `pushInWorktreeError`, etc.) and call tracking arrays. `FakeWorktreeRegistry` correctly implements the `WorktreeRegistry` interface.
+2. **Source code hardened.** All three `gitMvInWorktree` call sites in `promotion-activity.ts` are now wrapped with `ApplicationFailure.nonRetryable`, while push errors correctly propagate as retryable. This is a meaningful correctness improvement.
 
-3. **Integration tests use real git operations.** The promotion pipeline integration tests (`promotion-pipeline.test.ts`) create actual git repos with bare remotes, perform real `git mv` + commit + push operations, and verify `git log --follow` history preservation. This is the correct level for PROP-PR-27 and PROP-PR-10.
+3. **Architecture fitness test added.** The new `architecture-constraints.test.ts` (PROP-SK-16) enforces that lifecycle path construction is confined to `FeatureResolver`, `promotion-activity.ts`, and `migrate-lifecycle.ts`. This is a valuable structural guard.
 
-4. **Idempotency is thoroughly tested.** Both backlog-to-IP idempotent skip (D2) and completed Phase 1/Phase 2 idempotency (D6, D10) are covered at the unit level, and backlog-to-IP idempotency is also verified at the integration level.
+4. **Integration test for idempotent retry.** The new `PROP-NF-05` integration test in `promotion-pipeline.test.ts` simulates a crash after partial Phase 1 completion and verifies the retry produces the correct final state. This is a high-value test for production resilience.
 
-5. **Workflow determinism test (PROP-TF-89) is creative and valuable.** The static analysis test that scans the workflow source file for banned APIs (`Date.now`, `Math.random`, `node:fs` imports) is an effective guardrail against non-determinism bugs.
-
-6. **`resolveContextDocuments` has comprehensive coverage** for all six document types across all three lifecycle states, with NNN prefix extraction tested via `extractCompletedPrefix`.
-
-7. **Tests are fast.** The entire suite of 1037 tests runs in under 10 seconds, with unit tests completing in milliseconds.
-
-8. **Sign-off and completion-readiness logic is well-tested.** `recordSignOff` immutability, `isCompletionReady` with various sign-off combinations, and `buildContinueAsNewPayload` carry-forward behavior all have explicit tests.
+5. **Clean factory updates.** The `FakeGitClient` gained `listWorktreesError` and `pushInWorktreeError` hooks following the established pattern, keeping the test infrastructure consistent.
 
 ---
 
 ## Recommendation
 
-**Needs revision.**
+**Approved with minor changes.**
 
-Three Medium-severity findings (F-01, F-02, F-03) identify missing test coverage for P0 properties:
-- PROP-PR-13: retryable push error classification (Medium)
-- PROP-WT-08: cleanupDangling graceful degradation when Temporal unreachable (Medium)
-- PROP-MG-08: migration rename conflict detection (Medium)
-
-These are all error-handling properties at P0 priority that have zero test coverage. Adding tests for these three properties would bring the implementation to an approvable state.
-
----
-
-*End of Review*
+All 6 prior findings are resolved or adequately addressed. The single new finding (F-07) is Low severity -- an empty test body that should be converted to `it.todo()` or given actual assertions. No High or Medium issues remain.
