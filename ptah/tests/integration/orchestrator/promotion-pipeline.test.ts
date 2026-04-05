@@ -362,3 +362,91 @@ describe("Promotion pipeline (I2): in-progress → completed (REQ-NF-01)", () =>
     expect(oldestCommit).toContain("scaffold my-feature in backlog");
   });
 }, { timeout: 60000 });
+
+// ---------------------------------------------------------------------------
+// PROP-NF-05: retry after partial Phase 1 + Phase 2 failure
+// ---------------------------------------------------------------------------
+
+describe("Promotion pipeline (PROP-NF-05): idempotent retry after partial completion", () => {
+  let repos: TestRepos;
+
+  beforeEach(async () => {
+    repos = await setupTestRepo("my-feature");
+
+    // Pre-promote to in-progress
+    const { workDir, featureBranch } = repos;
+    const logger = new ConsoleLogger();
+    const gitClient = new NodeGitClient(workDir);
+    const fs = new NodeFileSystem(workDir);
+    const registry = new InMemoryWorktreeRegistry();
+    const worktreeManager = new DefaultWorktreeManager(gitClient, registry, logger);
+
+    const { promoteBacklogToInProgress } = createPromotionActivities({
+      worktreeManager,
+      gitClient,
+      fs,
+      logger,
+    });
+
+    await promoteBacklogToInProgress({
+      featureSlug: "my-feature",
+      featureBranch,
+      workflowId: "setup-wf",
+      runId: "setup-run",
+    });
+
+    await git(workDir, "pull", "origin", featureBranch);
+
+    // Simulate partial Phase 1: manually move folder to completed/ and commit,
+    // but don't do Phase 2 (file rename) or Phase 3 (ref update).
+    // This mimics a crash after Phase 1 folder move succeeded.
+    await git(workDir, "mv", "docs/in-progress/my-feature", "docs/completed/001-my-feature");
+    await git(workDir, "commit", "-m", "chore: partial Phase 1 move (simulated crash)");
+    await git(workDir, "push", "origin", featureBranch);
+  });
+
+  afterEach(async () => {
+    await repos.cleanup();
+  });
+
+  it("produces identical final state when retried after partial Phase 1 completion", async () => {
+    const { workDir, featureBranch } = repos;
+    const logger = new ConsoleLogger();
+    const gitClient = new NodeGitClient(workDir);
+    const fs = new NodeFileSystem(workDir);
+    const registry = new InMemoryWorktreeRegistry();
+    const worktreeManager = new DefaultWorktreeManager(gitClient, registry, logger);
+
+    const { promoteInProgressToCompleted } = createPromotionActivities({
+      worktreeManager,
+      gitClient,
+      fs,
+      logger,
+    });
+
+    // This should detect that 001-my-feature already exists in completed/,
+    // skip Phase 1 (idempotent), and proceed with Phase 2 (file rename)
+    // and Phase 3 (ref update).
+    const result = await promoteInProgressToCompleted({
+      featureSlug: "my-feature",
+      featureBranch,
+      workflowId: "retry-wf",
+      runId: "retry-run",
+    });
+
+    expect(result.promoted).toBe(true);
+    expect(result.featurePath).toBe("docs/completed/001-my-feature/");
+
+    // Pull and verify files are NNN-prefixed
+    await git(workDir, "pull", "origin", featureBranch);
+
+    const completedDir = nodePath.join(workDir, "docs", "completed", "001-my-feature");
+    const files = await nodeFs.readdir(completedDir);
+    expect(files).toContain("001-overview.md");
+    expect(files).toContain("001-REQ-my-feature.md");
+
+    // Verify no unnumbered files remain
+    expect(files).not.toContain("overview.md");
+    expect(files).not.toContain("REQ-my-feature.md");
+  });
+}, { timeout: 60000 });

@@ -311,3 +311,29 @@ describe("MigrateLifecycleCommand — G8: commit message", () => {
     expect(result.committed).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PROP-MG-07: git mv failure during migration
+// ---------------------------------------------------------------------------
+
+describe("MigrateLifecycleCommand — PROP-MG-07: git mv failure", () => {
+  it("throws when git mv fails for a completed folder", async () => {
+    const fs = makeFs({ dirs: ["docs/001-old-feature"] });
+    const git = makeGit();
+    git.gitMvInWorktreeError = new Error("fatal: bad source");
+    const logger = new FakeLogger();
+    const cmd = new MigrateLifecycleCommand(git, fs, logger);
+
+    await expect(cmd.execute()).rejects.toThrow("bad source");
+  });
+
+  it("throws when git mv fails for an in-progress folder", async () => {
+    const fs = makeFs({ dirs: ["docs/active-feature"] });
+    const git = makeGit();
+    git.gitMvInWorktreeError = new Error("fatal: bad source");
+    const logger = new FakeLogger();
+    const cmd = new MigrateLifecycleCommand(git, fs, logger);
+
+    await expect(cmd.execute()).rejects.toThrow("bad source");
+  });
+});

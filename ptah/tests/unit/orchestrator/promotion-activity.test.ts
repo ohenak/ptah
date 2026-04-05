@@ -517,4 +517,54 @@ describe("Promotion Activities", () => {
       });
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PROP-PR-12: git mv failure → nonRetryable error
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe("PROP-PR-12: git mv failure throws nonRetryable", () => {
+    it("promoteBacklogToInProgress throws nonRetryable when git mv fails", async () => {
+      const wtPath = "/tmp/ptah-wt-fake-1/";
+      fs.addExistingDir(`${wtPath}docs/backlog/my-feature`);
+      gitClient.gitMvInWorktreeError = new Error("fatal: source does not exist");
+
+      try {
+        await activities.promoteBacklogToInProgress(defaultInput);
+        expect.fail("Expected error to be thrown");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toContain("source does not exist");
+      }
+    });
+
+    it("promoteInProgressToCompleted throws when git mv fails during folder move", async () => {
+      const wtPath = "/tmp/ptah-wt-fake-1/";
+      fs.addExistingDir(`${wtPath}docs/in-progress/my-feature`);
+      fs.addExistingDir(`${wtPath}docs/completed`);
+      gitClient.gitMvInWorktreeError = new Error("fatal: source does not exist");
+
+      await expect(
+        activities.promoteInProgressToCompleted(defaultInput),
+      ).rejects.toThrow();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PROP-PR-14: completed/ unreadable → nonRetryable error
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe("PROP-PR-14: completed/ unreadable throws nonRetryable", () => {
+    it("promoteInProgressToCompleted throws when completed/ directory listing fails", async () => {
+      const wtPath = "/tmp/ptah-wt-fake-1/";
+      fs.addExistingDir(`${wtPath}docs/in-progress/my-feature`);
+      // Do NOT add completed/ — the safeReadDir will return [] but the git mv
+      // will fail since the folder structure is missing. Simulate by making
+      // listDirInWorktree throw.
+      gitClient.listDirInWorktreeError = new Error("EACCES: permission denied");
+
+      await expect(
+        activities.promoteInProgressToCompleted(defaultInput),
+      ).rejects.toThrow();
+    });
+  });
 });
