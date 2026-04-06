@@ -5,7 +5,7 @@
 | **Requirements** | [REQ-agent-coordination](REQ-agent-coordination.md) |
 | **Functional Specifications** | [FSPEC-agent-coordination](FSPEC-agent-coordination.md) |
 | **Date** | April 6, 2026 |
-| **Status** | Draft |
+| **Status** | Draft (v1.1 — addresses QA cross-review) |
 
 ---
 
@@ -55,9 +55,8 @@ ptah/tests/
 │   │   └── temporal-orchestrator.test.ts   ← UPDATED
 │   └── temporal/
 │       ├── client.test.ts                  ← UPDATED
-│       └── workflows/
-│           ├── ad-hoc-queue.test.ts         ← NEW
-│           └── cascade.test.ts              ← NEW
+│       ├── ad-hoc-queue.test.ts            ← NEW
+│       └── cascade.test.ts                 ← NEW
 └── fixtures/
     └── factories.ts                        ← UPDATED
 ```
@@ -365,11 +364,24 @@ async function drainAdHocQueue(): Promise<void> {
       continue;
     }
     
+    // Ad-hoc dispatch ignores skip_if on the target phase.
+    // The user explicitly requested this agent — skip_if only applies during
+    // normal sequential execution and cascade phases.
+    
     // Dispatch agent (reuses dispatchSingleAgent)
     // The instruction is threaded through via adHocInstruction on SkillActivityInput.
     // buildInvokeSkillInput() sets input.adHocInstruction = signal.instruction.
     // ContextAssembler prepends the instruction to the user message so the agent
     // sees it as its task directive (e.g., "address feedback from CROSS-REVIEW...").
+    //
+    // dispatchSingleAgent encapsulates the full agent lifecycle including
+    // ROUTE_TO_USER handling: if the agent returns ROUTE_TO_USER, dispatch
+    // posts the question to Discord, waits for the userAnswer signal, and
+    // re-invokes the agent with the answer in context — same as normal phase
+    // execution. The queue remains blocked (adHocInProgress = true) for the
+    // entire question flow duration. New adHocRevision signals arriving during
+    // the wait are enqueued by the signal handler but NOT dequeued until
+    // dispatchSingleAgent returns (FSPEC-MR-02 BR-05).
     const result = await dispatchSingleAgent({
       state, phase: agentPhase, agentId: signal.targetAgentId,
       forkJoin: false, isRevision: true, workflowId,
@@ -384,6 +396,14 @@ async function drainAdHocQueue(): Promise<void> {
     adHocInProgress = false;
   }
 }
+
+// continueAsNew interaction: drainAdHocQueue() does NOT check for
+// continueAsNew internally. The main workflow loop checks the continueAsNew
+// condition after drainAdHocQueue() returns — the same place it checks after
+// any phase completes. If continueAsNew is triggered, the queue state
+// (adHocQueue) is included in ContinueAsNewPayload and restored in the new
+// execution. No signals are lost. There is no need for a "mid-queue-drain"
+// continueAsNew test; the existing continueAsNew machinery handles this.
 ```
 
 The `drainAdHocQueue()` call is inserted at each phase transition in the main while loop, after a phase completes and before advancing `state.currentPhaseId`.
@@ -420,7 +440,15 @@ async function executeCascade(
     
     // Find creation phase (positional convention: phases[reviewIndex - 1])
     const reviewIndex = config.phases.findIndex(p => p.id === reviewPhase.id);
-    const creationPhase = reviewIndex > 0 ? config.phases[reviewIndex - 1] : reviewPhase;
+    if (reviewIndex <= 0) {
+      // reviewIndex === 0 means a review phase is first in the array — no
+      // creation phase precedes it. This is a workflow config error. Log a
+      // warning and skip the revision loop for this phase: treat the review
+      // outcome as final (no revision possible). Continue to next cascade phase.
+      // See Error Handling table entry: "Review phase at index 0 in cascade".
+      continue;
+    }
+    const creationPhase = config.phases[reviewIndex - 1];
     const authorAgentId = creationPhase.agent ?? creationPhase.agents?.[0] ?? "pm";
     
     // Run review cycle (reuses existing runReviewCycle)
@@ -459,10 +487,14 @@ Returns the first phase where `phase.agent === agentId`. Used to build `SkillAct
 | Discord ack post fails | Log warning. Signal already sent — agent will execute. | Non-critical |
 | Git push fails in commitAndPush | Return `push-error` status. Activity throws retryable error. | Retryable |
 | Git worktree add fails (branch already checked out) | Activity throws error. Temporal retries. Sequential exec prevents this normally. | Retryable |
-| ensureBranchExists fails | startWorkflowForFeature throws. Workflow not started. | Fatal |
+| ensureBranchExists: `git branch --list` fails | Local git error (corrupt repo, git not installed). startWorkflowForFeature throws. Workflow not started. | Fatal (config) |
+| ensureBranchExists: `git ls-remote` fails | Network/auth error checking remote. startWorkflowForFeature throws. Caller may retry. | Transient |
+| ensureBranchExists: `git branch {name} main` fails | baseBranch doesn't exist or ref is ambiguous. startWorkflowForFeature throws. Workflow not started. | Fatal (config) |
+| ensureBranchExists: `git push origin {name}` fails | Remote write permission or network error. startWorkflowForFeature throws. Caller may retry. | Transient |
 | Cascade review phase fails | Standard failure flow (retry/cancel). Cascade halts on cancel. | Non-retryable |
 | Cascade revision_bound exceeded | Phase treated as failed. Standard failure flow. | Non-retryable |
 | Ad-hoc agent not found in workflow phases | Log warning. Skip cascade. Process next queued signal. | Warning |
+| Review phase at index 0 in cascade | Log warning: "Review phase {id} has no preceding creation phase — skipping in cascade." Skip this cascade phase and continue to next. | Warning (config) |
 
 ---
 
@@ -512,13 +544,13 @@ class FakeGitClient implements GitClient {
 | Category | What is tested | Test file |
 |----------|---------------|-----------|
 | Ad-hoc parser | parseAdHocDirective: @-token extraction, case insensitivity, mid-sentence rejection, empty instruction, bot messages | `tests/unit/orchestrator/ad-hoc-parser.test.ts` |
-| handleMessage flow | End-to-end: parse → resolve agent → signal → ack. Unknown agent, no workflow, signal error. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` |
+| handleMessage flow | End-to-end: parse → resolve agent → signal → ack. Unknown agent, no workflow, signal error. Verify `adHocInstruction` is populated on the signal payload from the parsed instruction text. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` |
 | Deterministic workflow ID | startFeatureWorkflow uses `ptah-{slug}` without sequence query | `tests/unit/temporal/client.test.ts` |
 | commitAndPush | Filters docs/, stages, commits, pushes. No merge. Error cases. | `tests/unit/orchestrator/artifact-committer.test.ts` |
 | Shared branch worktree | addWorktreeOnBranch called instead of createWorktreeFromBranch. Path-only idempotency. | `tests/unit/temporal/skill-activity.test.ts` |
-| ensureBranchExists | Branch created if missing, no-op if exists | `tests/unit/orchestrator/temporal-orchestrator.test.ts` |
-| Ad-hoc queue (pure helpers) | FIFO ordering, drainAdHocQueue logic, findAgentPhase | `tests/unit/temporal/workflows/ad-hoc-queue.test.ts` |
-| Cascade (pure helpers) | collectCascadePhases, skip_if filtering, positional creation-phase lookup | `tests/unit/temporal/workflows/cascade.test.ts` |
+| ensureBranchExists | Branch created if missing, no-op if exists. Transient errors (network) vs. fatal errors (config) classified correctly. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` |
+| Ad-hoc queue (pure helpers) | FIFO ordering, drainAdHocQueue logic, findAgentPhase. Queue blocked during ROUTE_TO_USER question flow (adHocInProgress remains true). `adHocInstruction` threaded through to `SkillActivityInput` and `ContextAssembler`. | `tests/unit/temporal/ad-hoc-queue.test.ts` |
+| Cascade (pure helpers) | collectCascadePhases, skip_if filtering, positional creation-phase lookup, reviewIndex=0 guard (skip + log warning) | `tests/unit/temporal/cascade.test.ts` |
 
 ---
 
