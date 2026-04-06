@@ -31,13 +31,13 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 9 | `parseAdHocDirective` returns directive when first token starts with `@` | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 10 | `parseAdHocDirective` returns null when first token does not start with `@` | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 11 | `parseAdHocDirective` lowercases the agent identifier | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 12 | `parseAdHocDirective` trims the instruction remainder | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 13 | `parseAdHocDirective` returns empty instruction when only `@agent` is sent | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 14 | `parseAdHocDirective` strips leading whitespace before extracting first token | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
-| 15 | `parseAdHocDirective` treats only first `@token` as directive, rest is instruction | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ⬚ Not Started |
+| 9 | `parseAdHocDirective` returns directive when first token starts with `@` | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 10 | `parseAdHocDirective` returns null when first token does not start with `@` | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 11 | `parseAdHocDirective` lowercases the agent identifier | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 12 | `parseAdHocDirective` trims the instruction remainder | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 13 | `parseAdHocDirective` returns empty instruction when only `@agent` is sent | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 14 | `parseAdHocDirective` strips leading whitespace before extracting first token | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
+| 15 | `parseAdHocDirective` treats only first `@token` as directive, rest is instruction | `ptah/tests/unit/orchestrator/ad-hoc-parser.test.ts` | `ptah/src/orchestrator/ad-hoc-parser.ts` | ✅ Done |
 
 ### Phase C: Git Infrastructure (Shared Branch)
 
