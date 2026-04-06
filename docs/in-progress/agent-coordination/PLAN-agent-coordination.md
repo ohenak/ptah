@@ -63,10 +63,10 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 26 | `invokeSkill` uses path-only idempotency check (no branch matching) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 27 | `invokeSkill` creates worktree via `addWorktreeOnBranch` (legacy path) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 28 | `invokeSkill` calls `commitAndPush` instead of `commitAndMerge` for non-fork-join | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 29 | `invokeSkill` passes `adHocInstruction` through to context assembly | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
+| 26 | `invokeSkill` uses path-only idempotency check (no branch matching) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 27 | `invokeSkill` creates worktree via `addWorktreeOnBranch` (legacy path) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 28 | `invokeSkill` calls `commitAndPush` instead of `commitAndMerge` for non-fork-join | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 29 | `invokeSkill` passes `adHocInstruction` through to context assembly | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
 
 ### Phase F: Orchestrator Message Handling
 
