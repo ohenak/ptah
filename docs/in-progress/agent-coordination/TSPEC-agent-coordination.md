@@ -195,6 +195,12 @@ export interface FeatureWorkflowState {
   adHocInProgress: boolean;            // true while processing ad-hoc + cascade
 }
 
+// Added to SkillActivityInput:
+export interface SkillActivityInput {
+  // ... existing fields ...
+  adHocInstruction?: string;  // Ad-hoc instruction text from user's @-mention message
+}
+
 // Added to ContinueAsNewPayload:
 export interface ContinueAsNewPayload {
   // ... existing fields ...
@@ -360,9 +366,14 @@ async function drainAdHocQueue(): Promise<void> {
     }
     
     // Dispatch agent (reuses dispatchSingleAgent)
+    // The instruction is threaded through via adHocInstruction on SkillActivityInput.
+    // buildInvokeSkillInput() sets input.adHocInstruction = signal.instruction.
+    // ContextAssembler prepends the instruction to the user message so the agent
+    // sees it as its task directive (e.g., "address feedback from CROSS-REVIEW...").
     const result = await dispatchSingleAgent({
       state, phase: agentPhase, agentId: signal.targetAgentId,
       forkJoin: false, isRevision: true, workflowId,
+      adHocInstruction: signal.instruction,
     });
     
     if (result !== "cancelled") {
@@ -521,7 +532,7 @@ class FakeGitClient implements GitClient {
 | REQ-WB-04 | `invokeSkill` idempotency check | Path-only matching (`wt.path === basePath`), no branch matching |
 | REQ-WB-05 | `TemporalOrchestrator.startWorkflowForFeature()`, `GitClient.ensureBranchExists()` | Create shared branch before workflow submission |
 | REQ-MR-01 | `parseAdHocDirective()` | First-token @-directive extraction, case-insensitive |
-| REQ-MR-02 | `TemporalOrchestrator.handleMessage()`, `TemporalClientWrapper.signalAdHocRevision()`, workflow `drainAdHocQueue()` | Orchestrator sends signal; workflow dequeues and dispatches agent |
+| REQ-MR-02 | `TemporalOrchestrator.handleMessage()`, `TemporalClientWrapper.signalAdHocRevision()`, workflow `drainAdHocQueue()`, `SkillActivityInput.adHocInstruction` | Orchestrator sends signal; workflow dequeues, passes instruction via `adHocInstruction` field, and dispatches agent |
 | REQ-MR-03 | `TemporalOrchestrator.handleMessage()` | Error reply when agent not found in registry |
 | REQ-MR-04 | `TemporalOrchestrator.handleMessage()` | Discord ack after successful signal dispatch |
 | REQ-MR-05 | `TemporalOrchestrator.handleMessage()` | WorkflowNotFoundError caught → error reply |
