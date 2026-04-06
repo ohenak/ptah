@@ -55,9 +55,9 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 23 | `startFeatureWorkflow` uses deterministic ID `ptah-{featureSlug}` | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ⬚ Not Started |
-| 24 | `signalAdHocRevision` sends `ad-hoc-revision` signal to workflow handle | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ⬚ Not Started |
-| 25 | `signalAdHocRevision` throws when workflow not found | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ⬚ Not Started |
+| 23 | `startFeatureWorkflow` uses deterministic ID `ptah-{featureSlug}` | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ✅ Done |
+| 24 | `signalAdHocRevision` sends `ad-hoc-revision` signal to workflow handle | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ✅ Done |
+| 25 | `signalAdHocRevision` throws when workflow not found | `ptah/tests/unit/temporal/client.test.ts` | `ptah/src/temporal/client.ts` | ✅ Done |
 
 ### Phase E: Skill Activity (Shared Branch Worktree + CommitAndPush)
 

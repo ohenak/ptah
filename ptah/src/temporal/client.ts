@@ -3,7 +3,7 @@
  * signal delivery, state queries, and workflow listing.
  *
  * Wraps @temporalio/client WorkflowClient. Workflow IDs follow the
- * `ptah-feature-{slug}-{sequence}` convention (REQ-TF-01, TSPEC Section 4.2).
+ * deterministic `ptah-{featureSlug}` convention (REQ-MR-08).
  */
 
 import { Connection, WorkflowClient } from "@temporalio/client";
@@ -78,9 +78,7 @@ export class TemporalClientWrapperImpl implements TemporalClientWrapper {
   async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
     this.ensureConnected();
 
-    const prefix = `ptah-feature-${params.featureSlug}`;
-    const sequence = await this.resolveNextSequence(prefix);
-    const workflowId = `${prefix}-${sequence}`;
+    const workflowId = `ptah-${params.featureSlug}`;
 
     await this.workflowClient!.start("featureLifecycleWorkflow", {
       workflowId,
@@ -149,22 +147,4 @@ export class TemporalClientWrapperImpl implements TemporalClientWrapper {
     }
   }
 
-  /**
-   * Determine the next sequence number for a workflow ID prefix.
-   * Lists existing workflows with the prefix and picks max + 1.
-   */
-  private async resolveNextSequence(prefix: string): Promise<number> {
-    const existingIds = await this.listWorkflowsByPrefix(prefix);
-    if (existingIds.length === 0) return 1;
-
-    let maxSeq = 0;
-    for (const id of existingIds) {
-      const suffix = id.slice(prefix.length + 1); // +1 for the dash
-      const seq = parseInt(suffix, 10);
-      if (!isNaN(seq) && seq > maxSeq) {
-        maxSeq = seq;
-      }
-    }
-    return maxSeq + 1;
-  }
 }

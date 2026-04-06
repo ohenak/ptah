@@ -1395,7 +1395,7 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
     if (this.startWorkflowError) throw this.startWorkflowError;
     this.startedWorkflows.push(params);
-    return `ptah-feature-${params.featureSlug}-1`;
+    return `ptah-${params.featureSlug}`;
   }
 
   async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {

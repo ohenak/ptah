@@ -60,7 +60,7 @@ import {
   TemporalClientWrapperImpl,
 } from "../../../src/temporal/client.js";
 import type { TemporalConfig } from "../../../src/types.js";
-import type { FeatureWorkflowState, StartWorkflowParams, UserAnswerSignal } from "../../../src/temporal/types.js";
+import type { AdHocRevisionSignal, FeatureWorkflowState, StartWorkflowParams, UserAnswerSignal } from "../../../src/temporal/types.js";
 
 // Access mock internals for assertions
 const temporalClientModule = await import("@temporalio/client") as any;
@@ -197,7 +197,7 @@ describe("TemporalClientWrapperImpl", () => {
   });
 
   // -------------------------------------------------------------------------
-  // B1: startFeatureWorkflow
+  // B1: startFeatureWorkflow (deterministic ID — REQ-MR-08)
   // -------------------------------------------------------------------------
   describe("startFeatureWorkflow", () => {
     const params: StartWorkflowParams = {
@@ -210,31 +210,24 @@ describe("TemporalClientWrapperImpl", () => {
       await client.connect();
     });
 
-    it("starts a workflow with correct workflow ID pattern", async () => {
-      // Default: no existing workflows, so sequence = 1
+    it("uses deterministic workflow ID ptah-{featureSlug}", async () => {
       const workflowId = await client.startFeatureWorkflow(params);
 
-      expect(workflowId).toBe("ptah-feature-auth-feature-1");
+      expect(workflowId).toBe("ptah-auth-feature");
       expect(temporalClientModule._mockStart).toHaveBeenCalledWith(
         "featureLifecycleWorkflow",
         expect.objectContaining({
-          workflowId: "ptah-feature-auth-feature-1",
+          workflowId: "ptah-auth-feature",
           taskQueue: "ptah-main",
         }),
       );
     });
 
-    it("increments sequence number when existing workflows exist", async () => {
-      // Setup: list returns existing workflows
-      temporalClientModule._mockList.mockReturnValueOnce({
-        [Symbol.asyncIterator]: async function* () {
-          yield { workflowId: "ptah-feature-auth-feature-1" };
-          yield { workflowId: "ptah-feature-auth-feature-2" };
-        },
-      });
+    it("does not query existing workflows for sequencing", async () => {
+      await client.startFeatureWorkflow(params);
 
-      const workflowId = await client.startFeatureWorkflow(params);
-      expect(workflowId).toBe("ptah-feature-auth-feature-3");
+      // listWorkflowsByPrefix should NOT be called — no sequence resolution
+      expect(temporalClientModule._mockList).not.toHaveBeenCalled();
     });
 
     it("passes workflowConfig and featureConfig as workflow args", async () => {
@@ -295,35 +288,6 @@ describe("TemporalClientWrapperImpl", () => {
       await expect(client.startFeatureWorkflow(params)).rejects.toThrow(
         /not connected/i,
       );
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // B1: Workflow ID sequencing
-  // -------------------------------------------------------------------------
-  describe("workflow ID sequencing", () => {
-    beforeEach(async () => {
-      await client.connect();
-    });
-
-    it("uses ptah-feature-{slug}-{sequence} format", async () => {
-      const workflowId = await client.startFeatureWorkflow({
-        featureSlug: "my-cool-feature",
-        featureConfig: { discipline: "fullstack", skipFspec: false },
-        workflowConfig: { version: 1, phases: [] },
-      });
-
-      expect(workflowId).toMatch(/^ptah-feature-my-cool-feature-\d+$/);
-    });
-
-    it("starts at 1 when no existing workflows", async () => {
-      const workflowId = await client.startFeatureWorkflow({
-        featureSlug: "new-feature",
-        featureConfig: { discipline: "backend-only", skipFspec: false },
-        workflowConfig: { version: 1, phases: [] },
-      });
-
-      expect(workflowId).toBe("ptah-feature-new-feature-1");
     });
   });
 
@@ -489,6 +453,51 @@ describe("TemporalClientWrapperImpl", () => {
       await client.disconnect();
       await expect(
         client.listWorkflowsByPrefix("ptah-feature-auth"),
+      ).rejects.toThrow(/not connected/i);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase D: signalAdHocRevision (REQ-MR-02)
+  // -------------------------------------------------------------------------
+  describe("signalAdHocRevision", () => {
+    const adHocSignal: AdHocRevisionSignal = {
+      targetAgentId: "eng",
+      instruction: "Update the API endpoint to use POST instead of GET",
+      requestedBy: "user123",
+      requestedAt: "2026-04-06T12:00:00Z",
+    };
+
+    beforeEach(async () => {
+      await client.connect();
+    });
+
+    it("sends ad-hoc-revision signal to the workflow handle", async () => {
+      await client.signalAdHocRevision("ptah-auth-feature", adHocSignal);
+
+      expect(temporalClientModule._mockGetHandle).toHaveBeenCalledWith("ptah-auth-feature");
+      expect(temporalClientModule._mockSignal).toHaveBeenCalledWith(
+        "ad-hoc-revision",
+        adHocSignal,
+      );
+    });
+
+    it("throws when workflow not found", async () => {
+      temporalClientModule._mockGetHandle.mockImplementationOnce(() => {
+        const error = new Error("Workflow not found");
+        error.name = "WorkflowNotFoundError";
+        throw error;
+      });
+
+      await expect(
+        client.signalAdHocRevision("ptah-nonexistent", adHocSignal),
+      ).rejects.toThrow("Workflow not found");
+    });
+
+    it("throws if not connected", async () => {
+      await client.disconnect();
+      await expect(
+        client.signalAdHocRevision("ptah-auth-feature", adHocSignal),
       ).rejects.toThrow(/not connected/i);
     });
   });
