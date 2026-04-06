@@ -81,35 +81,42 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 | 36 | `handleMessage` posts error reply when workflow not found | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
 | 37 | `handleMessage` posts error reply on signal delivery failure | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
 | 38 | `handleMessage` truncates instruction in ack to 100 chars | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
+| 39 | `handleMessage` logs warning but does not throw when Discord ack post fails after successful signal dispatch (FSPEC-MR-01 BR-05) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
 
 ### Phase G: Workflow — Ad-Hoc Queue and Cascade (Pure Helpers)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 39 | `findAgentPhase` returns first phase where `phase.agent === agentId` | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 40 | `findAgentPhase` returns null when agent not in any phase | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 41 | `collectCascadePhases` returns `type:"review"` phases after agent index | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 42 | `collectCascadePhases` excludes creation/approved/implementation phases | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 43 | `collectCascadePhases` returns empty array when agent is last phase | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 44 | `collectCascadePhases` returns empty when no review phases after agent | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 45 | Cascade positional creation-phase lookup uses `phases[reviewIndex - 1]` | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 40 | `findAgentPhase` returns first phase where `phase.agent === agentId` | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 41 | `findAgentPhase` returns null when agent not in any phase | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 42 | `collectCascadePhases` returns `type:"review"` phases after agent index | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 43 | `collectCascadePhases` excludes creation/approved/implementation phases | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 44 | `collectCascadePhases` returns empty array when agent is last phase | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 45 | `collectCascadePhases` returns empty when no review phases after agent | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 46 | Cascade positional creation-phase lookup uses `phases[reviewIndex - 1]` (also tests BR-08 edge case: returns phase at N-1 regardless of type, documenting the config constraint) | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
 
 ### Phase H: Workflow — Integration (Signal Handler + Main Loop)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 46 | Add `adHocRevisionSignal` definition and handler that enqueues signals | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 47 | Update `buildInitialWorkflowState` with `adHocQueue: []` and `adHocInProgress: false` | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 48 | Update `buildContinueAsNewPayload` to carry `adHocQueue` across CAN boundary | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 49 | Insert `drainAdHocQueue()` call at each phase transition in the main loop | — | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 50 | Wire `executeCascade()` into `drainAdHocQueue` after each ad-hoc agent completes | — | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 51 | Drain remaining queue signals before workflow termination | — | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 47 | Add `adHocRevisionSignal` definition and handler that enqueues signals | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 48 | Update `buildInitialWorkflowState` with `adHocQueue: []` and `adHocInProgress: false` | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 49 | Update `buildContinueAsNewPayload` to carry `adHocQueue` across CAN boundary | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 50 | Insert `drainAdHocQueue()` call at each phase transition in the main loop | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 51 | Wire `executeCascade()` into `drainAdHocQueue` after each ad-hoc agent completes | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 52 | Drain remaining queue signals before workflow termination | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
 
 ### Phase I: WorktreeManager Update
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 52 | Update `WorktreeManager.create()` to use `addWorktreeOnBranch` instead of `createWorktreeFromBranch` | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
+| 53 | Update `WorktreeManager.create()` to use `addWorktreeOnBranch` instead of `createWorktreeFromBranch` | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
+
+### Phase J: Integration Tests (Signal Contract)
+
+| # | Task | Test File | Source File | Status |
+|---|------|-----------|-------------|--------|
+| 54 | Integration: orchestrator deterministic ID `ptah-{featureSlug}` matches workflow start ID — signal sent by orchestrator reaches workflow signal handler with correct payload shape | `ptah/tests/integration/ad-hoc-signal-contract.test.ts` | — | ⬚ Not Started |
 
 ## 3. Task Dependency Notes
 
@@ -131,6 +138,8 @@ Phase A (types/fakes) ← no deps
         └── Phase H (workflow integration) ← A, G, E
               │
               └── Phase I (worktree manager) ← C
+                    │
+                    └── Phase J (integration tests) ← D, F, H
 ```
 
 - **A must complete first** — all other phases depend on types/interfaces/fakes.
@@ -138,7 +147,8 @@ Phase A (types/fakes) ← no deps
 - **E depends on C** — needs `addWorktreeOnBranch` and `commitAndPush` implementations.
 - **F depends on B and D** — needs the parser and the Temporal client signal method.
 - **H depends on G and E** — needs cascade helpers and activity changes.
-- **I can be done last** — worktree manager update is a localized change.
+- **I can be done after C** — worktree manager update is a localized change.
+- **J (integration tests) runs last** — verifies signal contract across orchestrator → client → workflow.
 
 ## 4. Integration Points
 
@@ -155,7 +165,7 @@ Phase A (types/fakes) ← no deps
 
 ## 5. Definition of Done
 
-- [ ] All 52 tasks completed and status updated to ✅
+- [ ] All 54 tasks completed and status updated to ✅
 - [ ] All tests pass (`npx vitest run`) — 0 failures
 - [ ] No skipped or pending tests
 - [ ] Code reviewed against all 15 requirement acceptance criteria (REQ-WB-01..05, REQ-MR-01..08, REQ-NF-01..02)
