@@ -256,6 +256,7 @@ async function main(): Promise<void> {
         temporalClient,
         worker,
         discordClient: discord,
+        gitClient: git,
         logger,
         config,
         workflowConfig,

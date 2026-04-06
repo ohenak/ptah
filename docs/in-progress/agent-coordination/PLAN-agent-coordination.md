@@ -63,25 +63,25 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 26 | `invokeSkill` uses path-only idempotency check (no branch matching) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 27 | `invokeSkill` creates worktree via `addWorktreeOnBranch` (legacy path) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 28 | `invokeSkill` calls `commitAndPush` instead of `commitAndMerge` for non-fork-join | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
-| 29 | `invokeSkill` passes `adHocInstruction` through to context assembly | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
+| 26 | `invokeSkill` uses path-only idempotency check (no branch matching) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 27 | `invokeSkill` creates worktree via `addWorktreeOnBranch` (legacy path) | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 28 | `invokeSkill` calls `commitAndPush` instead of `commitAndMerge` for non-fork-join | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
+| 29 | `invokeSkill` passes `adHocInstruction` through to context assembly | `ptah/tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
 
 ### Phase F: Orchestrator Message Handling
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 30 | `startWorkflowForFeature` calls `ensureBranchExists` before starting workflow | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 31 | `handleMessage` ignores bot messages | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 32 | `handleMessage` passes non-@-directive messages to existing handling | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 33 | `handleMessage` dispatches ad-hoc signal for known agent | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 34 | `handleMessage` posts ack after successful signal dispatch | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 35 | `handleMessage` posts error reply for unknown agent | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 36 | `handleMessage` posts error reply when workflow not found | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 37 | `handleMessage` posts error reply on signal delivery failure | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 38 | `handleMessage` truncates instruction in ack to 100 chars | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| 39 | `handleMessage` logs warning but does not throw when Discord ack post fails after successful signal dispatch (FSPEC-MR-01 BR-05) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
+| 30 | `startWorkflowForFeature` calls `ensureBranchExists` before starting workflow | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 31 | `handleMessage` ignores bot messages | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 32 | `handleMessage` passes non-@-directive messages to existing handling | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 33 | `handleMessage` dispatches ad-hoc signal for known agent | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 34 | `handleMessage` posts ack after successful signal dispatch | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 35 | `handleMessage` posts error reply for unknown agent | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 36 | `handleMessage` posts error reply when workflow not found | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 37 | `handleMessage` posts error reply on signal delivery failure | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 38 | `handleMessage` truncates instruction in ack to 100 chars | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| 39 | `handleMessage` logs warning but does not throw when Discord ack post fails after successful signal dispatch (FSPEC-MR-01 BR-05) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
 
 ### Phase G: Workflow — Ad-Hoc Queue and Cascade (Pure Helpers)
 

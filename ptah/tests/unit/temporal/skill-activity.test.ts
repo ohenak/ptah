@@ -389,7 +389,7 @@ describe("invokeSkill — heartbeat loop (C3)", () => {
 // ===========================================================================
 
 describe("invokeSkill — LGTM/TASK_COMPLETE handling (C4)", () => {
-  it("commits and merges worktree on LGTM for single-agent dispatch", async () => {
+  it("commits and pushes worktree on LGTM for single-agent dispatch", async () => {
     const deps = makeDeps();
     const gitClient = deps.gitClient as FakeGitClient;
     const routingEngine = deps.routingEngine as FakeRoutingEngine;
@@ -403,12 +403,13 @@ describe("invokeSkill — LGTM/TASK_COMPLETE handling (C4)", () => {
 
     expect(result.routingSignalType).toBe("LGTM");
     expect(result.artifactChanges).toEqual(["docs/my-feature/TSPEC.md"]);
-    // For single-agent: should commit and merge
-    expect(artifactCommitter.commitAndMergeCalls).toHaveLength(1);
+    // For single-agent: should commit and push (not merge)
+    expect(artifactCommitter.commitAndPushCalls).toHaveLength(1);
+    expect(artifactCommitter.commitAndMergeCalls).toHaveLength(0);
     expect(result.worktreePath).toBeUndefined();
   });
 
-  it("commits and merges worktree on TASK_COMPLETE for single-agent dispatch", async () => {
+  it("commits and pushes worktree on TASK_COMPLETE for single-agent dispatch", async () => {
     const deps = makeDeps();
     const gitClient = deps.gitClient as FakeGitClient;
     const routingEngine = deps.routingEngine as FakeRoutingEngine;
@@ -421,7 +422,7 @@ describe("invokeSkill — LGTM/TASK_COMPLETE handling (C4)", () => {
     const result = await invokeSkill(makeDefaultInput({ forkJoin: false }));
 
     expect(result.routingSignalType).toBe("TASK_COMPLETE");
-    expect(artifactCommitter.commitAndMergeCalls).toHaveLength(1);
+    expect(artifactCommitter.commitAndPushCalls).toHaveLength(1);
   });
 
   it("commits but does NOT merge on LGTM for fork/join dispatch", async () => {
@@ -543,7 +544,7 @@ describe("invokeSkill — error classification (C6)", () => {
     }
   });
 
-  it("throws non-retryable error on git merge conflict", async () => {
+  it("throws non-retryable error on git push failure", async () => {
     const deps = makeDeps();
     const routingEngine = deps.routingEngine as FakeRoutingEngine;
     const artifactCommitter = deps.artifactCommitter as FakeArtifactCommitter;
@@ -552,13 +553,13 @@ describe("invokeSkill — error classification (C6)", () => {
     routingEngine.parseResult = { type: "LGTM" };
     gitClient.diffWorktreeIncludingUntrackedResult = ["docs/test.md"];
 
-    // Simulate merge conflict
-    artifactCommitter.results = [{
+    // Simulate push error
+    artifactCommitter.commitAndPushResult = {
       commitSha: "abc",
-      mergeStatus: "conflict",
-      branch: "test",
-      conflictFiles: ["docs/test.md"],
-    }];
+      pushStatus: "push-error",
+      featureBranch: "feat-my-feature",
+      errorMessage: "remote rejected push",
+    };
 
     const { invokeSkill } = createActivities(deps);
 
@@ -949,5 +950,196 @@ describe("SkillActivityDeps — new dependencies (F2)", () => {
 
     const result = await invokeSkill(makeDefaultInput());
     expect(result.routingSignalType).toBe("LGTM");
+  });
+});
+
+// ===========================================================================
+// Agent Coordination — Phase E: Shared Branch Worktree + CommitAndPush
+// ===========================================================================
+
+describe("invokeSkill — path-only idempotency check (Task 26)", () => {
+  it("matches existing worktree by path only, ignoring branch", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    // Existing worktree at the expected path but with a DIFFERENT branch name
+    const worktreeBasePath = `/tmp/ptah-worktrees/eng/my-feature/tspec-creation`;
+    gitClient.worktrees = [{ path: worktreeBasePath, branch: "some-other-branch" }];
+    gitClient.hasUnmergedCommitsResult = true;
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput());
+
+    // Should still detect the existing worktree by path and skip
+    expect((deps.skillInvoker as FakeSkillInvoker).invokeCalls).toHaveLength(0);
+    expect(result.routingSignalType).toBe("LGTM");
+    expect(result.artifactChanges).toEqual([]);
+  });
+
+  it("does NOT match worktree by branch alone when path differs", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    // Worktree with the old-style branch name but at a DIFFERENT path
+    gitClient.worktrees = [{ path: "/some/other/path", branch: "ptah/my-feature/eng/tspec-creation" }];
+    gitClient.hasUnmergedCommitsResult = true;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput());
+
+    // Should NOT match by branch — should proceed with invocation
+    expect((deps.skillInvoker as FakeSkillInvoker).invokeCalls).toHaveLength(1);
+    expect(result.routingSignalType).toBe("LGTM");
+  });
+});
+
+describe("invokeSkill — addWorktreeOnBranch legacy path (Task 27)", () => {
+  it("creates worktree via addWorktreeOnBranch when worktreeManager is not available", async () => {
+    // Remove worktreeManager to trigger legacy path
+    const deps = makeDeps({ worktreeManager: undefined });
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput());
+
+    // Should call addWorktreeOnBranch with the worktree path and feature branch
+    expect(gitClient.worktreesOnBranch).toHaveLength(1);
+    expect(gitClient.worktreesOnBranch[0]).toEqual({
+      path: "/tmp/ptah-worktrees/eng/my-feature/tspec-creation",
+      branch: "feat-my-feature",
+    });
+
+    // Should NOT call the old createWorktree (which creates a new branch)
+    expect(gitClient.createdWorktrees).toHaveLength(0);
+  });
+
+  it("reuses existing worktree when addWorktreeOnBranch fails and worktree exists", async () => {
+    const deps = makeDeps({ worktreeManager: undefined });
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    const worktreePath = `/tmp/ptah-worktrees/eng/my-feature/tspec-creation`;
+    gitClient.worktrees = [{ path: worktreePath, branch: "feat-my-feature" }];
+    gitClient.hasUnmergedCommitsResult = false; // Not committed, so proceed
+    gitClient.addWorktreeOnBranchError = new Error("worktree already exists");
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput());
+
+    // Should succeed by reusing existing worktree
+    expect(result.routingSignalType).toBe("LGTM");
+    expect((deps.skillInvoker as FakeSkillInvoker).invokeCalls).toHaveLength(1);
+  });
+});
+
+describe("invokeSkill — commitAndPush for non-fork-join (Task 28)", () => {
+  it("calls commitAndPush instead of commitAndMerge for single-agent dispatch", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const artifactCommitter = deps.artifactCommitter as FakeArtifactCommitter;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/my-feature/TSPEC.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    expect(result.routingSignalType).toBe("LGTM");
+    // Should use commitAndPush, NOT commitAndMerge
+    expect(artifactCommitter.commitAndPushCalls).toHaveLength(1);
+    expect(artifactCommitter.commitAndMergeCalls).toHaveLength(0);
+    expect(artifactCommitter.commitAndPushCalls[0]!.featureBranch).toBe("feat-my-feature");
+    expect(artifactCommitter.commitAndPushCalls[0]!.agentId).toBe("eng");
+  });
+
+  it("still uses fork-join path (commit without merge) when forkJoin is true", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const artifactCommitter = deps.artifactCommitter as FakeArtifactCommitter;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/my-feature/TSPEC.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    const result = await invokeSkill(makeDefaultInput({ forkJoin: true }));
+
+    // Fork-join path unchanged: commit in worktree but no commitAndPush or commitAndMerge
+    expect(artifactCommitter.commitAndPushCalls).toHaveLength(0);
+    expect(artifactCommitter.commitAndMergeCalls).toHaveLength(0);
+    expect(gitClient.commitInWorktreeCalls).toHaveLength(1);
+    expect(result.worktreePath).toBeDefined();
+  });
+
+  it("cleans up worktree after successful commitAndPush", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const worktreeManager = deps.worktreeManager as FakeWorktreeManager;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/my-feature/TSPEC.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    // WorktreeManager.destroy should be called after successful push
+    expect(worktreeManager.destroyCalls).toHaveLength(1);
+  });
+});
+
+describe("invokeSkill — adHocInstruction passthrough (Task 29)", () => {
+  it("includes adHocInstruction in the trigger message content when present", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(
+      makeDefaultInput({
+        adHocInstruction: "Address feedback from cross-review: fix section 3",
+      }),
+    );
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    // The ad-hoc instruction should appear in the trigger message content
+    expect(assembleCall.triggerMessage.content).toContain(
+      "Address feedback from cross-review: fix section 3",
+    );
+  });
+
+  it("does NOT alter trigger message when adHocInstruction is absent", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput()); // No adHocInstruction
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    // Standard trigger message content — no ad-hoc text
+    expect(assembleCall.triggerMessage.content).toBe("Execute Create for TSPEC");
   });
 });
