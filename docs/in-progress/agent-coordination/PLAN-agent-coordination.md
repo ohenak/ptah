@@ -87,13 +87,13 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 40 | `findAgentPhase` returns first phase where `phase.agent === agentId` | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 41 | `findAgentPhase` returns null when agent not in any phase | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 42 | `collectCascadePhases` returns `type:"review"` phases after agent index | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 43 | `collectCascadePhases` excludes creation/approved/implementation phases | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 44 | `collectCascadePhases` returns empty array when agent is last phase | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 45 | `collectCascadePhases` returns empty when no review phases after agent | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 46 | Cascade positional creation-phase lookup uses `phases[reviewIndex - 1]` (also tests BR-08 edge case: returns phase at N-1 regardless of type, documenting the config constraint) | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 40 | `findAgentPhase` returns first phase where `phase.agent === agentId` | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 41 | `findAgentPhase` returns null when agent not in any phase | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 42 | `collectCascadePhases` returns `type:"review"` phases after agent index | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 43 | `collectCascadePhases` excludes creation/approved/implementation phases | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 44 | `collectCascadePhases` returns empty array when agent is last phase | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 45 | `collectCascadePhases` returns empty when no review phases after agent | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 46 | Cascade positional creation-phase lookup uses `phases[reviewIndex - 1]` (also tests BR-08 edge case: returns phase at N-1 regardless of type, documenting the config constraint) | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase H: Workflow — Integration (Signal Handler + Main Loop)
 

@@ -516,6 +516,67 @@ export function buildRevisionInput(
 }
 
 // ---------------------------------------------------------------------------
+// Ad-Hoc Queue Helpers (pure functions, exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the first phase where `phase.agent === agentId`.
+ *
+ * Used to build SkillActivityInput for ad-hoc dispatch.
+ * @see TSPEC-agent-coordination Section 6.4
+ */
+export function findAgentPhase(
+  agentId: string,
+  config: WorkflowConfig,
+): PhaseDefinition | null {
+  return config.phases.find((p) => p.agent === agentId) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Cascade Helpers (pure functions, exported for unit testing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect all `type: "review"` phases after the given agent's position.
+ *
+ * Finds the first phase where `phase.agent === agentId`, then returns
+ * all subsequent phases with `type === "review"`.
+ * Returns empty array if agent not found or no review phases follow.
+ *
+ * @see TSPEC-agent-coordination Section 6.3
+ */
+export function collectCascadePhases(
+  agentId: string,
+  config: WorkflowConfig,
+): PhaseDefinition[] {
+  const agentIndex = config.phases.findIndex((p) => p.agent === agentId);
+  if (agentIndex === -1) return [];
+  return config.phases.slice(agentIndex + 1).filter((p) => p.type === "review");
+}
+
+/**
+ * Look up the creation phase that precedes a review phase by positional
+ * convention: `phases[reviewIndex - 1]`.
+ *
+ * Returns the phase at `reviewIndex - 1` regardless of its type, documenting
+ * the config constraint that creation phases must immediately precede their
+ * review phases.
+ *
+ * Returns null if the review phase is not found or is at index 0 (no
+ * preceding phase).
+ *
+ * @see TSPEC-agent-coordination Section 6.3 (BR-08 edge case)
+ */
+export function lookupCreationPhase(
+  reviewPhase: PhaseDefinition,
+  config: WorkflowConfig,
+): PhaseDefinition | null {
+  const reviewIndex = config.phases.findIndex((p) => p.id === reviewPhase.id);
+  if (reviewIndex <= 0) return null;
+  return config.phases[reviewIndex - 1];
+}
+
+// ---------------------------------------------------------------------------
 // Temporal Activity Proxies
 // ---------------------------------------------------------------------------
 
