@@ -107,6 +107,7 @@ export function createActivities(deps: SkillActivityDeps) {
       taskType,
       documentType,
       isRevision,
+      adHocInstruction,
     } = input;
 
     const featureBranch = `feat-${featureSlug}`;
@@ -118,7 +119,7 @@ export function createActivities(deps: SkillActivityDeps) {
     // ------------------------------------------------------------------
     const existingWorktrees = await gitClient.listWorktrees();
     const existingWorktree = existingWorktrees.find(
-      (wt) => wt.branch === worktreeBranch || wt.path === worktreeBasePath,
+      (wt) => wt.path === worktreeBasePath,
     );
 
     if (existingWorktree) {
@@ -167,10 +168,10 @@ export function createActivities(deps: SkillActivityDeps) {
       worktreePath = handle.path;
       useWorktreeManager = true;
     } else {
-      // Legacy inline worktree creation
+      // Legacy inline worktree creation — shared branch checkout (REQ-WB-02)
       worktreePath = worktreeBasePath;
       try {
-        await gitClient.createWorktree(worktreeBranch, worktreePath);
+        await gitClient.addWorktreeOnBranch(worktreePath, featureBranch);
       } catch (err) {
         // If worktree already exists (from prior ROUTE_TO_USER), reuse it
         if (existingWorktree) {
@@ -185,6 +186,12 @@ export function createActivities(deps: SkillActivityDeps) {
     // Step 3: Assemble context (FSPEC-TF-01 step 4)
     // ------------------------------------------------------------------
     try {
+      // Build trigger message content — include ad-hoc instruction when present (REQ-MR-02)
+      let triggerContent = `Execute ${taskType} for ${documentType}`;
+      if (adHocInstruction) {
+        triggerContent = `${adHocInstruction}\n\n${triggerContent}`;
+      }
+
       const contextBundle = await contextAssembler.assemble({
         agentId,
         threadId: `temporal-${featureSlug}-${phaseId}`,
@@ -198,7 +205,7 @@ export function createActivities(deps: SkillActivityDeps) {
           authorId: "temporal",
           authorName: "Temporal",
           isBot: true,
-          content: `Execute ${taskType} for ${documentType}`,
+          content: triggerContent,
           timestamp: new Date(),
         },
         config,
@@ -305,25 +312,23 @@ export function createActivities(deps: SkillActivityDeps) {
         };
       }
 
-      // Single-agent: commit and merge
-      const commitResult = await artifactCommitter.commitAndMerge({
+      // Single-agent: commit and push to shared branch (REQ-WB-03)
+      const pushResult = await artifactCommitter.commitAndPush({
         worktreePath,
-        branch: worktreeBranch,
         featureBranch,
         artifactChanges,
         agentId,
         threadName: `${featureSlug} — ${phaseId}`,
       });
 
-      if (commitResult.mergeStatus === "conflict") {
-        // Non-retryable: merge conflict requires human intervention
+      if (pushResult.pushStatus === "push-error") {
         throw ApplicationFailure.nonRetryable(
-          `Git merge conflict: ${commitResult.conflictFiles?.join(", ") ?? "unknown files"}`,
-          "MergeConflict",
+          `Git push failed: ${pushResult.errorMessage ?? "unknown error"}`,
+          "PushError",
         );
       }
 
-      // Clean up worktree after successful single-agent merge
+      // Clean up worktree after successful single-agent push
       if (useWorktreeManager && deps.worktreeManager) {
         await deps.worktreeManager.destroy(worktreePath);
       } else {
