@@ -459,3 +459,20 @@ export interface ContextDocumentSet {
 }
 
 export type TaskType = "Create" | "Review" | "Revise" | "Resubmit" | "Implement";
+
+// --- Agent Coordination: Commit-and-push types ---
+
+export interface CommitAndPushParams {
+  worktreePath: string;
+  featureBranch: string;
+  artifactChanges: string[];
+  agentId: string;
+  threadName: string;
+}
+
+export interface CommitAndPushResult {
+  commitSha: string | null;
+  pushStatus: "pushed" | "no-changes" | "push-error" | "commit-error";
+  featureBranch: string;
+  errorMessage?: string;
+}

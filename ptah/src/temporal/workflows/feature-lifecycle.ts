@@ -277,6 +277,8 @@ export function buildInitialWorkflowState(
     featurePath: featurePath ?? null,
     worktreeRoot: worktreeRoot ?? null,
     signOffs: signOffs ?? {},
+    adHocQueue: [],
+    adHocInProgress: false,
   };
 }
 
