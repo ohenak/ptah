@@ -523,6 +523,122 @@ describe("NodeGitClient — Phase 4 artifact commit operations (unit)", () => {
     });
   });
 
+  // --- Agent Coordination: ensureBranchExists ---
+
+  describe("ensureBranchExists", () => {
+    // Task 16: creates branch from base when it doesn't exist
+    it("creates branch from base and pushes when branch does not exist locally or remotely", async () => {
+      setupExecFileMock([
+        { error: new Error("fatal: Needed a single revision") }, // rev-parse local check fails
+        { stdout: "" }, // ls-remote returns empty (not on remote)
+        { stdout: "" }, // git branch feat-test main
+        { stdout: "" }, // git push origin feat-test
+      ]);
+
+      await client.ensureBranchExists("feat-test", "main");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(4);
+
+      // 1. Check local
+      expect(mockFn.mock.calls[0][1]).toEqual(["rev-parse", "--verify", "refs/heads/feat-test"]);
+
+      // 2. Check remote
+      expect(mockFn.mock.calls[1][1]).toEqual(["ls-remote", "--heads", "origin", "feat-test"]);
+
+      // 3. Create branch
+      expect(mockFn.mock.calls[2][1]).toEqual(["branch", "feat-test", "main"]);
+
+      // 4. Push
+      expect(mockFn.mock.calls[3][1]).toEqual(["push", "origin", "feat-test"]);
+    });
+
+    // Task 17: no-op when branch already exists locally
+    it("is a no-op when branch already exists locally", async () => {
+      setupExecFileMock([
+        { stdout: "abc123\n" }, // rev-parse succeeds — branch exists locally
+      ]);
+
+      await client.ensureBranchExists("feat-test", "main");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(1); // Only the local check
+    });
+
+    it("fetches from remote when branch exists only on remote", async () => {
+      setupExecFileMock([
+        { error: new Error("fatal: Needed a single revision") }, // not local
+        { stdout: "abc123\trefs/heads/feat-test\n" }, // exists on remote
+        { stdout: "" }, // git fetch origin feat-test:feat-test
+      ]);
+
+      await client.ensureBranchExists("feat-test", "main");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(3);
+      expect(mockFn.mock.calls[2][1]).toEqual(["fetch", "origin", "feat-test:feat-test"]);
+    });
+
+    it("defaults baseBranch to main", async () => {
+      setupExecFileMock([
+        { error: new Error("fatal: Needed a single revision") },
+        { stdout: "" },
+        { stdout: "" },
+        { stdout: "" },
+      ]);
+
+      await client.ensureBranchExists("feat-test");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn.mock.calls[2][1]).toEqual(["branch", "feat-test", "main"]);
+    });
+
+    it("throws when ls-remote fails", async () => {
+      setupExecFileMock([
+        { error: new Error("fatal: Needed a single revision") },
+        { error: new Error("network error") },
+      ]);
+
+      await expect(client.ensureBranchExists("feat-test")).rejects.toThrow("git ls-remote failed");
+    });
+
+    it("throws when branch creation fails", async () => {
+      setupExecFileMock([
+        { error: new Error("fatal: Needed a single revision") },
+        { stdout: "" },
+        { error: new Error("fatal: bad ref") },
+      ]);
+
+      await expect(client.ensureBranchExists("feat-test")).rejects.toThrow("git ensureBranchExists failed");
+    });
+  });
+
+  // --- Agent Coordination: addWorktreeOnBranch ---
+
+  describe("addWorktreeOnBranch", () => {
+    // Task 18: checks out existing branch into worktree path
+    it("runs git worktree add {path} {branch} without -b flag", async () => {
+      setupExecFileMock([{ stdout: "" }]);
+
+      await client.addWorktreeOnBranch("/tmp/wt-shared", "feat-test");
+
+      const mockFn = vi.mocked(execFile);
+      expect(mockFn).toHaveBeenCalledTimes(1);
+      const callArgs = mockFn.mock.calls[0];
+      expect(callArgs[0]).toBe("git");
+      expect(callArgs[1]).toEqual(["worktree", "add", "/tmp/wt-shared", "feat-test"]);
+      expect(callArgs[2]).toEqual({ cwd: "/test/repo" });
+    });
+
+    it("throws when branch does not exist or is already checked out", async () => {
+      setupExecFileMock([{ error: new Error("fatal: invalid reference: feat-nonexistent") }]);
+
+      await expect(
+        client.addWorktreeOnBranch("/tmp/wt-bad", "feat-nonexistent"),
+      ).rejects.toThrow("git worktree add (on branch) failed");
+    });
+  });
+
   // A4: listDirInWorktree
   describe("listDirInWorktree", () => {
     it("lists directory contents at worktreePath/dirPath", async () => {

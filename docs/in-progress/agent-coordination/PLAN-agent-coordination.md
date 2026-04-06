@@ -43,13 +43,13 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 16 | `ensureBranchExists` creates branch from base when it doesn't exist | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ⬚ Not Started |
-| 17 | `ensureBranchExists` is a no-op when branch already exists | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ⬚ Not Started |
-| 18 | `addWorktreeOnBranch` checks out existing branch into worktree path | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ⬚ Not Started |
-| 19 | `commitAndPush` filters to docs/ changes, commits, and pushes to origin | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 20 | `commitAndPush` returns `no-changes` when artifact list is empty | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 21 | `commitAndPush` returns `push-error` when push fails | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 22 | `commitAndPush` returns `commit-error` when commit fails | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
+| 16 | `ensureBranchExists` creates branch from base when it doesn't exist | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ✅ Done |
+| 17 | `ensureBranchExists` is a no-op when branch already exists | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ✅ Done |
+| 18 | `addWorktreeOnBranch` checks out existing branch into worktree path | `ptah/tests/unit/services/git.test.ts` | `ptah/src/services/git.ts` | ✅ Done |
+| 19 | `commitAndPush` filters to docs/ changes, commits, and pushes to origin | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 20 | `commitAndPush` returns `no-changes` when artifact list is empty | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 21 | `commitAndPush` returns `push-error` when push fails | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 22 | `commitAndPush` returns `commit-error` when commit fails | `ptah/tests/unit/orchestrator/artifact-committer.test.ts` | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
 
 ### Phase D: Temporal Client (Deterministic IDs + Ad-Hoc Signal)
 

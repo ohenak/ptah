@@ -12,7 +12,18 @@ import {
   makeMergeBranchParams,
 } from "../../fixtures/factories.js";
 import { MergeLockTimeoutError } from "../../../src/orchestrator/merge-lock.js";
-import type { CommitParams } from "../../../src/types.js";
+import type { CommitParams, CommitAndPushParams } from "../../../src/types.js";
+
+function createCommitAndPushParams(overrides: Partial<CommitAndPushParams> = {}): CommitAndPushParams {
+  return {
+    worktreePath: "/tmp/ptah-worktrees/fake",
+    featureBranch: "feat-test-feature",
+    artifactChanges: ["docs/specs/feature.md", "docs/plans/plan.md"],
+    agentId: "dev-agent",
+    threadName: "Feature ABC — Implement the widget",
+    ...overrides,
+  };
+}
 
 function createParams(overrides: Partial<CommitParams> = {}): CommitParams {
   return {
@@ -470,5 +481,164 @@ describe("DefaultArtifactCommitter.mergeBranchIntoFeature", () => {
     expect(result.status).toBe("merge-error");
     expect(result.errorMessage).toBe("git internal error");
     expect(lock.releaseCalls).toBe(1);
+  });
+});
+
+// --- Agent Coordination: commitAndPush tests ---
+
+describe("DefaultArtifactCommitter.commitAndPush", () => {
+  let gitClient: FakeGitClient;
+  let mergeLock: FakeMergeLock;
+  let logger: FakeLogger;
+  let committer: DefaultArtifactCommitter;
+
+  beforeEach(() => {
+    gitClient = new FakeGitClient();
+    mergeLock = new FakeMergeLock();
+    logger = new FakeLogger();
+    committer = new DefaultArtifactCommitter(gitClient, mergeLock, logger);
+  });
+
+  // Task 19: filters to docs/ changes, commits, and pushes to origin
+  it("filters to docs/ changes, commits, and pushes to origin", async () => {
+    gitClient.commitInWorktreeResult = "abc1234def5678";
+    gitClient.getShortShaResult = "abc1234";
+    const params = createCommitAndPushParams({
+      artifactChanges: [
+        "docs/specs/feature.md",
+        "src/index.ts",
+        "docs/plans/plan.md",
+      ],
+    });
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result.pushStatus).toBe("pushed");
+    expect(result.commitSha).toBe("abc1234");
+    expect(result.featureBranch).toBe("feat-test-feature");
+
+    // Only docs/ files staged
+    expect(gitClient.addInWorktreeCalls).toHaveLength(1);
+    expect(gitClient.addInWorktreeCalls[0].files).toEqual([
+      "docs/specs/feature.md",
+      "docs/plans/plan.md",
+    ]);
+
+    // Commit made in worktree
+    expect(gitClient.commitInWorktreeCalls).toHaveLength(1);
+    expect(gitClient.commitInWorktreeCalls[0].worktreePath).toBe(params.worktreePath);
+    expect(gitClient.commitInWorktreeCalls[0].message).toBe(
+      "[ptah] Dev Agent: Implement the widget",
+    );
+
+    // Push made
+    expect(gitClient.pushInWorktreeCalls).toHaveLength(1);
+    expect(gitClient.pushInWorktreeCalls[0]).toEqual({
+      worktreePath: params.worktreePath,
+      remote: "origin",
+      branch: "feat-test-feature",
+    });
+
+    // No merge lock acquired (commitAndPush doesn't need one)
+    expect(mergeLock.acquireCalls).toHaveLength(0);
+
+    // Non-docs warning logged
+    const warnings = logger.entries.filter((e) => e.level === "WARN");
+    expect(warnings.some((w) => w.message.includes("src/index.ts"))).toBe(true);
+  });
+
+  // Task 20: returns no-changes when artifact list is empty
+  it("returns no-changes when artifact list is empty", async () => {
+    const params = createCommitAndPushParams({ artifactChanges: [] });
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result).toEqual({
+      commitSha: null,
+      pushStatus: "no-changes",
+      featureBranch: "feat-test-feature",
+    });
+
+    expect(gitClient.addInWorktreeCalls).toHaveLength(0);
+    expect(gitClient.commitInWorktreeCalls).toHaveLength(0);
+    expect(gitClient.pushInWorktreeCalls).toHaveLength(0);
+  });
+
+  it("returns no-changes when all changes are non-docs", async () => {
+    const params = createCommitAndPushParams({
+      artifactChanges: ["src/index.ts", "package.json"],
+    });
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result.pushStatus).toBe("no-changes");
+    expect(result.commitSha).toBeNull();
+  });
+
+  // Task 21: returns push-error when push fails
+  it("returns push-error when push fails", async () => {
+    gitClient.commitInWorktreeResult = "abc1234def5678";
+    gitClient.pushInWorktreeError = new Error("remote rejected");
+    const params = createCommitAndPushParams();
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result.pushStatus).toBe("push-error");
+    expect(result.commitSha).toBe("abc1234def5678");
+    expect(result.featureBranch).toBe("feat-test-feature");
+    expect(result.errorMessage).toBe("remote rejected");
+  });
+
+  // Task 22: returns commit-error when commit fails
+  it("returns commit-error when git add fails", async () => {
+    gitClient.addInWorktreeError = new Error("git add failed");
+    const params = createCommitAndPushParams();
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result.pushStatus).toBe("commit-error");
+    expect(result.commitSha).toBeNull();
+    expect(result.errorMessage).toBe("git add failed");
+    expect(gitClient.pushInWorktreeCalls).toHaveLength(0);
+  });
+
+  it("returns commit-error when git commit fails", async () => {
+    gitClient.commitInWorktreeError = new Error("nothing to commit");
+    const params = createCommitAndPushParams();
+
+    const result = await committer.commitAndPush(params);
+
+    expect(result.pushStatus).toBe("commit-error");
+    expect(result.commitSha).toBeNull();
+    expect(result.errorMessage).toBe("nothing to commit");
+    expect(gitClient.pushInWorktreeCalls).toHaveLength(0);
+  });
+
+  it("uses correct commit message format with em-dash extraction", async () => {
+    gitClient.commitInWorktreeResult = "abc1234";
+    const params = createCommitAndPushParams({
+      agentId: "pm",
+      threadName: "Feature ABC — Define requirements",
+    });
+
+    await committer.commitAndPush(params);
+
+    expect(gitClient.commitInWorktreeCalls[0].message).toBe(
+      "[ptah] Pm: Define requirements",
+    );
+  });
+
+  it("uses full threadName when no em-dash present", async () => {
+    gitClient.commitInWorktreeResult = "abc1234";
+    const params = createCommitAndPushParams({
+      agentId: "eng",
+      threadName: "Simple task",
+    });
+
+    await committer.commitAndPush(params);
+
+    expect(gitClient.commitInWorktreeCalls[0].message).toBe(
+      "[ptah] Eng: Simple task",
+    );
   });
 });
