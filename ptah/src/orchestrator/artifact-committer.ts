@@ -1,4 +1,4 @@
-import type { CommitParams, CommitResult, MergeBranchParams, BranchMergeResult } from "../types.js";
+import type { CommitParams, CommitResult, MergeBranchParams, BranchMergeResult, CommitAndPushParams, CommitAndPushResult } from "../types.js";
 import type { GitClient } from "../services/git.js";
 import type { MergeLock } from "./merge-lock.js";
 import { MergeLockTimeoutError } from "./merge-lock.js";
@@ -7,6 +7,7 @@ import type { Logger } from "../services/logger.js";
 export interface ArtifactCommitter {
   commitAndMerge(params: CommitParams): Promise<CommitResult>;
   mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult>;
+  commitAndPush(params: CommitAndPushParams): Promise<CommitAndPushResult>;
 }
 
 /** Merge lock timeout for commitAndMerge (existing) */
@@ -235,6 +236,11 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
     } finally {
       releaseLock?.();
     }
+  }
+
+  async commitAndPush(_params: CommitAndPushParams): Promise<CommitAndPushResult> {
+    // TODO: Implement in Phase C (task 19-22)
+    throw new Error("commitAndPush not yet implemented");
   }
 
   private async cleanupWorktree(

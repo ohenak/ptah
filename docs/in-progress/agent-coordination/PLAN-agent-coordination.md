@@ -18,14 +18,14 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 1 | Add `AdHocRevisionSignal` type and extend `FeatureWorkflowState` with `adHocQueue`/`adHocInProgress` fields | — | `ptah/src/temporal/types.ts` | ⬚ Not Started |
-| 2 | Add `adHocInstruction` field to `SkillActivityInput` | — | `ptah/src/temporal/types.ts` | ⬚ Not Started |
-| 3 | Add `CommitAndPushParams` and `CommitAndPushResult` types | — | `ptah/src/types.ts` | ⬚ Not Started |
-| 4 | Extend `GitClient` interface with `addWorktreeOnBranch()` and `ensureBranchExists()` | — | `ptah/src/services/git.ts` | ⬚ Not Started |
-| 5 | Extend `ArtifactCommitter` interface with `commitAndPush()` | — | `ptah/src/orchestrator/artifact-committer.ts` | ⬚ Not Started |
-| 6 | Extend `TemporalClientWrapper` interface with `signalAdHocRevision()` | — | `ptah/src/temporal/client.ts` | ⬚ Not Started |
-| 7 | Update `FakeGitClient` with `addWorktreeOnBranch()`, `ensureBranchExists()` | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
-| 8 | Update `FakeTemporalClient` with `signalAdHocRevision()` | — | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| 1 | Add `AdHocRevisionSignal` type and extend `FeatureWorkflowState` with `adHocQueue`/`adHocInProgress` fields | — | `ptah/src/temporal/types.ts` | ✅ Done |
+| 2 | Add `adHocInstruction` field to `SkillActivityInput` | — | `ptah/src/temporal/types.ts` | ✅ Done |
+| 3 | Add `CommitAndPushParams` and `CommitAndPushResult` types | — | `ptah/src/types.ts` | ✅ Done |
+| 4 | Extend `GitClient` interface with `addWorktreeOnBranch()` and `ensureBranchExists()` | — | `ptah/src/services/git.ts` | ✅ Done |
+| 5 | Extend `ArtifactCommitter` interface with `commitAndPush()` | — | `ptah/src/orchestrator/artifact-committer.ts` | ✅ Done |
+| 6 | Extend `TemporalClientWrapper` interface with `signalAdHocRevision()` | — | `ptah/src/temporal/client.ts` | ✅ Done |
+| 7 | Update `FakeGitClient` with `addWorktreeOnBranch()`, `ensureBranchExists()` | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
+| 8 | Update `FakeTemporalClient` with `signalAdHocRevision()` | — | `ptah/tests/fixtures/factories.ts` | ✅ Done |
 
 ### Phase B: Ad-Hoc Parser (Pure Function)
 

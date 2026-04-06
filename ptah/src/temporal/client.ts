@@ -9,6 +9,7 @@
 import { Connection, WorkflowClient } from "@temporalio/client";
 import type { TemporalConfig } from "../types.js";
 import type {
+  AdHocRevisionSignal,
   FeatureWorkflowState,
   StartWorkflowParams,
   UserAnswerSignal,
@@ -25,6 +26,7 @@ export interface TemporalClientWrapper {
   signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void>;
   signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void>;
   signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void>;
+  signalAdHocRevision(workflowId: string, signal: AdHocRevisionSignal): Promise<void>;
   queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState>;
   listWorkflowsByPrefix(prefix: string): Promise<string[]>;
   isConnected(): boolean;
@@ -111,6 +113,12 @@ export class TemporalClientWrapperImpl implements TemporalClientWrapper {
     this.ensureConnected();
     const handle = this.workflowClient!.getHandle(workflowId);
     await handle.signal("resume-or-cancel", action);
+  }
+
+  async signalAdHocRevision(workflowId: string, signal: AdHocRevisionSignal): Promise<void> {
+    this.ensureConnected();
+    const handle = this.workflowClient!.getHandle(workflowId);
+    await handle.signal("ad-hoc-revision", signal);
   }
 
   async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
