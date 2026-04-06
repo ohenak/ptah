@@ -110,7 +110,7 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 53 | Update `WorktreeManager.create()` to use `addWorktreeOnBranch` instead of `createWorktreeFromBranch` | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ⬚ Not Started |
+| 53 | Update `WorktreeManager.create()` to use `addWorktreeOnBranch` instead of `createWorktreeFromBranch` | `ptah/tests/unit/orchestrator/worktree-manager.test.ts` | `ptah/src/orchestrator/worktree-manager.ts` | ✅ Done |
 
 ### Phase J: Integration Tests (Signal Contract)
 

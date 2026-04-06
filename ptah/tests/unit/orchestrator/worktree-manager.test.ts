@@ -15,27 +15,29 @@ describe("DefaultWorktreeManager", () => {
     manager = new DefaultWorktreeManager(gitClient, registry, logger);
   });
 
-  // ─── C1: create — generates UUID path, calls git worktree add, registers ───
-  describe("C1: create — happy path", () => {
-    it("generates a /tmp/ptah-wt-{uuid}/ path and creates a worktree", async () => {
+  // ─── C1: create — generates UUID path, checks out existing branch, registers ───
+  describe("C1: create — happy path (shared branch)", () => {
+    it("generates a /tmp/ptah-wt-{uuid}/ path and checks out the existing feature branch", async () => {
       const handle = await manager.create("feat-my-feature", "wf-1", "run-1", "act-1");
 
       // Path should match the expected pattern
       expect(handle.path).toMatch(/^\/tmp\/ptah-wt-[0-9a-f-]+\/$/);
-      // Branch is a unique ptah-wt-{uuid} branch, not the feature branch
-      expect(handle.branch).toMatch(/^ptah-wt-[0-9a-f-]+$/);
+      // Branch is the feature branch itself — no per-agent branch
+      expect(handle.branch).toBe("feat-my-feature");
     });
 
-    it("calls gitClient.createWorktreeFromBranch with a unique branch based off feature branch", async () => {
+    it("calls gitClient.addWorktreeOnBranch with the feature branch (no new branch created)", async () => {
       const handle = await manager.create("feat-my-feature", "wf-1", "run-1", "act-1");
 
-      expect(gitClient.createWorktreeFromBranchCalls).toHaveLength(1);
-      expect(gitClient.createWorktreeFromBranchCalls[0]!.baseBranch).toBe("feat-my-feature");
-      expect(gitClient.createWorktreeFromBranchCalls[0]!.path).toBe(handle.path);
-      expect(gitClient.createWorktreeFromBranchCalls[0]!.newBranch).toMatch(/^ptah-wt-[0-9a-f-]+$/);
+      // Should use addWorktreeOnBranch (shared branch checkout)
+      expect(gitClient.worktreesOnBranch).toHaveLength(1);
+      expect(gitClient.worktreesOnBranch[0]!.branch).toBe("feat-my-feature");
+      expect(gitClient.worktreesOnBranch[0]!.path).toBe(handle.path);
+      // Should NOT use createWorktreeFromBranch (per-agent branch)
+      expect(gitClient.createWorktreeFromBranchCalls).toHaveLength(0);
     });
 
-    it("registers the worktree in the registry with all metadata", async () => {
+    it("registers the worktree in the registry with feature branch as branch", async () => {
       const handle = await manager.create("feat-my-feature", "wf-1", "run-1", "act-1");
 
       expect(registry.size()).toBe(1);
@@ -43,7 +45,7 @@ describe("DefaultWorktreeManager", () => {
       expect(all[0]).toEqual(
         expect.objectContaining({
           worktreePath: handle.path,
-          branch: handle.branch,
+          branch: "feat-my-feature",
           workflowId: "wf-1",
           runId: "run-1",
           activityId: "act-1",
@@ -58,19 +60,21 @@ describe("DefaultWorktreeManager", () => {
   describe("C2: create — retries on collision", () => {
     it("retries with a new UUID when first attempt fails, second succeeds", async () => {
       let callCount = 0;
-      gitClient.createWorktreeFromBranch = async (newBranch: string, path: string, baseBranch: string) => {
+      const originalAddWorktreeOnBranch = gitClient.addWorktreeOnBranch.bind(gitClient);
+      gitClient.addWorktreeOnBranch = async (path: string, branch: string) => {
         callCount++;
         if (callCount === 1) {
           throw new Error("fatal: worktree path already exists");
         }
-        gitClient.createWorktreeFromBranchCalls.push({ newBranch, path, baseBranch });
+        return originalAddWorktreeOnBranch(path, branch);
       };
 
       const handle = await manager.create("feat-retry", "wf-1", "run-1", "act-1");
 
       expect(callCount).toBe(2);
       expect(handle.path).toMatch(/^\/tmp\/ptah-wt-[0-9a-f-]+\/$/);
-      expect(handle.branch).toMatch(/^ptah-wt-[0-9a-f-]+$/);
+      // Branch is the feature branch, not a per-agent branch
+      expect(handle.branch).toBe("feat-retry");
       expect(registry.size()).toBe(1);
     });
   });
@@ -78,7 +82,7 @@ describe("DefaultWorktreeManager", () => {
   // ─── C3: create — throws non-retryable error after two failed attempts ────
   describe("C3: create — throws after two failures", () => {
     it("throws a non-retryable error when both attempts fail", async () => {
-      gitClient.createWorktreeFromBranchError = new Error("fatal: cannot create worktree");
+      gitClient.addWorktreeOnBranchError = new Error("fatal: cannot create worktree");
 
       await expect(
         manager.create("feat-fail", "wf-1", "run-1", "act-1"),
