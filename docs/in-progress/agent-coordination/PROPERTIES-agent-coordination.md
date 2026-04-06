@@ -8,7 +8,7 @@
 | **Requirements** | [REQ-agent-coordination](REQ-agent-coordination.md) |
 | **Specifications** | [TSPEC-agent-coordination](TSPEC-agent-coordination.md), [FSPEC-agent-coordination](FSPEC-agent-coordination.md) |
 | **Execution Plan** | [PLAN-agent-coordination](PLAN-agent-coordination.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 6, 2026 |
 | **Author** | Test Engineer |
 | **Status** | Draft |
@@ -56,9 +56,9 @@ This properties document covers two coordination capabilities in the Ptah CLI: (
 | Error Handling | 10 | REQ-MR-03, REQ-MR-04, REQ-MR-05, REQ-WB-03, REQ-WB-05 | Unit |
 | Data Integrity | 7 | REQ-MR-01, REQ-MR-04, REQ-MR-06, REQ-WB-02 | Unit |
 | Integration | 6 | REQ-WB-01, REQ-WB-05, REQ-MR-02, REQ-MR-07 | Integration |
-| Idempotency | 4 | REQ-WB-04, REQ-WB-05 | Unit |
-| Observability | 3 | REQ-MR-05, REQ-WB-05, REQ-MR-07 | Unit |
-| **Total** | **65** | | |
+| Idempotency | 4 | REQ-WB-04, REQ-WB-05, REQ-MR-06 | Unit |
+| Observability | 2 | REQ-MR-05, REQ-MR-04 | Unit |
+| **Total** | **63** | | |
 
 ---
 
@@ -184,7 +184,7 @@ Repeated operations produce the same result.
 | PROP-WB-16 | `invokeSkill` idempotency check must use path-only matching (`wt.path === worktreeBasePath`) and NOT branch-name matching | REQ-WB-04, TSPEC §5.4 | Unit | P0 |
 | PROP-WB-17 | Activity retry must reuse an existing worktree at the same path without error, regardless of other worktrees on the same branch | REQ-WB-04 (AC) | Unit | P0 |
 | PROP-WB-18 | `ensureBranchExists` must be idempotent: calling it when the branch already exists must not create a duplicate or fail | REQ-WB-05 (AC #2), TSPEC §5.1 | Unit | P0 |
-| PROP-WB-19 | Same-agent queued twice must process both sequentially (not deduplicate) | REQ-MR-06, FSPEC-MR-02 Edge Case "Same agent queued twice" | Unit | P0 |
+| PROP-MR-46 | Same-agent queued twice must process both sequentially (not deduplicate) | REQ-MR-06, FSPEC-MR-02 Edge Case "Same agent queued twice" | Unit | P0 |
 
 ### 3.7 Observability Properties
 
@@ -192,7 +192,6 @@ Logging, metrics, and error reporting.
 
 | ID | Property | Source | Test Level | Priority |
 |----|----------|--------|------------|----------|
-| PROP-MR-43 | `executeCascade` must log a warning when the revised agent is not found in any workflow phase | FSPEC-MR-03 §Step 2, TSPEC §7 | Unit | P0 |
 | PROP-MR-44 | `handleMessage` must log the error when signal delivery fails with a transient error | FSPEC-MR-01 Error Scenarios, TSPEC §7 | Unit | P1 |
 | PROP-MR-45 | `handleMessage` must log a warning when the Discord acknowledgement post fails | FSPEC-MR-01 BR-05, TSPEC §7 | Unit | P1 |
 
@@ -206,7 +205,6 @@ Properties that define what the system must NOT do. Derived from specification c
 |----|----------|--------|------------|----------|
 | PROP-NEG-01 | `parseAdHocDirective` must NOT classify a mid-sentence `@mention` as an ad-hoc request (only first-token `@` qualifies) | REQ-MR-01, FSPEC-MR-01 BR-01 | Unit | P0 |
 | PROP-NEG-02 | `handleMessage` must NOT send a Temporal signal when the `@`-mentioned agent is not part of the workflow | REQ-MR-03, FSPEC-MR-01 §Step 5 | Unit | P1 |
-| PROP-NEG-03 | `handleMessage` must NOT attempt to signal Temporal when no active workflow exists (no signal sent) | REQ-MR-05 | Unit | P1 |
 | PROP-NEG-04 | `commitAndPush` must NOT create an intermediate per-agent branch (direct push only) | REQ-WB-03, TSPEC §5.5 | Unit | P0 |
 | PROP-NEG-05 | `invokeSkill` idempotency check must NOT use branch-name matching (`wt.branch === ...`) | REQ-WB-04, TSPEC §5.4 | Unit | P0 |
 | PROP-NEG-06 | `drainAdHocQueue` must NOT dequeue the next signal while a cascade triggered by the current signal is in progress | REQ-MR-06, FSPEC-MR-02 BR-02 | Unit | P0 |
@@ -234,8 +232,8 @@ Properties that define what the system must NOT do. Derived from specification c
 | REQ-MR-02 | PROP-MR-07, PROP-MR-08, PROP-MR-13, PROP-MR-22, PROP-MR-23, PROP-MR-25, PROP-MR-39 | Full |
 | REQ-MR-03 | PROP-MR-26, PROP-MR-36, PROP-NEG-02 | Full |
 | REQ-MR-04 | PROP-MR-10, PROP-MR-34, PROP-MR-35 | Full |
-| REQ-MR-05 | PROP-MR-27, PROP-MR-30, PROP-NEG-03 | Full |
-| REQ-MR-06 | PROP-MR-11, PROP-MR-12, PROP-MR-37, PROP-MR-38, PROP-WB-19, PROP-NEG-06, PROP-NEG-09, PROP-MR-42 | Full |
+| REQ-MR-05 | PROP-MR-27, PROP-MR-30 | Full |
+| REQ-MR-06 | PROP-MR-11, PROP-MR-12, PROP-MR-37, PROP-MR-38, PROP-MR-46, PROP-NEG-06, PROP-NEG-09, PROP-MR-42 | Full |
 | REQ-MR-07 | PROP-MR-14, PROP-MR-16, PROP-MR-17, PROP-MR-18, PROP-MR-19, PROP-MR-31, PROP-MR-32, PROP-MR-41, PROP-NEG-07, PROP-NEG-10, PROP-NEG-12 | Full |
 | REQ-MR-08 | PROP-MR-08, PROP-MR-09, PROP-MR-30 | Full |
 | REQ-NF-01 | PROP-NF-01, PROP-NEG-06 | Full |
@@ -245,9 +243,9 @@ Properties that define what the system must NOT do. Derived from specification c
 
 | Specification | Properties | Coverage |
 |---------------|------------|----------|
-| FSPEC-MR-01 (Routing Flow) | PROP-MR-01..10, PROP-MR-22..23, PROP-MR-26..30, PROP-MR-33..36, PROP-MR-39, PROP-NEG-01..03, PROP-NEG-08 | Full |
-| FSPEC-MR-02 (Queue Management) | PROP-MR-11..15, PROP-MR-24, PROP-MR-37..38, PROP-MR-40, PROP-MR-42, PROP-WB-19, PROP-NEG-06, PROP-NEG-09 | Full |
-| FSPEC-MR-03 (Downstream Cascade) | PROP-MR-16..19, PROP-MR-21, PROP-MR-31..32, PROP-MR-41, PROP-MR-43, PROP-NEG-07, PROP-NEG-10, PROP-NEG-12 | Full |
+| FSPEC-MR-01 (Routing Flow) | PROP-MR-01..10, PROP-MR-22..23, PROP-MR-26..30, PROP-MR-33..36, PROP-MR-39, PROP-NEG-01..02, PROP-NEG-08 | Full |
+| FSPEC-MR-02 (Queue Management) | PROP-MR-11..15, PROP-MR-24, PROP-MR-37..38, PROP-MR-40, PROP-MR-42, PROP-MR-46, PROP-NEG-06, PROP-NEG-09 | Full |
+| FSPEC-MR-03 (Downstream Cascade) | PROP-MR-16..19, PROP-MR-21, PROP-MR-31..32, PROP-MR-41, PROP-NEG-07, PROP-NEG-10, PROP-NEG-12 | Full |
 | TSPEC §5 (WB Algorithms) | PROP-WB-01..08, PROP-WB-10..18, PROP-NEG-04..05, PROP-NEG-11 | Full |
 | TSPEC §6 (MR Algorithms) | PROP-MR-07..09, PROP-MR-11..21, PROP-MR-40, PROP-NF-01 | Full |
 
@@ -274,10 +272,10 @@ Properties that define what the system must NOT do. Derived from specification c
 
 | Test Level | Property Count | Percentage |
 |------------|---------------|------------|
-| Unit | 59 | 90.8% |
-| Integration | 6 | 9.2% |
+| Unit | 57 | 90.5% |
+| Integration | 6 | 9.5% |
 | E2E (candidates) | 0 | 0% |
-| **Total** | **65** | **100%** |
+| **Total** | **63** | **100%** |
 
 **E2E justification:** No E2E tests are recommended. All critical behaviors (parsing, signal dispatch, queue FIFO, cascade collection) can be verified at the unit level using protocol-based fakes. Integration properties cover cross-module wiring (worktree → push → downstream visibility, handleMessage pipeline, workflow drain loop). The Temporal workflow queue and cascade logic can be tested via extracted pure helper functions and Temporal's testing utilities without requiring a live Temporal server.
 
@@ -300,6 +298,7 @@ Properties that define what the system must NOT do. Derived from specification c
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 6, 2026 | Test Engineer | Initial properties document |
+| 1.1 | April 6, 2026 | Test Engineer | Address engineer cross-review: remove PROP-NEG-03 (contradicts FSPEC-MR-01 BR-04 implicit signal attempt), rename PROP-WB-19→PROP-MR-46 (correct domain prefix), merge PROP-MR-43 into PROP-MR-31 (remove overlap) |
 
 ---
 
