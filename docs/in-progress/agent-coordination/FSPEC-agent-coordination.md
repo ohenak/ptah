@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-AC |
 | **Parent Document** | [REQ-agent-coordination](REQ-agent-coordination.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 6, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -59,9 +59,7 @@ Specifies the complete end-to-end flow from a user sending a message to a featur
 1. **User sends a message** to a Discord thread associated with a feature.
 2. **Extract first token.** Strip leading whitespace from the message body. Extract the first whitespace-delimited token.
 3. **Check for @-directive.** Determine if the first token matches the pattern `@{identifier}` (case-insensitive). If it does not start with `@`, the message is **not an ad-hoc request** — pass it through to existing message handling (unchanged behavior). Flow ends.
-4. **Resolve agent ID.** Extract the identifier from `@{identifier}`. Match it (case-insensitive) against the agents registered in the feature's workflow configuration:
-   - Match against `agent.id` (e.g., `pm`, `eng`, `qa`)
-   - Match against `agent.display_name` if present (e.g., `product-manager`, `engineer`)
+4. **Resolve agent ID.** Extract the identifier from `@{identifier}`. Match it (case-insensitive) against the agents registered in the feature's workflow configuration. The minimum matching requirement is against `agent.id` (e.g., `pm`, `eng`, `qa`). The system may also match against additional agent identifiers (e.g., display names) — this is a system-level concern deferred to the TSPEC per REQ Assumption #5.
    - If **no match** → go to step 5 (unknown agent).
    - If **match found** → go to step 6 (known agent).
 5. **Unknown agent rejection ([REQ-MR-03]).**
@@ -155,15 +153,6 @@ GIVEN: Feature messaging-abstraction has an active workflow with agent pm
 WHEN:  User sends "@PM update the REQ"
 THEN:  The message is classified as an ad-hoc request for agent pm,
        and the signal is dispatched normally
-```
-
-**AT-06:** Display name matching.
-```
-WHO:   As the orchestration system
-GIVEN: Feature messaging-abstraction has an active workflow with agent pm
-       whose display_name is "product-manager"
-WHEN:  User sends "@product-manager address feedback"
-THEN:  The message is classified as an ad-hoc request for agent pm
 ```
 
 ---
@@ -290,7 +279,8 @@ Specifies how the workflow automatically identifies and re-runs downstream revie
       - Continue to the next cascade phase (step 5a for the next phase in the collection).
    e. **If the cascade phase returns `ROUTE_TO_USER`:**
       - Follow the standard question flow. After the question is answered and the agent completes, continue to step 5d.
-   f. **If the cascade phase returns "Needs revision" (reviewer signals that the artifact needs changes):**
+   f. **If the cascade review phase determines the artifact needs revision** (i.e., the review cycle's recommendation parsing yields `revision_requested` via the existing recommendation-to-status mapping):
+      - **Identify the creation phase** for this review phase using the **positional convention**: the creation phase is `workflowConfig.phases[reviewIndex - 1]`, where `reviewIndex` is the review phase's index in the **original workflow config phase array** (not the cascade collection). The creation agent is `creationPhase.agent`.
       - Enter the **standard revision loop**: invoke the creation agent to address the feedback, then re-run the review phase.
       - The revision loop follows the same logic as normal workflow revision cycles — the creation agent is re-invoked with the review feedback in context, and the review phase re-runs after the creation agent pushes updated artifacts.
       - The revision loop is bounded by the `revision_bound` configured on the phase (from `WorkflowConfig`). If the revision bound is exceeded, the cascade phase is treated as failed (enter failure flow).
@@ -301,11 +291,12 @@ Specifies how the workflow automatically identifies and re-runs downstream revie
 
 - **BR-01 (All subsequent reviews):** The cascade re-runs ALL `type: "review"` phases after the revised agent's position, not just those whose `creationPhase` corresponds to the revised agent. This conservative approach ensures complete downstream consistency at the cost of potentially re-running reviews that were unaffected. It is simpler to implement and eliminates the risk of stale reviews persisting.
 - **BR-02 (Sequential execution):** Cascade phases execute sequentially, one at a time. No parallel execution within the cascade. This maintains the sequential consistency constraint ([REQ-NF-01]).
-- **BR-03 (Revision loop within cascade):** If a cascaded review phase requests a revision, the standard revision loop runs. The target of the revision is determined by the review phase's configuration (e.g., which creation phase it reviews), NOT the original ad-hoc revision agent. The cascade does not short-circuit back to the ad-hoc agent.
+- **BR-03 (Revision loop within cascade):** If a cascaded review phase requests a revision, the standard revision loop runs. The creation phase is identified by the **positional convention**: `workflowConfig.phases[reviewIndex - 1]` in the original config array. The creation agent is that phase's `agent` field. The cascade does not short-circuit back to the original ad-hoc revision agent — the revision targets the phase that the review is structurally positioned to review.
+- **BR-08 (Workflow config structure constraint):** For the cascade's positional creation-phase identification to work correctly, workflow configs MUST place each `type: "review"` phase immediately after its corresponding `type: "creation"` phase (or after any intervening `type: "approved"` auto-transition phase). If a review phase at index N has `phases[N-1]` pointing to another review phase, the cascade's revision loop will invoke that review phase's agent as if it were the creation agent — which produces incorrect behavior. This is the same positional convention used by the main workflow loop and is not a new constraint.
 - **BR-04 (Cascade uses latest artifacts):** Each cascade phase pulls the latest `feat-{featureSlug}` before starting. This means each cascade phase sees the cumulative result of all prior cascade phases and revision loops.
 - **BR-05 (Cascade is blocking):** No queued `adHocRevision` signals are processed until the cascade completes (enforced by FSPEC-MR-02 BR-02). The cascade is treated as an extension of the ad-hoc revision that triggered it.
 - **BR-06 (No cascade for non-review phases):** Phases with types `"creation"`, `"approved"`, or `"implementation"` are never included in the cascade, even if they appear after the revised agent's position.
-- **BR-07 (Normal workflow resumes after cascade):** After the cascade completes and all queued signals are processed, the workflow resumes its normal sequential phase execution from wherever it left off. The cascade does not alter the workflow's phase cursor or completion state.
+- **BR-07 (Normal workflow resumes after cascade):** After the cascade completes and all queued signals are processed, the workflow resumes its normal sequential phase execution. The cascade does not alter the workflow's phase cursor (`state.currentPhaseId`) or the set of completed phases (`state.completedPhaseIds`). Specifically: ad-hoc signals are processed at phase transition points (after a phase completes, before the next phase starts). At that point, the phase cursor already points to the next unexecuted phase. After queue processing completes, the workflow advances to that phase as normal. No already-completed phase is re-executed as a result of the cascade.
 
 ### Edge Cases
 
