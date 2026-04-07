@@ -116,7 +116,7 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 54 | Integration: orchestrator deterministic ID `ptah-{featureSlug}` matches workflow start ID — signal sent by orchestrator reaches workflow signal handler with correct payload shape | `ptah/tests/integration/ad-hoc-signal-contract.test.ts` | — | ⬚ Not Started |
+| 54 | Integration: orchestrator deterministic ID `ptah-{featureSlug}` matches workflow start ID — signal sent by orchestrator reaches workflow signal handler with correct payload shape | `ptah/tests/integration/ad-hoc-signal-contract.test.ts` | — | ✅ Done |
 
 ## 3. Task Dependency Notes
 
