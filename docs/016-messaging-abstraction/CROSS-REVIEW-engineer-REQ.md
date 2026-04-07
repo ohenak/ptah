@@ -4,159 +4,94 @@
 |-------|--------|
 | **Reviewer** | Senior Full-Stack Engineer (eng) |
 | **Document Reviewed** | [016-REQ-messaging-abstraction.md](016-REQ-messaging-abstraction.md) |
-| **Date** | 2026-04-03 |
-| **Recommendation** | **Needs revision** |
+| **Version Reviewed** | v1.2 (re-review following v1.0 findings) |
+| **Date** | 2026-04-07 |
+| **Recommendation** | **Approved with minor changes** |
 
 ---
 
-## Findings
+## Re-Review Summary
 
-### F-01 — Webhook Human-in-the-Loop Callback Mechanism Is Unspecified (High)
-
-**REQ-MA-04** states: *"Human-in-the-loop handled via a callback endpoint that sends a Temporal Signal."*
-
-**Problem:** There is no specification of how this callback endpoint is exposed. Temporal Signals require an external caller to invoke the Temporal Client with a workflow ID and signal name. For the webhook provider to support human-in-the-loop, one of the following is required:
-
-1. Ptah embeds an HTTP server that receives the callback and translates it to a Temporal Signal — adds a server dependency, port binding, and TLS concerns not present today.
-2. The caller is expected to invoke the Temporal API directly — this pushes implementation burden onto downstream integrators and is undocumented.
-3. A polling mechanism on the workflow side — breaks the signal-driven architecture established in feature 015.
-
-**Assumption A-13** treats this as solved by Temporal Signals alone, but Temporal Signals are *receivers*, not *transmitters*. Something must POST to the Temporal server. This gap is a significant engineering blocker.
-
-**Required:** Specify whether Ptah embeds an HTTP server for webhook callbacks, and if so: address port configuration, TLS strategy, and how the workflow ID is threaded through the callback URL.
+This is a re-review of REQ v1.2 following the original engineer review of v1.0 (2026-04-03), which identified 2 High and 4 Medium and 2 Low findings (F-01 through F-08). All 8 findings from the v1.0 review have been addressed in v1.1/v1.2. One new Low-severity residual concern is noted below.
 
 ---
 
-### F-02 — Slack Events API Requires a Publicly Accessible HTTPS Endpoint (High)
+## Finding Resolution Status (from v1.0 Review)
 
-**REQ-MA-05** mentions: *"receives human replies via Slack events."*
-
-**Problem:** Slack's Events API uses an outbound webhook model — Slack POSTs events to a URL you provide. This URL **must** be publicly accessible over HTTPS and verified by Slack's challenge handshake. This is architecturally opposite to Discord, which uses a persistent WebSocket connection that works from any network.
-
-Consequences:
-
-- Ptah running locally or in an internal CI environment cannot receive Slack events without a tunnel (e.g., ngrok) or a publicly deployed relay.
-- This requirement dramatically increases the operational burden for the Slack provider compared to Discord.
-- A challenge/verification endpoint must be exposed at startup to pass Slack's URL verification.
-
-The REQ contains no mention of this constraint, tunnel strategy, or relay architecture. Teams evaluating Ptah for Slack will hit this immediately.
-
-**Required:** Either (a) document this constraint explicitly and specify a deployment requirement for Slack, or (b) add an alternative inbound mechanism (Slack Socket Mode uses WebSockets and avoids the public URL requirement — this should be evaluated as the default).
+| # | Original Finding | Severity | Resolution |
+|---|-----------------|----------|------------|
+| F-01 | Webhook callback mechanism unspecified | High | ✅ Resolved — REQ-MA-04 now specifies embedded HTTP callback server on configurable port (default 8765), `callback_url` in outgoing payload, and TLS delegated to reverse proxy |
+| F-02 | Slack Events API requires public HTTPS endpoint | High | ✅ Resolved — REQ-MA-05 now mandates Slack Socket Mode (outbound WebSocket); Events API explicitly out of scope; "No public HTTPS URL required" in acceptance criteria |
+| F-03 | Thread ID type safety across providers | Medium | ✅ Resolved — REQ-MA-01 now specifies opaque `ThreadHandle` strategy: "the provider owns creation and interpretation of thread identifiers; the orchestrator never constructs or parses them" |
+| F-04 | Agent registry mention routing for non-Discord providers | Medium | ✅ Resolved — REQ-MA-06 now specifies per-provider mention routing: Discord uses numeric snowflakes, Slack uses alphanumeric IDs, CLI/webhook route via Temporal Signal `agent_id` field |
+| F-05 | REQ-MA-02 "without modification" constraint | Medium | ✅ Resolved — REQ-MA-02 now states "test wiring may change structurally…but behavior coverage must be complete"; hard constraint removed |
+| F-06 | `MessagingProvider` / `ResponseFormatter` relationship undefined | Medium | ✅ Resolved — REQ-MA-07 now specifies formatting as internal to each provider; no separate `ResponseFormatter` interface at orchestrator boundary |
+| F-07 | CLI interactive mode incompatible with Temporal worker | Low | ✅ Resolved — REQ-MA-03 now specifies foreground process requirement ("Temporal worker runs in-process alongside the prompt loop") |
+| F-08 | Config migration path from legacy `discord` section | Low | ✅ Resolved — REQ-MA-06 now specifies backward-compatible aliasing with deprecation warning |
 
 ---
 
-### F-03 — Thread ID Type Safety Gap Across Providers (Medium)
+## New Finding (v1.2)
 
-The current codebase uses Discord snowflake strings as thread IDs throughout (`string` typed but semantically a snowflake). Different providers use incompatible ID formats:
+### F-09 — LOW: CLI Headless Answer Schema Unspecified
 
-| Provider | Thread ID Format |
-|----------|-----------------|
-| Discord | Numeric snowflake: `"1234567890123456789"` |
-| Slack | Channel + timestamp: `"C01234ABC/1712345678.000100"` |
-| CLI | Synthesized label: `"feature-auth-phase-tspec"` |
-| Webhook | UUID or slug assigned by Ptah |
+**Requirement:** REQ-MA-03 (CLI Messaging Provider)
+**Severity:** Low
 
-The `MessagingProvider` interface referenced in REQ-MA-01 must define a provider-agnostic thread handle type (e.g., an opaque `ThreadHandle` branded type) rather than passing raw strings between layers. Without this, the orchestrator layer accumulates provider-specific string parsing logic that defeats the abstraction.
+REQ-MA-03 states that headless mode reads pre-configured answers from "an `answers` config section" but does not define the schema. The keying strategy for answers has a meaningful UX impact:
 
-**Required:** REQ-MA-01 or REQ-MA-07 should specify that thread handles are opaque to the orchestrator — the provider owns creation and interpretation of thread identifiers.
+| Keying Approach | Tradeoff |
+|----------------|---------|
+| `{agentId}/{phaseId}` | Portable but requires knowing internal phase IDs at config time |
+| Question text hash | Brittle — breaks if question text changes |
+| Sequential index | Fragile for non-deterministic question ordering |
 
----
+Without a conceptual schema in the REQ, TSPEC authors will make this decision independently. If the chosen schema is unintuitive or inconsistent with other headless CI tooling patterns, it becomes a usability issue that is expensive to change post-implementation (config file format changes are breaking changes for existing users).
 
-### F-04 — Agent Registry `byMentionId` Lookup Unaddressed for Non-Discord Providers (Medium)
+**Note:** This concern was present in v1.0 but was not captured in the original engineer cross-review. It is raised here for completeness.
 
-The agent registry maintains a `byMentionId: Map<string, RegisteredAgent>` keyed on Discord snowflake IDs. The routing engine uses `getAgentByMentionId(roleId)` to resolve which agent was mentioned in a message.
-
-For Slack, mention IDs are alphanumeric (e.g., `U01234ABC`, `S01234ABC` for user groups). REQ-MA-06 correctly removes the `/^\d+$/` snowflake validation, but neither REQ-MA-01 nor REQ-MA-06 addresses how mention routing works after the abstraction:
-
-- How does the routing engine identify which agent was mentioned in a Slack message?
-- Does `mention_id` become a provider-specific field (Discord uses snowflake, Slack uses Slack user/group ID)?
-- For CLI and webhook providers, is mention routing irrelevant (agents are routed by signal content, not @mention)?
-
-**Required:** REQ-MA-01 or REQ-MA-06 should specify the mention resolution contract for each provider, or explicitly state that mention-based routing is a Discord/Slack-only concern and other providers use a different routing mechanism.
-
----
-
-### F-05 — REQ-MA-02 Acceptance Criterion Creates an Unverifiable Constraint (Medium)
-
-REQ-MA-02 states: *"All existing Discord integration tests pass without modification."*
-
-After the refactoring, the `DiscordClient` interface used in tests will be wrapped inside `DiscordMessagingProvider`, which implements `MessagingProvider`. The `FakeDiscordClient` test double will need to be injected into `DiscordMessagingProvider`, not into the orchestrator directly. This is a structural change to the test setup.
-
-"Without modification" is therefore not achievable in the strict sense. The tests will still validate identical behavior, but their construction will change (the DI wiring changes).
-
-**Required:** Revise the acceptance criterion to: *"Discord provider behavior is identical to pre-abstraction — all existing behaviors are covered by passing tests."* Remove "without modification" to avoid creating false constraints that impede the refactor.
-
----
-
-### F-06 — `MessagingProvider` and `ResponseFormatter` Relationship Undefined (Medium)
-
-REQ-MA-01 defines `MessagingProvider` as the interface for all messaging operations. REQ-MA-07 introduces a separate `ResponseFormatter` interface for format conversion.
-
-The current code has `ResponsePoster` using `DiscordClient` internally. It is unclear from the requirements:
-
-1. Does `ResponseFormatter` live inside each `MessagingProvider` implementation (i.e., a provider both sends and formats)?
-2. Is `ResponseFormatter` a separate collaborator injected into `MessagingProvider`?
-3. Does the orchestrator call `formatter.format(event)` → `provider.post(formattedResult)` in sequence?
-
-This ambiguity will result in divergent interpretations during TSPEC. The two-interface design is reasonable architecturally, but their relationship and ownership must be stated explicitly.
-
-**Required:** Specify whether `ResponseFormatter` is a method on `MessagingProvider` (collapsed interface), or a separate interface composed with it, or purely an internal detail of each provider's implementation.
-
----
-
-### F-07 — CLI Provider Interactive Mode Incompatible with Temporal Worker Context (Low)
-
-REQ-MA-03 states that interactive CLI mode prompts via stdin. Temporal activity workers are background worker processes. Attaching stdin interactively to a Temporal worker is non-trivial and not standard practice — the worker is typically started as a daemon.
-
-**Required:** Clarify whether CLI interactive mode requires Ptah to run in a foreground single-process mode (no Temporal worker subprocess) or specify how stdin is made available to the Temporal activity execution context.
-
----
-
-### F-08 — Config Migration Path from Existing `discord` Section Not Addressed (Low)
-
-REQ-MA-06 introduces a `messaging` top-level config section. Existing `ptah.config.json` files use a top-level `discord` section. The migration path is unspecified:
-
-- Is the old `discord` section accepted as an alias for backward compatibility?
-- Does the config loader emit a deprecation warning on old-format configs?
-- What is the migration timeline?
-
-This is especially important since REQ-MA-02 requires no behavior change for existing Discord users.
-
-**Required:** State whether backward compatibility via config aliasing is in scope, or whether users must manually update their config files. If aliasing is in scope, note it as a requirement.
+**Suggestion:** Add a one-line config schema example to REQ-MA-03's description — e.g., `"messaging.cli.answers": { "<agentId>/<phaseId>": "yes" }` — to guide TSPEC without over-specifying. Alternatively, explicitly delegate the schema decision to the TSPEC.
 
 ---
 
 ## Clarification Questions
 
-**Q-01:** For the webhook provider human-in-the-loop: does Ptah embed an HTTP server to receive callbacks, or does the integration contract require the caller to invoke the Temporal gRPC/HTTP API directly? If embedded server: what is the port configuration strategy?
+**Q-01:** For the CLI headless answer schema: is the keying strategy intended to be determined by the engineer during TSPEC, or does the PM have a preference? A one-line conceptual example would eliminate ambiguity without constraining implementation.
 
-**Q-02:** For the Slack provider: has Slack Socket Mode been evaluated as an alternative to the Events API? Socket Mode uses an outbound WebSocket connection (same model as Discord) and eliminates the requirement for a public HTTPS endpoint. This would materially lower the operational bar for Slack adoption.
-
-**Q-03:** Is `ResponseFormatter` intended to be a distinct interface from `MessagingProvider`, or should it be collapsed into the provider (each provider formats its own output internally)? The former gives format-reuse across providers; the latter keeps provider implementations simpler.
-
-**Q-04:** For providers where mention-based routing is not applicable (CLI, webhook), how does the orchestrator determine which agent to route a response to? Is this handled entirely by Temporal Signal content, removing the need for mention parsing?
+**Q-02:** REQ-MA-04 specifies `callback_base_url` defaults to `http://localhost:{callback_port}`. In containerized or cloud-hosted deployments, the Ptah process is not reachable at `localhost` from the external system posting answers. Is it sufficient to document this as an operator concern (configure `callback_base_url` to the public endpoint), or should the requirement note this constraint explicitly?
 
 ---
 
 ## Positive Observations
 
-- The motivation section (Section 1) is precise and grounds the requirement in concrete current-code behavior — this is directly actionable for TSPEC. Naming specific files and validation patterns (`/^\d+$/`) gives engineering immediate context.
-- The phased priority (P0 vs P1) is sensible: Discord refactor + CLI + config abstraction first, then Slack/webhook. This reduces risk by validating the interface design before adding the more complex providers.
-- Assumption A-14 (CLI headless mode covers CI/CD) is appropriately scoped and explicitly flagged as extensible — this is the right level of scope control.
-- Scope boundary 3.2 is well-defined. Excluding multi-provider, Teams, and email prevents scope creep while keeping the interface forward-compatible.
-- The risks table correctly identifies R-14 (CLI headless question types) as Medium impact — this connects directly to the question schema that will need to be part of the `MessagingProvider` contract.
+All v1.0 concerns were addressed with precision:
+
+- **ThreadHandle opaque contract (REQ-MA-01):** The language is unambiguous — "the provider owns creation and interpretation of thread identifiers; the orchestrator never constructs or parses them." This is exactly the level of specificity needed for TSPEC.
+- **Webhook callback server (REQ-MA-04):** The embedded server design, configurable port, callback URL in payload, and TLS delegation are all now specified. A TSPEC author can design the implementation without guessing.
+- **Socket Mode mandate (REQ-MA-05):** Choosing Socket Mode over Events API eliminates the public URL prerequisite that would have materially raised operational friction. Explicitly scoping out the Events API prevents scope creep.
+- **Provider-specific mention routing (REQ-MA-06):** The three-way split (Discord snowflake / Slack alphanumeric / CLI+webhook via Signal `agent_id`) is clear and maps directly to an implementation decision tree.
+- **Formatting as internal provider concern (REQ-MA-07):** Eliminating the separate `ResponseFormatter` interface simplifies the abstraction boundary. The orchestrator constructs a structured event; each provider formats it internally. Clean and testable.
+- **Config backward compatibility (REQ-MA-06):** The deprecation warning pattern (`Legacy 'discord' config format detected…`) is a sensible migration UX.
 
 ---
 
 ## Recommendation
 
-**Needs revision.** Five findings are High or Medium severity:
+**Approved with minor changes.**
 
-- **F-01 (High):** Webhook callback mechanism must be specified before TSPEC can design the webhook provider.
-- **F-02 (High):** Slack Events API public endpoint constraint is a significant operational blocker; Socket Mode should be evaluated as the default.
-- **F-03 (Medium):** Thread handle type strategy must be stated in the interface contract.
-- **F-04 (Medium):** Mention resolution for non-Discord providers must be addressed.
-- **F-05 (Medium):** REQ-MA-02 acceptance criterion must be revised to remove the infeasible "without modification" constraint.
-- **F-06 (Medium):** `MessagingProvider` / `ResponseFormatter` relationship must be specified.
+All High and Medium findings from v1.0 are resolved. F-09 is Low-severity and does not block TSPEC authoring — the TSPEC author can make the headless answer schema decision and document it there. Q-01 and Q-02 are informational; answers are welcome but not required before proceeding.
 
-The author must address F-01 through F-06 and route the updated REQ back for re-review before TSPEC authoring begins.
+The PM may address F-09 with a one-line addition to REQ-MA-03 or explicitly note that the schema is delegated to TSPEC. Either resolution is acceptable. The document may proceed to TSPEC creation.
+
+---
+
+## Change Log
+
+| Version | Date | Reviewer | Notes |
+|---------|------|----------|-------|
+| v1.0 review | 2026-04-03 | eng | 8 findings (F-01–F-08): 2 High, 4 Medium, 2 Low. Recommendation: Needs revision. |
+| v1.2 re-review | 2026-04-07 | eng | All 8 findings resolved. 1 new Low finding (F-09: headless schema). Recommendation: Approved with minor changes. |
+
+---
+
+*End of Cross-Review*
