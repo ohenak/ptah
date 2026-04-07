@@ -27,10 +27,16 @@ function makeNotificationInput(overrides?: Partial<NotificationInput>): Notifica
 }
 
 function makeDeps(overrides?: Partial<NotificationActivityDeps>): NotificationActivityDeps {
+  const discord = new FakeDiscordClient();
+  const config = defaultTestConfig();
+  // Pre-populate channel name → snowflake ID mappings so resolveToSnowflake works
+  discord.channels.set(config.discord.channels.updates, "111111111111111111");
+  discord.channels.set(config.discord.channels.questions, "222222222222222222");
+  discord.channels.set(config.discord.channels.debug, "333333333333333333");
   return {
-    discordClient: new FakeDiscordClient(),
+    discordClient: discord,
     logger: new FakeLogger(),
-    config: defaultTestConfig(),
+    config,
     ...overrides,
   };
 }
