@@ -1,4 +1,4 @@
-import type { CommitParams, CommitResult, MergeBranchParams, BranchMergeResult } from "../types.js";
+import type { CommitParams, CommitResult, MergeBranchParams, BranchMergeResult, CommitAndPushParams, CommitAndPushResult } from "../types.js";
 import type { GitClient } from "../services/git.js";
 import type { MergeLock } from "./merge-lock.js";
 import { MergeLockTimeoutError } from "./merge-lock.js";
@@ -7,6 +7,7 @@ import type { Logger } from "../services/logger.js";
 export interface ArtifactCommitter {
   commitAndMerge(params: CommitParams): Promise<CommitResult>;
   mergeBranchIntoFeature(params: MergeBranchParams): Promise<BranchMergeResult>;
+  commitAndPush(params: CommitAndPushParams): Promise<CommitAndPushResult>;
 }
 
 /** Merge lock timeout for commitAndMerge (existing) */
@@ -235,6 +236,73 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
     } finally {
       releaseLock?.();
     }
+  }
+
+  async commitAndPush(params: CommitAndPushParams): Promise<CommitAndPushResult> {
+    const { worktreePath, featureBranch, artifactChanges, agentId, threadName } = params;
+
+    // 1. VALIDATE — return no-changes if empty
+    if (artifactChanges.length === 0) {
+      this.logger.info(`commitAndPush: no changes for ${agentId}`);
+      return { commitSha: null, pushStatus: "no-changes", featureBranch };
+    }
+
+    // 2. FILTER to docs/ only
+    const docsChanges = filterDocsChanges(artifactChanges, this.logger);
+    if (docsChanges.length === 0) {
+      this.logger.info(`commitAndPush: no docs changes for ${agentId}`);
+      return { commitSha: null, pushStatus: "no-changes", featureBranch };
+    }
+
+    // 3. STAGE
+    try {
+      await this.gitClient.addInWorktree(worktreePath, docsChanges);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        commitSha: null,
+        pushStatus: "commit-error",
+        featureBranch,
+        errorMessage: message,
+      };
+    }
+
+    // 4. COMMIT IN WORKTREE
+    const agentDisplayName = formatAgentName(agentId);
+    const description = extractDescription(threadName);
+    const commitMessage = `[ptah] ${agentDisplayName}: ${description}`;
+    let commitSha: string;
+
+    try {
+      commitSha = await this.gitClient.commitInWorktree(worktreePath, commitMessage);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        commitSha: null,
+        pushStatus: "commit-error",
+        featureBranch,
+        errorMessage: message,
+      };
+    }
+
+    // 5. PUSH to origin
+    try {
+      await this.gitClient.pushInWorktree(worktreePath, "origin", featureBranch);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        commitSha,
+        pushStatus: "push-error",
+        featureBranch,
+        errorMessage: message,
+      };
+    }
+
+    const shortSha = await this.gitClient.getShortSha(commitSha);
+    this.logger.info(
+      `commitAndPush complete: ${agentId} → ${shortSha} (branch: ${featureBranch})`,
+    );
+    return { commitSha: shortSha, pushStatus: "pushed", featureBranch };
   }
 
   private async cleanupWorktree(

@@ -100,6 +100,11 @@ async function setupTestRepo(featureSlug: string): Promise<TestRepos> {
   await git(workDir, "commit", "-m", `chore: scaffold ${featureSlug} in backlog`);
   await git(workDir, "push", "origin", featureBranch);
 
+  // Switch back to main so the feature branch is free for worktree checkout.
+  // addWorktreeOnBranch checks out the existing branch, which fails if it's
+  // already checked out in the working directory.
+  await git(workDir, "checkout", "main");
+
   return {
     workDir,
     bareDir,
@@ -395,6 +400,10 @@ describe("Promotion pipeline (PROP-NF-05): idempotent retry after partial comple
       runId: "setup-run",
     });
 
+    // Switch to the feature branch to pull the promotion commit and simulate
+    // a partial Phase 1, then switch back to main so the feature branch is
+    // free for worktree checkout in the test body.
+    await git(workDir, "checkout", featureBranch);
     await git(workDir, "pull", "origin", featureBranch);
 
     // Simulate partial Phase 1: manually move folder to completed/ and commit,
@@ -403,6 +412,8 @@ describe("Promotion pipeline (PROP-NF-05): idempotent retry after partial comple
     await git(workDir, "mv", "docs/in-progress/my-feature", "docs/completed/001-my-feature");
     await git(workDir, "commit", "-m", "chore: partial Phase 1 move (simulated crash)");
     await git(workDir, "push", "origin", featureBranch);
+
+    await git(workDir, "checkout", "main");
   });
 
   afterEach(async () => {

@@ -44,6 +44,8 @@ import type {
   FeatureConfig,
   ContextDocumentSet,
   TaskType,
+  CommitAndPushParams,
+  CommitAndPushResult,
 } from "../../src/types.js";
 import type { WorktreeRegistry, ActiveWorktree } from "../../src/orchestrator/worktree-registry.js";
 import type { FeatureResolver, FeatureResolverResult } from "../../src/orchestrator/feature-resolver.js";
@@ -275,6 +277,12 @@ export class FakeGitClient implements GitClient {
   pushInWorktreeCalls: Array<{worktreePath: string; remote: string; branch: string}> = [];
   pushInWorktreeError: Error | null = null;
 
+  // Agent Coordination state
+  worktreesOnBranch: Array<{ path: string; branch: string }> = [];
+  addWorktreeOnBranchError: Error | null = null;
+  ensuredBranches: string[] = [];
+  ensureBranchExistsError: Error | null = null;
+
   async hasUncommittedChanges(_worktreePath: string): Promise<boolean> {
     return this.hasUncommittedChangesResult;
   }
@@ -454,6 +462,19 @@ export class FakeGitClient implements GitClient {
     this.listDirInWorktreeCalls.push({ worktreePath, dirPath });
     if (this.listDirInWorktreeError) throw this.listDirInWorktreeError;
     return this.listDirInWorktreeResult;
+  }
+
+  // Agent Coordination methods
+
+  async addWorktreeOnBranch(path: string, branch: string): Promise<void> {
+    if (this.addWorktreeOnBranchError) throw this.addWorktreeOnBranchError;
+    this.worktreesOnBranch.push({ path, branch });
+    this.worktrees.push({ path, branch });
+  }
+
+  async ensureBranchExists(branch: string, _baseBranch?: string): Promise<void> {
+    if (this.ensureBranchExistsError) throw this.ensureBranchExistsError;
+    this.ensuredBranches.push(branch);
   }
 }
 
@@ -1102,6 +1123,15 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
   };
   mergeBranchCalls: MergeBranchParams[] = [];
 
+  // Agent Coordination state
+  commitAndPushCalls: CommitAndPushParams[] = [];
+  commitAndPushResult: CommitAndPushResult = {
+    commitSha: "abc1234",
+    pushStatus: "pushed",
+    featureBranch: "feat-test",
+  };
+  commitAndPushError: Error | null = null;
+
   async commitAndMerge(params: CommitParams): Promise<CommitResult> {
     this.commitAndMergeCalls.push(params);
     if (this.callIndex >= this.results.length) {
@@ -1115,6 +1145,12 @@ export class FakeArtifactCommitter implements ArtifactCommitter {
     this.mergeBranchCalls.push(params);
     if (this.mergeBranchError) throw this.mergeBranchError;
     return this.mergeBranchResult;
+  }
+
+  async commitAndPush(params: CommitAndPushParams): Promise<CommitAndPushResult> {
+    this.commitAndPushCalls.push(params);
+    if (this.commitAndPushError) throw this.commitAndPushError;
+    return this.commitAndPushResult;
   }
 }
 
@@ -1269,6 +1305,7 @@ export function makeMergeBranchParams(overrides?: Partial<MergeBranchParams>): M
 
 import type { WorkflowConfigLoader, WorkflowConfig, PhaseDefinition } from "../../src/config/workflow-config.js";
 import type {
+  AdHocRevisionSignal,
   FeatureWorkflowState,
   StartWorkflowParams,
   UserAnswerSignal,
@@ -1339,6 +1376,10 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   connectCalls = 0;
   disconnectCalls = 0;
 
+  // Agent Coordination state
+  adHocSignals: Array<{ workflowId: string; signal: AdHocRevisionSignal }> = [];
+  signalAdHocRevisionError: Error | null = null;
+
   async connect(): Promise<void> {
     this.connectCalls++;
     if (this.connectionError) throw this.connectionError;
@@ -1354,7 +1395,7 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
     if (this.startWorkflowError) throw this.startWorkflowError;
     this.startedWorkflows.push(params);
-    return `ptah-feature-${params.featureSlug}-1`;
+    return `ptah-${params.featureSlug}`;
   }
 
   async signalUserAnswer(workflowId: string, answer: UserAnswerSignal): Promise<void> {
@@ -1376,6 +1417,12 @@ export class FakeTemporalClient implements TemporalClientWrapper {
     const state = this.workflowStates.get(workflowId);
     if (!state) throw new Error(`Workflow ${workflowId} not found`);
     return state;
+  }
+
+  async signalAdHocRevision(workflowId: string, signal: AdHocRevisionSignal): Promise<void> {
+    if (this.signalAdHocRevisionError) throw this.signalAdHocRevisionError;
+    this.adHocSignals.push({ workflowId, signal });
+    this.sentSignals.push({ workflowId, signal: "ad-hoc-revision", payload: signal });
   }
 
   async listWorkflowsByPrefix(prefix: string): Promise<string[]> {
@@ -1441,6 +1488,8 @@ export function defaultFeatureWorkflowState(
     featurePath: null,
     worktreeRoot: null,
     signOffs: {},
+    adHocQueue: [],
+    adHocInProgress: false,
     ...overrides,
   };
 }

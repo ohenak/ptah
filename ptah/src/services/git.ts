@@ -41,6 +41,10 @@ export interface GitClient {
   gitMvInWorktree(worktreePath: string, source: string, destination: string): Promise<void>;
   listDirInWorktree(worktreePath: string, dirPath: string): Promise<string[]>;
 
+  // --- Agent Coordination ---
+  addWorktreeOnBranch(path: string, branch: string): Promise<void>;
+  ensureBranchExists(branch: string, baseBranch?: string): Promise<void>;
+
   // --- Phase 10 ---
   createWorktreeFromBranch(newBranch: string, path: string, baseBranch: string): Promise<void>;
   checkoutBranchInWorktree(branch: string, path: string): Promise<void>;
@@ -338,6 +342,54 @@ export class NodeGitClient implements GitClient {
   async listDirInWorktree(worktreePath: string, dirPath: string): Promise<string[]> {
     const fullPath = path.join(worktreePath, dirPath);
     return readdir(fullPath);
+  }
+
+  // --- Agent Coordination ---
+
+  async addWorktreeOnBranch(path: string, branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["worktree", "add", path, branch], {
+        cwd: this.cwd,
+      });
+    } catch (error: unknown) {
+      throw new Error(
+        `git worktree add (on branch) failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async ensureBranchExists(branch: string, baseBranch: string = "main"): Promise<void> {
+    // Check local
+    try {
+      await execFileAsync("git", ["rev-parse", "--verify", `refs/heads/${branch}`], { cwd: this.cwd });
+      return; // exists locally
+    } catch {
+      // not local, continue
+    }
+
+    // Check remote
+    try {
+      const { stdout } = await execFileAsync("git", ["ls-remote", "--heads", "origin", branch], { cwd: this.cwd });
+      if (stdout.trim().length > 0) {
+        // Exists on remote, fetch it
+        await execFileAsync("git", ["fetch", "origin", `${branch}:${branch}`], { cwd: this.cwd });
+        return;
+      }
+    } catch (error: unknown) {
+      throw new Error(
+        `git ls-remote failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    // Create from baseBranch and push
+    try {
+      await execFileAsync("git", ["branch", branch, baseBranch], { cwd: this.cwd });
+      await execFileAsync("git", ["push", "origin", branch], { cwd: this.cwd });
+    } catch (error: unknown) {
+      throw new Error(
+        `git ensureBranchExists failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   // --- Phase 10 ---

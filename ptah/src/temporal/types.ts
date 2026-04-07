@@ -101,6 +101,12 @@ export interface FeatureWorkflowState {
   worktreeRoot: string | null;
   /** Sign-off tracking: agent ID → ISO 8601 timestamp of LGTM */
   signOffs: Record<string, string>;
+
+  // --- Agent Coordination ---
+  /** FIFO queue of pending ad-hoc revision signals */
+  adHocQueue: AdHocRevisionSignal[];
+  /** True while processing an ad-hoc dispatch + cascade */
+  adHocInProgress: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +117,13 @@ export interface UserAnswerSignal {
   answer: string;
   answeredBy: string;
   answeredAt: string;
+}
+
+export interface AdHocRevisionSignal {
+  targetAgentId: string;
+  instruction: string;
+  requestedBy: string;
+  requestedAt: string;   // ISO 8601
 }
 
 export type RetryOrCancelSignal = "retry" | "cancel";
@@ -132,6 +145,8 @@ export interface SkillActivityInput {
   isRevision: boolean;
   priorQuestion?: string;
   priorAnswer?: string;
+  /** Ad-hoc instruction text from user's @-mention message */
+  adHocInstruction?: string;
 }
 
 export interface SkillActivityResult {
