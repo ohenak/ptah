@@ -87,6 +87,7 @@ export class TemporalOrchestrator {
   private readonly skillInvoker: SkillInvoker;
 
   private debugChannelId: string | null = null;
+  private workerRunPromise: Promise<void> | null = null;
 
   constructor(deps: TemporalOrchestratorDeps) {
     this.temporalClient = deps.temporalClient;
@@ -137,6 +138,13 @@ export class TemporalOrchestrator {
     // Connect Temporal client
     await this.temporalClient.connect();
     this.logger.info("Temporal client connected");
+
+    // Start the Worker polling (runs in background until shutdown)
+    this.workerRunPromise = this.worker.run();
+    this.workerRunPromise.catch((err) => {
+      this.logger.error(`Temporal Worker crashed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+    this.logger.info("Temporal Worker started polling");
   }
 
   // ---------------------------------------------------------------------------
