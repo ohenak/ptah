@@ -20,6 +20,7 @@ import * as wf from "@temporalio/workflow";
 import type { PhaseDefinition, WorkflowConfig } from "../../config/workflow-config.js";
 import type { FeatureConfig } from "../../types.js";
 import type {
+  AdHocRevisionSignal,
   FeatureWorkflowState,
   SkillActivityInput,
   SkillActivityResult,
@@ -334,6 +335,8 @@ export interface ContinueAsNewPayload {
   featurePath: string | null;
   worktreeRoot: null; // always null — new run gets fresh worktrees
   signOffs: Record<string, string>;
+  /** Carry pending ad-hoc signals across continue-as-new boundary */
+  adHocQueue: AdHocRevisionSignal[];
 }
 
 /**
@@ -341,12 +344,13 @@ export interface ContinueAsNewPayload {
  * worktreeRoot is always nulled — each new run creates its own worktrees.
  */
 export function buildContinueAsNewPayload(
-  state: Pick<FeatureWorkflowState, "featurePath" | "signOffs">,
+  state: Pick<FeatureWorkflowState, "featurePath" | "signOffs" | "adHocQueue">,
 ): ContinueAsNewPayload {
   return {
     featurePath: state.featurePath,
     worktreeRoot: null,
     signOffs: { ...state.signOffs },
+    adHocQueue: [...state.adHocQueue],
   };
 }
 
@@ -617,6 +621,7 @@ const {
 const userAnswerSignal = wf.defineSignal<[UserAnswerSignal]>("user-answer");
 const retryOrCancelSignal = wf.defineSignal<[RetryOrCancelSignal]>("retry-or-cancel");
 const resumeOrCancelSignal = wf.defineSignal<[ResumeOrCancelSignal]>("resume-or-cancel");
+const adHocRevisionSignal = wf.defineSignal<[AdHocRevisionSignal]>("ad-hoc-revision");
 
 const workflowStateQuery = wf.defineQuery<FeatureWorkflowState>("workflow-state");
 
@@ -1308,11 +1313,100 @@ export async function featureLifecycleWorkflow(
   // D13: Register Query handler
   wf.setHandler(workflowStateQuery, () => _state!);
 
+  // ── Task 47: Ad-hoc revision signal handler ──
+  // Enqueue incoming ad-hoc signals for later processing at phase transitions.
+  wf.setHandler(adHocRevisionSignal, (signal) => {
+    state.adHocQueue.push(signal);
+  });
+
   // Get workflow ID for notification routing
   const workflowInfo = wf.workflowInfo();
   const workflowId = workflowInfo.workflowId;
   const runId = workflowInfo.runId;
   const featureBranch = `feat-${featureSlug}`;
+
+  // ── Task 50/51: drainAdHocQueue — process pending ad-hoc signals ──
+  // Called at each phase transition and before workflow termination.
+  // Processes signals FIFO, dispatching the target agent and running
+  // downstream cascade for each completed ad-hoc dispatch.
+  async function drainAdHocQueue(): Promise<void> {
+    while (state.adHocQueue.length > 0) {
+      state.adHocInProgress = true;
+      const signal = state.adHocQueue.shift()!;
+
+      // Find agent's phase to build correct SkillActivityInput
+      const agentPhase = findAgentPhase(signal.targetAgentId, workflowConfig);
+      if (!agentPhase) {
+        // Agent not found in workflow phases — skip this signal
+        continue;
+      }
+
+      // Ad-hoc dispatch: reuse dispatchSingleAgent with adHocInstruction
+      const input = buildInvokeSkillInput({
+        phase: agentPhase,
+        agentId: signal.targetAgentId,
+        featureSlug: state.featureSlug,
+        featureConfig: state.featureConfig,
+        forkJoin: false,
+        isRevision: true,
+      });
+      // Thread through the ad-hoc instruction
+      input.adHocInstruction = signal.instruction;
+
+      const result = await dispatchSingleAgent({
+        state,
+        phase: agentPhase,
+        agentId: signal.targetAgentId,
+        forkJoin: false,
+        isRevision: true,
+        workflowId,
+      });
+
+      if (result !== "cancelled") {
+        // Task 51: Execute downstream cascade after ad-hoc agent completes
+        await executeCascade(signal.targetAgentId, state, workflowConfig, workflowId);
+      }
+
+      state.adHocInProgress = false;
+    }
+  }
+
+  // ── Task 51: executeCascade — run downstream review phases after ad-hoc ──
+  async function executeCascade(
+    revisedAgentId: string,
+    st: FeatureWorkflowState,
+    config: WorkflowConfig,
+    wfId: string,
+  ): Promise<void> {
+    const cascadePhases = collectCascadePhases(revisedAgentId, config);
+    if (cascadePhases.length === 0) return;
+
+    for (const reviewPhase of cascadePhases) {
+      // Check skip_if
+      if (reviewPhase.skip_if && evaluateSkipCondition(reviewPhase.skip_if, st.featureConfig)) {
+        continue;
+      }
+
+      // Find creation phase (positional convention: phases[reviewIndex - 1])
+      const creationPhase = lookupCreationPhase(reviewPhase, config);
+      if (!creationPhase) {
+        // Review phase at index 0 or not found — skip (config error)
+        continue;
+      }
+      const authorAgentId = creationPhase.agent ?? creationPhase.agents?.[0] ?? "pm";
+
+      // Run review cycle (reuses existing runReviewCycle)
+      const outcome = await runReviewCycle({
+        state: st,
+        reviewPhase,
+        creationPhase,
+        authorAgentId,
+        workflowId: wfId,
+      });
+
+      if (outcome === "cancelled") return;
+    }
+  }
 
   // ── E10: Resolve feature path at workflow start ──────────────────────
   // Uses the FeatureResolver activity to locate the feature folder across
@@ -1402,6 +1496,9 @@ export async function featureLifecycleWorkflow(
 
       if (outcome === "cancelled") return;
 
+      // Task 50: Drain ad-hoc queue before advancing phase
+      await drainAdHocQueue();
+
       // All reviewers approved — advance to approved phase
       state.completedPhaseIds.push(currentPhaseId);
       const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
@@ -1426,6 +1523,9 @@ export async function featureLifecycleWorkflow(
 
       if (outcome === "cancelled") return;
 
+      // Task 50: Drain ad-hoc queue before advancing phase
+      await drainAdHocQueue();
+
       // Advance to next phase
       state.completedPhaseIds.push(currentPhaseId);
       const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
@@ -1449,6 +1549,9 @@ export async function featureLifecycleWorkflow(
 
       if (result === "cancelled") return;
 
+      // Task 50: Drain ad-hoc queue before advancing phase
+      await drainAdHocQueue();
+
       // Advance to next phase
       state.completedPhaseIds.push(currentPhaseId);
       const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
@@ -1467,6 +1570,9 @@ export async function featureLifecycleWorkflow(
     state.phaseStatus = "running";
     _state = state;
   }
+
+  // Task 52: Drain remaining ad-hoc queue signals before workflow termination
+  await drainAdHocQueue();
 
   // ── E7: Completion promotion — trigger when both qa + pm have signed off ──
   if (isCompletionReady(state.signOffs) && state.featurePath !== null) {

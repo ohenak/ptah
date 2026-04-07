@@ -990,12 +990,14 @@ describe("buildContinueAsNewPayload", () => {
     const state = {
       featurePath: "docs/in-progress/my-feature/" as string | null,
       signOffs: { qa: "2026-04-02T10:00:00Z" },
+      adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
     };
     const payload = buildContinueAsNewPayload(state);
     expect(payload).toEqual({
       featurePath: "docs/in-progress/my-feature/",
       worktreeRoot: null,
       signOffs: { qa: "2026-04-02T10:00:00Z" },
+      adHocQueue: [],
     });
   });
 
@@ -1003,6 +1005,7 @@ describe("buildContinueAsNewPayload", () => {
     const state = {
       featurePath: null,
       signOffs: {},
+      adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
     };
     const payload = buildContinueAsNewPayload(state);
     expect(payload.featurePath).toBeNull();
@@ -1012,7 +1015,11 @@ describe("buildContinueAsNewPayload", () => {
 
   it("creates a shallow copy of signOffs (not the same reference)", () => {
     const signOffs = { qa: "2026-04-02T10:00:00Z", pm: "2026-04-02T11:00:00Z" };
-    const state = { featurePath: "docs/in-progress/my-feature/" as string | null, signOffs };
+    const state = {
+      featurePath: "docs/in-progress/my-feature/" as string | null,
+      signOffs,
+      adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
+    };
     const payload = buildContinueAsNewPayload(state);
     expect(payload.signOffs).not.toBe(signOffs);
     expect(payload.signOffs).toEqual(signOffs);

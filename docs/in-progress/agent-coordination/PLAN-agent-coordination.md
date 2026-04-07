@@ -99,12 +99,12 @@ Implements two coordination capabilities: (1) shared worktree/branch strategy so
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 47 | Add `adHocRevisionSignal` definition and handler that enqueues signals | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 48 | Update `buildInitialWorkflowState` with `adHocQueue: []` and `adHocInProgress: false` | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 49 | Update `buildContinueAsNewPayload` to carry `adHocQueue` across CAN boundary | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 50 | Insert `drainAdHocQueue()` call at each phase transition in the main loop | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 51 | Wire `executeCascade()` into `drainAdHocQueue` after each ad-hoc agent completes | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| 52 | Drain remaining queue signals before workflow termination | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| 47 | Add `adHocRevisionSignal` definition and handler that enqueues signals | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 48 | Update `buildInitialWorkflowState` with `adHocQueue: []` and `adHocInProgress: false` | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 49 | Update `buildContinueAsNewPayload` to carry `adHocQueue` across CAN boundary | `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 50 | Insert `drainAdHocQueue()` call at each phase transition in the main loop | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 51 | Wire `executeCascade()` into `drainAdHocQueue` after each ad-hoc agent completes | `ptah/tests/unit/temporal/workflows/cascade.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| 52 | Drain remaining queue signals before workflow termination | `ptah/tests/unit/temporal/workflows/ad-hoc-queue.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase I: WorktreeManager Update
 

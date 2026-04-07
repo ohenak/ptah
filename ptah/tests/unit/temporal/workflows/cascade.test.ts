@@ -184,3 +184,76 @@ describe("lookupCreationPhase", () => {
     expect(result).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 51: executeCascade integration — verify pure helpers compose correctly
+//
+// executeCascade (workflow-internal) uses collectCascadePhases + lookupCreationPhase
+// to determine which review phases to run and their author agents.
+// These tests verify the composition of the two helpers as used by executeCascade.
+// ---------------------------------------------------------------------------
+
+describe("executeCascade helper composition", () => {
+  it("collectCascadePhases + lookupCreationPhase yields correct author for each cascade review", () => {
+    const config = makeConfig([
+      makePhase({ id: "req", agent: "pm", type: "creation" }),
+      makePhase({ id: "review-req", agent: "qa", type: "review" }),
+      makePhase({ id: "tspec", agent: "eng", type: "creation" }),
+      makePhase({ id: "review-tspec", agent: "qa-2", type: "review" }),
+    ]);
+
+    // Ad-hoc revision of "pm" triggers cascade on review-req and review-tspec
+    const cascadePhases = collectCascadePhases("pm", config);
+    expect(cascadePhases).toHaveLength(2);
+
+    // For each cascade review phase, lookupCreationPhase finds the author
+    const author1 = lookupCreationPhase(cascadePhases[0], config);
+    expect(author1).not.toBeNull();
+    expect(author1!.agent).toBe("pm"); // review-req is preceded by req (agent: pm)
+
+    const author2 = lookupCreationPhase(cascadePhases[1], config);
+    expect(author2).not.toBeNull();
+    expect(author2!.agent).toBe("eng"); // review-tspec is preceded by tspec (agent: eng)
+  });
+
+  it("cascade with no review phases after revised agent produces empty cascade", () => {
+    const config = makeConfig([
+      makePhase({ id: "req", agent: "pm", type: "creation" }),
+      makePhase({ id: "review-req", agent: "qa", type: "review" }),
+      makePhase({ id: "tspec", agent: "eng", type: "creation" }),
+    ]);
+
+    // Ad-hoc revision of "eng" (last creation phase) — no review phases after
+    const cascadePhases = collectCascadePhases("eng", config);
+    expect(cascadePhases).toEqual([]);
+  });
+
+  it("cascade skips review phase at index 0 via lookupCreationPhase returning null", () => {
+    // Edge case: if a review phase were at index 0 (config error),
+    // lookupCreationPhase returns null and executeCascade skips it
+    const reviewPhase = makePhase({ id: "review-first", agent: "qa", type: "review" });
+    const config = makeConfig([reviewPhase]);
+
+    const result = lookupCreationPhase(reviewPhase, config);
+    expect(result).toBeNull();
+  });
+
+  it("cascade phases preserve ordering from workflow config", () => {
+    const config = makeConfig([
+      makePhase({ id: "req", agent: "pm", type: "creation" }),
+      makePhase({ id: "review-req", agent: "qa", type: "review" }),
+      makePhase({ id: "tspec", agent: "eng", type: "creation" }),
+      makePhase({ id: "review-tspec", agent: "qa-2", type: "review" }),
+      makePhase({ id: "plan", agent: "eng-2", type: "creation" }),
+      makePhase({ id: "review-plan", agent: "qa-3", type: "review" }),
+    ]);
+
+    // Cascade from "pm" should yield reviews in config order
+    const cascadePhases = collectCascadePhases("pm", config);
+    expect(cascadePhases.map(p => p.id)).toEqual([
+      "review-req",
+      "review-tspec",
+      "review-plan",
+    ]);
+  });
+});
