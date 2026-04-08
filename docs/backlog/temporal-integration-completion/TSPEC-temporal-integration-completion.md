@@ -5,7 +5,7 @@
 | **Requirements** | [REQ-temporal-integration-completion](REQ-temporal-integration-completion.md) |
 | **Functional Specifications** | [FSPEC-temporal-integration-completion](FSPEC-temporal-integration-completion.md) |
 | **Date** | 2026-04-08 |
-| **Status** | Draft |
+| **Status** | Draft (Rev 2 — addressing qa cross-review feedback) |
 
 ---
 
@@ -464,8 +464,14 @@ async handleMessage(message: ThreadMessage): Promise<void> {
     workflowState = await this.temporalClient.queryWorkflowState(workflowId);
     workflowRunning = true;
   } catch (err) {
-    // WorkflowNotFoundError or query failure → no running workflow
-    workflowRunning = false;
+    if (err instanceof Error && err.name === "WorkflowNotFoundError") {
+      // No workflow exists → Branch B (may start new workflow)
+      workflowRunning = false;
+    } else {
+      // Temporal query failure (server unreachable, timeout) → fail-silent (FSPEC-DR-01)
+      this.logger.warn(`Temporal query failed for ${workflowId}: ${err}`);
+      return;
+    }
   }
 
   if (workflowRunning && workflowState) {
@@ -769,6 +775,7 @@ Note: This requires importing `agentIdToSkillName` and `crossReviewPath` into th
 | `WorkflowExecutionAlreadyStartedError` | `startNewWorkflow` | "Workflow already running" posted | — |
 | Empty slug from thread name | `handleMessage` | Skip start, log warning | — |
 | `resolveContextDocuments` with null featurePath | dispatch sites | Fallback to raw `phase.context_documents` | — |
+| Ack message fails to post after successful signal | `handleIntentRouting` | Log warning, do not fail — signal already delivered | — (caught, logged) |
 
 ---
 
@@ -785,23 +792,30 @@ Note: This requires importing `agentIdToSkillName` and `crossReviewPath` into th
 **New/updated fakes:**
 
 ```typescript
-// FakeTemporalClient additions
+// FakeTemporalClient — extend existing implementation (preserves workflowStates Map)
 class FakeTemporalClient implements TemporalClientWrapper {
-  // ... existing ...
-  queryWorkflowStateResult: FeatureWorkflowState | null = null;
+  // ... existing fields (workflowStates Map, startedWorkflows, sentSignals, etc.) ...
+
+  // NEW: Global error injection for Temporal outage simulation
   queryWorkflowStateError: Error | null = null;
 
   async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
+    // Global error injection takes priority (simulates Temporal server outage)
     if (this.queryWorkflowStateError) throw this.queryWorkflowStateError;
-    if (!this.queryWorkflowStateResult) {
+
+    // Existing behavior: per-workflow-ID lookup from Map
+    const state = this.workflowStates.get(workflowId);
+    if (!state) {
       const err = new Error(`Workflow ${workflowId} not found`);
       err.name = "WorkflowNotFoundError";
       throw err;
     }
-    return this.queryWorkflowStateResult;
+    return state;
   }
 }
 ```
+
+This extends the existing `workflowStates: Map<string, FeatureWorkflowState>` pattern rather than replacing it. The Map-based lookup supports multi-workflow test scenarios and preserves backward compatibility with existing tests. The new `queryWorkflowStateError` property enables Temporal outage simulation (fail-silent path from §5.9).
 
 ### 7.2 Test Categories
 
@@ -811,8 +825,8 @@ class FakeTemporalClient implements TemporalClientWrapper {
 | Unit | `cross-review-activity.test.ts` | `readCrossReviewRecommendation` — all 3 result paths (approved, revision_requested, parse_error) |
 | Unit | `feature-lifecycle.test.ts` | `evaluateSkipCondition` with `"config.skipFspec"` field, `deriveDocumentType()` |
 | Unit | `feature-lifecycle.test.ts` | `resolveContextDocuments` at dispatch call sites (via `buildInvokeSkillInput` parameter) |
-| Unit | `temporal-orchestrator.test.ts` | `parseUserIntent` — all keywords, edge cases, no-match |
-| Unit | `temporal-orchestrator.test.ts` | `handleMessage` — workflow start, user-answer routing, retry/cancel/resume routing, hints |
+| Unit | `temporal-orchestrator.test.ts` | `parseUserIntent` — all keywords, edge cases, no-match, position-based precedence (e.g., `"cancel first, then retry"` → `"cancel"`) |
+| Unit | `temporal-orchestrator.test.ts` | `handleMessage` — workflow start, user-answer routing, retry/cancel/resume routing, hints, fail-silent on query failure, ack failure after signal |
 | Unit | `temporal-orchestrator.test.ts` | `containsAgentMention` — matches anywhere, case sensitivity |
 | Integration | `workflow-integration.test.ts` | Review cycle with `readCrossReviewRecommendation` activity |
 | Integration | `workflow-integration.test.ts` | Context document resolution end-to-end |
