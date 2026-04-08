@@ -468,11 +468,13 @@ export function computeReviewerList(
 export function mapRecommendationToStatus(
   recommendation: string,
 ): ReviewerStatusValue | null {
-  switch (recommendation) {
-    case "Approved":
-    case "Approved with minor changes":
+  const normalized = recommendation.toLowerCase().trim();
+  switch (normalized) {
+    case "approved":
+    case "approved with minor changes":
+    case "lgtm":
       return "approved";
-    case "Needs revision":
+    case "needs revision":
       return "revision_requested";
     default:
       return null;

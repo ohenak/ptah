@@ -603,13 +603,20 @@ describe("mapRecommendationToStatus", () => {
     expect(mapRecommendationToStatus("Needs revision")).toBe("revision_requested");
   });
 
-  it("returns null for unrecognized recommendation strings", () => {
-    // Unrecognized recommendation → treat as parse error (caller handles retry)
-    expect(mapRecommendationToStatus("Conditional Approval")).toBeNull();
+  it("maps 'LGTM' to 'approved'", () => {
+    expect(mapRecommendationToStatus("LGTM")).toBe("approved");
   });
 
-  it("is case-sensitive — 'approved' (lowercase) is unrecognized", () => {
-    expect(mapRecommendationToStatus("approved")).toBeNull();
+  it("maps 'lgtm' (lowercase) to 'approved'", () => {
+    expect(mapRecommendationToStatus("lgtm")).toBe("approved");
+  });
+
+  it("is case-insensitive — 'approved' (lowercase) maps to 'approved'", () => {
+    expect(mapRecommendationToStatus("approved")).toBe("approved");
+  });
+
+  it("returns null for unrecognized recommendation strings", () => {
+    expect(mapRecommendationToStatus("Conditional Approval")).toBeNull();
   });
 });
 

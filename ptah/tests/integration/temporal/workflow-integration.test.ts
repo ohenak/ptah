@@ -140,10 +140,9 @@ function makeMockActivities(): MockActivities {
   return {
     async invokeSkill(input: SkillActivityInput): Promise<SkillActivityResult> {
       if (activityOverrides.invokeSkill) return activityOverrides.invokeSkill(input);
-      // Review phases must return "Approved" (not "LGTM") so mapRecommendationToStatus works
       const isReviewLike = input.taskType === "Review";
       return {
-        routingSignalType: isReviewLike ? "Approved" : "LGTM",
+        routingSignalType: isReviewLike ? "LGTM" : "LGTM",
         artifactChanges: ["README.md"],
         durationMs: 100,
       };

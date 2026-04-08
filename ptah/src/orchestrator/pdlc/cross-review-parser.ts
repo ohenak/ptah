@@ -21,6 +21,7 @@ const VALUE_MATCHERS: Array<{ pattern: string; status: "approved" | "revision_re
   { pattern: "approved with minor changes", status: "approved" },
   { pattern: "needs revision", status: "revision_requested" },
   { pattern: "approved", status: "approved" },
+  { pattern: "lgtm", status: "approved" },
 ];
 
 function parseError(reason: string, rawValue?: string): ParsedRecommendation {
