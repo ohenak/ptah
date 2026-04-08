@@ -595,6 +595,25 @@ This matrix provides full traceability from user scenarios through requirements 
 | 2.9 | March 19, 2026 | Product Manager | Phase 14 FSPEC complete. Added REQ-NF-14-05 (pre-flight infrastructure check) to REQ v1.4 (28 requirements total for Phase 14). Added REQ-PD-06 (cycle detection) row — previously missing from matrix. Updated all Phase 14 requirement rows: 22 of 29 requirements FSPEC'd (FSPEC-PD-01/02/03, FSPEC-TL-01/02, FSPEC-BD-01/02/03 in 014-FSPEC-tech-lead-orchestration.md); 7 pending TSPEC (REQ-TL-01, REQ-TL-03, REQ-PR-04, REQ-NF-14-03, REQ-NF-14-04 and supporting). Total requirements: 164. |
 | 2.8 | March 18, 2026 | Product Manager | Added Phase 14 (Tech Lead Orchestration). 3 new user stories (US-23, US-24, US-25). 26 requirements added across 4 domains: PD (Plan Dependency Analysis, 5 reqs), BD (Batch Dispatch, 8 reqs), TL (Tech Lead Orchestration, 5 reqs), PR (Progress Reporting, 4 reqs), plus 4 non-functional (NF-14). Phase 14 view added. Total requirements: 163. |
 | 3.1 | April 3, 2026 | Product Manager | Added feature 020 (Message Acknowledgement). 3 new user stories (US-33, US-34, US-35). 9 requirements added: MA domain (6 reqs: REQ-MA-01 through REQ-MA-06) + 3 non-functional (REQ-NF-20-01 through REQ-NF-20-03). All pending FSPEC/TSPEC. REQ at docs/020-message-acknowledgement/020-REQ-message-acknowledgement.md. Total requirements: 172. |
+| 3.2 | April 7, 2026 | Product Manager | Added feature temporal-integration-completion (Temporal Integration Completion). 7 new user stories (US-01 through US-07, feature-scoped). 11 requirements added across 5 domains: RC (Review Cycle, 2 reqs), CD (Context Documents, 2 reqs), DR (Discord Routing, 3 reqs), SC (Skip Condition, 1 req), FJ (Fork/Join, 1 req), plus 2 non-functional (NF-01, NF-02). All pending FSPEC/TSPEC. REQ at docs/backlog/temporal-integration-completion/REQ-temporal-integration-completion.md. Total requirements: 183. |
+
+---
+
+## Feature: temporal-integration-completion — Traceability View
+
+| User Story | Requirement | FSPEC | Priority | Phase | Status |
+|---|---|---|---|---|---|
+| US-02 | REQ-RC-01 | Pending | P0 | 1 | Draft |
+| US-02 | REQ-RC-02 | Pending | P0 | 1 | Draft |
+| US-03 | REQ-CD-01 | Pending | P0 | 1 | Draft |
+| US-03 | REQ-CD-02 | Pending | P0 | 1 | Draft |
+| US-01 | REQ-DR-01 | Pending | P0 | 2 | Draft |
+| US-04 | REQ-DR-02 | Pending | P0 | 2 | Draft |
+| US-05 | REQ-DR-03 | Pending | P0 | 2 | Draft |
+| US-06 | REQ-SC-01 | Pending | P0 | 1 | Draft |
+| US-07 | REQ-FJ-01 | Pending | P1 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-NF-01 | — | P1 | 2 | Draft |
+| US-06 | REQ-NF-02 | — | P0 | 1 | Draft |
 
 ---
 
