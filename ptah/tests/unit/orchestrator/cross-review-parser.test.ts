@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { crossReviewPath } from "../../../src/orchestrator/pdlc/cross-review-parser.js";
+import { crossReviewPath, parseRecommendation } from "../../../src/orchestrator/pdlc/cross-review-parser.js";
 
 // ---------------------------------------------------------------------------
 // E3: crossReviewPath — accepts featurePath instead of featureSlug
@@ -46,5 +46,26 @@ describe("crossReviewPath", () => {
       "PROPERTIES",
     );
     expect(result).toBe("docs/in-progress/my-feature/CROSS-REVIEW-engineer-PROPERTIES.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseRecommendation — LGTM support
+// ---------------------------------------------------------------------------
+
+describe("parseRecommendation", () => {
+  it("parses 'LGTM' as approved from a heading", () => {
+    const content = "## Recommendation\nLGTM";
+    expect(parseRecommendation(content)).toEqual({ status: "approved" });
+  });
+
+  it("parses 'LGTM' as approved from bold format", () => {
+    const content = "**Recommendation:** LGTM";
+    expect(parseRecommendation(content)).toEqual({ status: "approved" });
+  });
+
+  it("parses 'lgtm' (lowercase) as approved", () => {
+    const content = "## Recommendation: lgtm";
+    expect(parseRecommendation(content)).toEqual({ status: "approved" });
   });
 });
