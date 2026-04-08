@@ -4,7 +4,7 @@
 |-------|--------|
 | **Requirements** | [REQ-temporal-integration-completion](REQ-temporal-integration-completion.md) |
 | **Date** | 2026-04-07 |
-| **Status** | Draft |
+| **Status** | Draft (Rev 2 — addressing eng cross-review feedback) |
 | **Author** | PM |
 
 ---
@@ -33,6 +33,46 @@ Not every requirement needs a functional specification. FSPECs are written only 
 
 **Description:** After each reviewer agent completes its skill activity during a review cycle, the workflow must read the reviewer's cross-review file, parse the recommendation, and route the result into the review state. This replaces the current `routingSignalType`-based proxy with file-based parsing.
 
+### Cross-Review File Path Convention
+
+The cross-review file naming convention is:
+
+```
+{featurePath}CROSS-REVIEW-{reviewerToken}-{DOC_TYPE}.md
+```
+
+Where:
+- **`reviewerToken`** is the skill's self-identified reviewer name, mapped from the agent ID
+- **`DOC_TYPE`** is the uppercase document abbreviation derived from the phase ID
+
+**Reviewer token mapping (agentId → reviewerToken):**
+
+| Agent ID | Reviewer Token | Example File |
+|----------|---------------|--------------|
+| `eng` | `engineer` | `CROSS-REVIEW-engineer-REQ.md` |
+| `fe` | `frontend-engineer` | `CROSS-REVIEW-frontend-engineer-REQ.md` |
+| `pm` | `product-manager` | `CROSS-REVIEW-product-manager-TSPEC.md` |
+| `qa` | `test-engineer` | `CROSS-REVIEW-test-engineer-REQ.md` |
+
+> **Note:** The existing `SKILL_TO_AGENT` mapping in `cross-review-parser.ts` has `"backend-engineer": "eng"`, but the engineer skill actually writes files as `"engineer"` (not `"backend-engineer"`). The `SKILL_TO_AGENT` mapping must be corrected to `"engineer": "eng"` so that `agentIdToSkillName("eng")` returns `"engineer"`. This is a data fix — the function logic is correct, only the mapping table is wrong.
+
+**Document type derivation (phase.id → DOC_TYPE):**
+
+Strip the phase type suffix (`-creation`, `-review`, or `-approved`) from the phase ID, then uppercase the remainder.
+
+| Phase ID | Suffix Stripped | DOC_TYPE |
+|----------|----------------|----------|
+| `req-creation` | `req` | `REQ` |
+| `req-review` | `req` | `REQ` |
+| `req-approved` | `req` | `REQ` |
+| `fspec-review` | `fspec` | `FSPEC` |
+| `tspec-review` | `tspec` | `TSPEC` |
+| `plan-review` | `plan` | `PLAN` |
+| `properties-review` | `properties` | `PROPERTIES` |
+| `implementation-review` | `implementation` | `IMPLEMENTATION` |
+
+The derivation rule: `phase.id.replace(/-(?:creation|review|approved)$/, "").toUpperCase()`. This is a deterministic string transformation — no lookup table needed.
+
 ### Behavioral Flow
 
 ```
@@ -43,15 +83,18 @@ Not every requirement needs a functional specification. FSPECs are written only 
    └── Activity returned successfully (SkillActivityResult)
        │
        2. Derive cross-review file path
-       │   a. Map reviewer's agentId → skillName via agentIdToSkillName()
+       │   a. Map reviewer's agentId → reviewerToken via agentIdToSkillName()
        │   │   ├── Returns null (unknown agent ID)
        │   │   │   └── → Treat as parse_error: "Unknown agent ID: {agentId}"
        │   │   │       └── → Enter failure flow (retry/cancel)
        │   │   │
-       │   │   └── Returns skillName (e.g., "backend-engineer")
+       │   │   └── Returns reviewerToken (e.g., "engineer")
        │   │
-       │   b. Derive file path via crossReviewPath(featurePath, skillName, documentType)
-       │      e.g., "docs/in-progress/auth/CROSS-REVIEW-backend-engineer-REQ.md"
+       │   b. Derive DOC_TYPE from phase.id (strip suffix, uppercase)
+       │      e.g., "req-review" → "REQ"
+       │   │
+       │   c. Derive file path via crossReviewPath(featurePath, reviewerToken, DOC_TYPE)
+       │      e.g., "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md"
        │
        3. Call readCrossReviewRecommendation activity
        │   Input: { featurePath, agentId, documentType }
@@ -86,7 +129,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 |----|------|
 | BR-RC-01 | The `readCrossReviewRecommendation` activity runs **after** the reviewer's `invokeSkill` activity returns. The `invokeSkill` activity always merges the worktree back to the feature branch before returning — this is a precondition, not something this flow controls. |
 | BR-RC-02 | If the cross-review file does not exist on disk when the activity reads it, the activity returns `parse_error` with reason "Cross-review file not found". The workflow treats this as a failure (same as a malformed recommendation). |
-| BR-RC-03 | If `agentIdToSkillName()` returns `null`, the activity returns `parse_error` immediately without attempting to read a file. This prevents constructing an invalid file path. |
+| BR-RC-03 | If `agentIdToSkillName()` returns `null`, the activity returns `parse_error` immediately without attempting to read a file. This prevents constructing an invalid file path. Note: `SKILL_TO_AGENT` must be corrected from `"backend-engineer": "eng"` to `"engineer": "eng"` for this mapping to produce correct file paths. |
 | BR-RC-04 | Parse errors are recoverable via the existing failure flow. The operator can instruct the agent to retry (which re-runs the reviewer), or cancel the phase. |
 | BR-RC-05 | The `parseRecommendation()` function recognizes exactly these values (case-insensitive, substring match): "approved", "approved with minor changes" (→ approved), "needs revision" (→ revision_requested), "lgtm" (→ approved). Any other value produces a `parse_error`. |
 | BR-RC-06 | The `readCrossReviewRecommendation` activity is a **new** activity — it must NOT be inlined into the workflow. File I/O is prohibited in Temporal workflow code. |
@@ -99,7 +142,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 |-------|--------|-------------|
 | `agentId` | Review phase config (reviewers list) | The reviewer's agent ID (e.g., "eng", "qa") |
 | `featurePath` | Workflow state (`state.featurePath`) | Resolved feature folder path (e.g., "docs/in-progress/auth/") |
-| `documentType` | Current phase context | The document type being reviewed (e.g., "REQ", "TSPEC") |
+| `documentType` | Derived from `phase.id` | The document type abbreviation (e.g., "REQ", "TSPEC"). Derived by stripping `-creation`/`-review`/`-approved` suffix from `phase.id` and uppercasing. |
 
 **Output from the flow (per reviewer):**
 
@@ -132,7 +175,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | | |
 |---|---|
 | WHO | As the workflow engine |
-| GIVEN | Reviewer "eng" completed and wrote `CROSS-REVIEW-backend-engineer-REQ.md` with "## Recommendation\n\n**Approved**" |
+| GIVEN | Reviewer "eng" completed and wrote `CROSS-REVIEW-engineer-REQ.md` with "## Recommendation\n\n**Approved**" |
 | WHEN | The review cycle reads and parses the cross-review file |
 | THEN | `reviewState.reviewerStatuses["eng"]` is set to `"approved"` |
 
@@ -167,9 +210,11 @@ Not every requirement needs a functional specification. FSPECs are written only 
 
 **Linked requirements:** [REQ-DR-01]
 
-**Description:** When a user posts a message in a Discord thread associated with the updates channel, the orchestrator must determine whether to start a new Temporal workflow. This decision depends on multiple conditions being met simultaneously: the message mentions an agent, no workflow is currently running for the feature, and the message is not an ad-hoc directive for an existing workflow.
+**Description:** When a user posts a message in a Discord thread associated with the updates channel, the orchestrator must determine whether to start a new Temporal workflow. This decision depends on whether a workflow is already running for the feature: if no workflow exists and the message mentions an agent, a new workflow starts; if a workflow exists, the message is routed to the existing ad-hoc or state-dependent handlers.
 
 ### Behavioral Flow
+
+The key design decision is that **workflow existence is checked BEFORE ad-hoc directive parsing**. This ensures that `@pm define requirements` starts a new workflow when none exists, rather than failing with "No active workflow found."
 
 ```
 1. Message arrives in handleMessage()
@@ -178,27 +223,30 @@ Not every requirement needs a functional specification. FSPECs are written only 
    │   ├── YES → Return (ignore) — EXISTING BEHAVIOR
    │   └── NO → Continue
    │
-   3. Parse as ad-hoc directive via parseAdHocDirective()
-   │   ├── Returns a directive object → Handle ad-hoc (EXISTING BEHAVIOR, unchanged)
-   │   └── Returns null (not an ad-hoc directive) → Continue to step 4
-   │
-   4. Extract feature slug from thread name
+   3. Extract feature slug from thread name
    │   a. extractFeatureName(message.threadName)
    │   b. featureNameToSlug(featureName)
    │   c. workflowId = "ptah-{slug}"
    │
-   5. Check for running workflow
+   4. Check for running workflow
    │   a. Query Temporal: does workflow with ID "ptah-{slug}" exist and is running?
    │   │
-   │   ├── YES (workflow exists and is running) → Go to step 6 (state-dependent routing)
+   │   ├── YES (workflow exists and is running)
+   │   │   │
+   │   │   5a. Parse as ad-hoc directive via parseAdHocDirective()
+   │   │   │   ├── Returns a directive → Handle ad-hoc (EXISTING BEHAVIOR, unchanged)
+   │   │   │   └── Returns null → Go to step 6 (state-dependent routing)
+   │   │   │
+   │   │   6. State-dependent routing (see FSPEC-DR-02 and FSPEC-DR-03)
    │   │
    │   └── NO (workflow does not exist, or has completed/failed/cancelled)
    │       │
-   │       6a. Does the message mention an agent role?
+   │       5b. Does the message contain an @{agentId} mention?
+   │       │   (Check anywhere in message content, not just first token)
    │       │   ├── NO → Return (no action — conversational message in thread)
    │       │   └── YES → Continue
    │       │
-   │       7a. Start new workflow
+   │       6b. Start new workflow
    │           a. featureConfig = { discipline: "fullstack", skipFspec: false, useTechLead: false }
    │           b. Call startWorkflowForFeature({ featureSlug, featureConfig })
    │           │
@@ -206,19 +254,17 @@ Not every requirement needs a functional specification. FSPECs are written only 
    │           │
    │           └── WorkflowExecutionAlreadyStartedError (race condition / dedup)
    │               └── Post notice: "Workflow already running for {slug}"
-   │
-   6. (Workflow exists — state-dependent routing, see FSPEC-DR-02 and FSPEC-DR-03)
 ```
 
 ### Business Rules
 
 | ID | Rule |
 |----|------|
-| BR-DR-01 | **Ad-hoc directives take precedence.** If `parseAdHocDirective()` returns a result, the message is handled as an ad-hoc directive regardless of workflow state. The new routing logic only runs when the message is NOT an ad-hoc directive. |
+| BR-DR-01 | **Workflow existence check comes first.** The flow checks whether a workflow is running BEFORE parsing ad-hoc directives. This ensures `@pm define requirements` starts a new workflow when none exists (instead of being parsed as an ad-hoc directive and failing with "No active workflow found"). Ad-hoc directive parsing only runs when a workflow IS running. |
 | BR-DR-02 | **Workflow ID is deterministic.** The workflow ID is always `ptah-{slug}` where `slug` is derived from the thread name via `extractFeatureName()` + `featureNameToSlug()`. This enables Temporal's built-in workflow-ID deduplication. |
 | BR-DR-03 | **FeatureConfig uses defaults.** In this phase, config is always `{ discipline: "fullstack", skipFspec: false, useTechLead: false }`. Config override mechanisms are out of scope. |
 | BR-DR-04 | **Idempotent start.** If a workflow is already running for the feature (same workflow ID), Temporal rejects the duplicate start with `WorkflowExecutionAlreadyStartedError`. The orchestrator catches this and posts a notice — it does not crash. |
-| BR-DR-05 | **Agent mention detection.** A message "mentions an agent role" if it contains an `@{agentId}` pattern where `agentId` is a registered agent (e.g., `@pm`, `@eng`, `@qa`). The check uses the same agent registry used by ad-hoc directive parsing. |
+| BR-DR-05 | **Agent mention detection for workflow start.** A message triggers a workflow start if it contains an `@{agentId}` pattern anywhere in the content (not just the first token), where `agentId` is a registered agent (e.g., `@pm`, `@eng`, `@qa`). This uses the agent registry. Examples: `"@pm define requirements"` matches, `"Please start @pm"` matches, `"let's define requirements"` does NOT match. |
 
 ### Input / Output
 
@@ -252,7 +298,8 @@ Not every requirement needs a functional specification. FSPECs are written only 
 
 | Scenario | User-visible behavior |
 |----------|----------------------|
-| Temporal server unreachable | Error posted to Discord thread: "Failed to start workflow for {slug}. Please try again." |
+| Temporal workflow-existence query fails (step 4 — server unreachable, timeout) | Fail-silent: the message falls through without routing. No error is posted (consistent with FSPEC-DR-02). The user can retry by posting again. |
+| Temporal server unreachable when starting workflow (step 6b) | Error posted to Discord thread: "Failed to start workflow for {slug}. Please try again." |
 | `extractFeatureName()` produces empty slug | Edge case in slugification — should not happen with valid thread names. If it does, the workflow ID would be `ptah-` which is invalid. Guard: skip start and log warning. |
 
 ### Acceptance Tests
@@ -268,8 +315,8 @@ Not every requirement needs a functional specification. FSPECs are written only 
 |---|---|
 | WHO | As a workflow operator |
 | GIVEN | A workflow is already running for "auth" (ID "ptah-auth") |
-| WHEN | I post "@pm define requirements" in the "auth" thread (not matching ad-hoc directive format) |
-| THEN | The message is routed to state-dependent handling (FSPEC-DR-02 / FSPEC-DR-03), NOT treated as a new workflow start |
+| WHEN | I post "@pm define requirements" in the "auth" thread |
+| THEN | The message is parsed as an ad-hoc directive (since a workflow IS running) and handled via the existing ad-hoc flow — NOT treated as a new workflow start |
 
 | | |
 |---|---|
@@ -277,6 +324,13 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | GIVEN | No active workflow for "auth" |
 | WHEN | I post a message in the "auth" thread WITHOUT mentioning any agent (e.g., "let's start working on auth") |
 | THEN | The message is ignored — no workflow starts, no error is posted |
+
+| | |
+|---|---|
+| WHO | As a workflow operator |
+| GIVEN | No active workflow for "auth" |
+| WHEN | I post "Please start the requirements process @pm" in the "auth" thread |
+| THEN | A workflow starts — the `@pm` mention is detected anywhere in the message content, not just as the first token |
 
 **Dependencies:** None
 
@@ -294,9 +348,8 @@ Not every requirement needs a functional specification. FSPECs are written only 
 
 ```
 1. Message arrives in handleMessage()
-   │  (Steps 1-3 from FSPEC-DR-01 already executed: not a bot, not an ad-hoc directive)
-   │
-   4. Workflow exists and is running (from FSPEC-DR-01 step 5)
+   │  (Steps 1-4 from FSPEC-DR-01 already executed: not a bot, workflow exists,
+   │   not an ad-hoc directive)
    │
    5. Query workflow state
    │   a. Call temporalClient.queryWorkflowState(workflowId)
@@ -405,7 +458,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 ### Behavioral Flow
 
 ```
-1. Message arrives (steps 1-5 from FSPEC-DR-01/DR-02 already executed)
+1. Message arrives (steps 1-4 from FSPEC-DR-01 + step 5 from DR-02 already executed)
    │  Workflow exists and state is "failed" or "revision-bound-reached"
    │
    2. Parse user intent from message content
@@ -429,8 +482,8 @@ Not every requirement needs a functional specification. FSPECs are written only 
    │   │   │       └── Workflow transitions to cancelled state
    │   │   │
    │   │   └── action = "resume"
-   │   │       └── Ignored — "resume" is not valid for "failed" state.
-   │   │           No signal sent, no error posted.
+   │   │       └── Post hint: "Workflow is in failed state. Use 'retry' to re-execute or 'cancel' to abort."
+   │   │           No signal sent.
    │   │
    │   └── State: "revision-bound-reached"
    │       ├── action = "resume"
@@ -442,8 +495,8 @@ Not every requirement needs a functional specification. FSPECs are written only 
    │       │       └── Workflow transitions to cancelled state
    │       │
    │       └── action = "retry"
-   │           └── Ignored — "retry" is not valid for "revision-bound-reached" state.
-   │               No signal sent, no error posted.
+   │           └── Post hint: "Workflow reached revision bound. Use 'resume' to continue or 'cancel' to abort."
+   │               No signal sent.
    │
    4. Post acknowledgement (best effort, non-critical)
       └── "Sent {action} signal to workflow ptah-{slug}"
@@ -456,7 +509,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | BR-DR-10 | **Standalone word matching.** Intent keywords must appear as standalone words — not as substrings. "retry" matches in "please retry" and "Retry the phase" but NOT in "retrying" or "do not retry!!" (the exclamation marks are not word characters, so "retry" before "!!" IS a match — the word boundary is between "y" and "!"). Use word-boundary regex: `/\bretry\b/i`. |
 | BR-DR-11 | **Case-insensitive matching.** "Retry", "RETRY", "rEtRy" all match. |
 | BR-DR-12 | **First keyword wins.** If the message contains "retry and then cancel if it fails again", the action is "retry" (first match). |
-| BR-DR-13 | **State-action validation.** Not all actions are valid for all states. "resume" is only valid for "revision-bound-reached". "retry" is only valid for "failed". "cancel" is valid for both. Invalid action+state combinations are silently ignored. |
+| BR-DR-13 | **State-action validation with hints.** Not all actions are valid for all states. "resume" is only valid for "revision-bound-reached". "retry" is only valid for "failed". "cancel" is valid for both. Invalid action+state combinations post a helpful hint message telling the user which commands are valid for the current state — no signal is sent. |
 | BR-DR-14 | **Acknowledgement is best-effort.** If the ack message fails to post (Discord API error), the signal has already been sent. Log a warning but do not fail. |
 
 ### Input / Output
@@ -474,7 +527,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | Outcome | Effect |
 |---------|--------|
 | Valid action + state match | Appropriate signal sent to workflow. Ack posted to thread. |
-| Recognized keyword but invalid for state | Silently ignored. No signal, no error. |
+| Recognized keyword but invalid for state | Hint posted with valid commands for current state. No signal sent. |
 | No recognized keyword | Silently ignored. No signal, no error. |
 | Signal delivery fails | Error posted: "Failed to send {action} signal. Please try again." |
 
@@ -486,7 +539,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | Message is "can you retry?" | Matches — "retry" is a standalone word. |
 | Message is "I'm retrying" | Does NOT match — "retrying" ≠ "retry" at word boundary. |
 | Message is "retry or cancel?" | "retry" is the first match. Action = "retry". |
-| Message says "please resume" but state is "failed" | "resume" is recognized but invalid for "failed" state. Silently ignored. |
+| Message says "please resume" but state is "failed" | "resume" is recognized but invalid for "failed" state. Hint posted: "Workflow is in failed state. Use 'retry' to re-execute or 'cancel' to abort." |
 | Message is "what happened?" | No keyword match. Silently ignored. Failure notification remains visible with instructions. |
 
 ### Error Scenarios
@@ -524,7 +577,7 @@ Not every requirement needs a functional specification. FSPECs are written only 
 | WHO | As a workflow operator |
 | GIVEN | Workflow "ptah-auth" is in "failed" state |
 | WHEN | I reply with "resume" in the thread |
-| THEN | The message is silently ignored — "resume" is not valid for "failed" state |
+| THEN | A hint is posted: "Workflow is in failed state. Use 'retry' to re-execute or 'cancel' to abort." No signal is sent. |
 
 | | |
 |---|---|
@@ -548,20 +601,23 @@ Not every requirement needs a functional specification. FSPECs are written only 
 
 ## Summary of State-Dependent Message Routing (FSPEC-DR-01 + DR-02 + DR-03)
 
-The following table summarizes how `handleMessage()` routes non-bot, non-ad-hoc messages based on workflow state:
+The following table summarizes how `handleMessage()` routes non-bot messages based on workflow state. **Workflow existence is checked first** — ad-hoc directive parsing only happens when a workflow IS running.
 
-| Workflow State | Message Contains | Action |
-|----------------|-----------------|--------|
-| No workflow running | Agent mention | Start new workflow (FSPEC-DR-01) |
-| No workflow running | No agent mention | Ignore |
-| `running` | Any | Ignore |
-| `waiting-for-user` | Any | Route as user answer (FSPEC-DR-02) |
+| Workflow State | Message Type | Action |
+|----------------|-------------|--------|
+| No workflow | Contains `@{agentId}` mention | Start new workflow (FSPEC-DR-01) |
+| No workflow | No agent mention | Ignore |
+| Running workflow | Starts with `@agent` (ad-hoc) | Handle ad-hoc directive (existing behavior) |
+| `running` | Non-ad-hoc | Ignore |
+| `waiting-for-user` | Non-ad-hoc | Route as user answer (FSPEC-DR-02) |
 | `failed` | "retry" | Send `retry-or-cancel` with "retry" (FSPEC-DR-03) |
 | `failed` | "cancel" | Send `retry-or-cancel` with "cancel" (FSPEC-DR-03) |
-| `failed` | "resume" | Ignore (invalid for state) |
+| `failed` | "resume" | Post hint with valid commands (FSPEC-DR-03) |
 | `failed` | No keyword | Ignore |
 | `revision-bound-reached` | "resume" | Send `resume-or-cancel` with "resume" (FSPEC-DR-03) |
 | `revision-bound-reached` | "cancel" | Send `resume-or-cancel` with "cancel" (FSPEC-DR-03) |
-| `revision-bound-reached` | "retry" | Ignore (invalid for state) |
+| `revision-bound-reached` | "retry" | Post hint with valid commands (FSPEC-DR-03) |
 | `revision-bound-reached` | No keyword | Ignore |
-| `skipped`, `completed`, `cancelled` | Any | Ignore (workflow not active) |
+| `skipped`, `completed`, `cancelled` | Any | Ignore (internal phase reached terminal state while Temporal execution is still open) |
+
+> **Note on "No workflow running" vs terminal states:** "No workflow running" (rows 1-2) means the Temporal execution itself is closed (completed, failed, cancelled, or never started). The `skipped`/`completed`/`cancelled` row refers to **internal workflow phase states** where the Temporal execution is still open but the lifecycle has reached a terminal phase. When a Temporal execution is closed, the step 4 query returns "no running workflow," enabling a new workflow start (per the edge case in FSPEC-DR-01).
