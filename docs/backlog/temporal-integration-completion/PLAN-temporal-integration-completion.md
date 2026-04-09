@@ -20,10 +20,10 @@ These tasks have no implementation dependencies and are consumed by all subseque
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| A1 | Add `PhaseStatus` extension (`"revision-bound-reached"`), `ReadCrossReviewInput`, and `CrossReviewResult` types | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/types.ts` | ⬚ Not Started |
-| A2 | Add `deriveDocumentType()` pure function | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| A3 | Fix `SKILL_TO_AGENT` mapping (`"backend-engineer"` → `"engineer"`) | `tests/unit/orchestrator/cross-review-parser.test.ts` | `ptah/src/orchestrator/pdlc/cross-review-parser.ts` | ⬚ Not Started |
-| A4 | Extend `FakeTemporalClient` with `queryWorkflowState` (Map-based + global error injection) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/tests/fixtures/factories.ts` | ⬚ Not Started |
+| A1 | Add `PhaseStatus` extension (`"revision-bound-reached"`), `ReadCrossReviewInput`, and `CrossReviewResult` types | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/types.ts` | ✅ Done |
+| A2 | Add `deriveDocumentType()` pure function | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| A3 | Fix `SKILL_TO_AGENT` mapping (`"backend-engineer"` → `"engineer"`) | `tests/unit/orchestrator/cross-review-parser.test.ts` | `ptah/src/orchestrator/pdlc/cross-review-parser.ts` | ✅ Done |
+| A4 | Extend `FakeTemporalClient` with `queryWorkflowState` (Map-based + global error injection) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/tests/fixtures/factories.ts` | ✅ Done |
 
 ### Phase B: Skip Condition Fix (REQ-SC-01, REQ-NF-02)
 
