@@ -216,3 +216,101 @@ describe("REQ-FJ-01: dispatchForkJoin — no redundant invokeSkill after handleQ
     expect(routeToUserCode).not.toContain("reinvokeResult");
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-CD-01: Context Document Resolution at Dispatch Sites
+//
+// Each dispatch site (dispatchSingleAgent, dispatchForkJoin, runReviewCycle)
+// must call resolveContextDocuments() before buildInvokeSkillInput() and pass
+// the resolved refs via resolvedContextDocumentRefs.
+// ---------------------------------------------------------------------------
+
+describe("REQ-CD-01: dispatchSingleAgent — resolves context documents before buildInvokeSkillInput", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("calls resolveContextDocuments before buildInvokeSkillInput in dispatchSingleAgent", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+
+    // Extract the dispatchSingleAgent function body
+    const fnMatch = source.match(
+      /async function dispatchSingleAgent\b[\s\S]*?(?=\n\/\/ -{10,}|\nasync function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+
+    // Must contain resolveContextDocuments call
+    expect(fnBody).toContain("resolveContextDocuments");
+
+    // resolveContextDocuments must appear BEFORE buildInvokeSkillInput
+    const resolveIdx = fnBody.indexOf("resolveContextDocuments");
+    const buildIdx = fnBody.indexOf("buildInvokeSkillInput");
+    expect(resolveIdx).toBeLessThan(buildIdx);
+
+    // Must pass resolvedContextDocumentRefs to buildInvokeSkillInput
+    expect(fnBody).toContain("resolvedContextDocumentRefs");
+  });
+});
+
+describe("REQ-CD-01: dispatchForkJoin — resolves context documents before buildInvokeSkillInput", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("calls resolveContextDocuments before buildInvokeSkillInput in dispatchForkJoin", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+
+    // Extract the dispatchForkJoin function body
+    const fnMatch = source.match(
+      /async function dispatchForkJoin\b[\s\S]*?(?=\n\/\/ -{10,}|\nasync function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+
+    // Must contain resolveContextDocuments call
+    expect(fnBody).toContain("resolveContextDocuments");
+
+    // resolveContextDocuments must appear BEFORE buildInvokeSkillInput
+    const resolveIdx = fnBody.indexOf("resolveContextDocuments");
+    const buildIdx = fnBody.indexOf("buildInvokeSkillInput");
+    expect(resolveIdx).toBeLessThan(buildIdx);
+
+    // Must pass resolvedContextDocumentRefs to buildInvokeSkillInput
+    expect(fnBody).toContain("resolvedContextDocumentRefs");
+  });
+});
+
+describe("REQ-CD-01: runReviewCycle — resolves context documents before buildInvokeSkillInput", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("calls resolveContextDocuments before buildInvokeSkillInput in runReviewCycle", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+
+    // Extract the runReviewCycle function body
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+
+    // Must contain resolveContextDocuments call
+    expect(fnBody).toContain("resolveContextDocuments");
+
+    // resolveContextDocuments must appear BEFORE buildInvokeSkillInput
+    const resolveIdx = fnBody.indexOf("resolveContextDocuments");
+    const buildIdx = fnBody.indexOf("buildInvokeSkillInput");
+    expect(resolveIdx).toBeLessThan(buildIdx);
+
+    // Must pass resolvedContextDocumentRefs to buildInvokeSkillInput
+    expect(fnBody).toContain("resolvedContextDocumentRefs");
+  });
+});

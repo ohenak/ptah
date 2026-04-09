@@ -210,6 +210,9 @@ export function createActivities(deps: SkillActivityDeps) {
         },
         config,
         worktreePath,
+        contextDocumentRefs: contextDocumentRefs.length > 0 ? contextDocumentRefs : undefined,
+        taskType: taskType as any,
+        documentType,
       });
 
       // ------------------------------------------------------------------

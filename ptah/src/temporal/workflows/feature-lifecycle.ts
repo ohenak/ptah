@@ -381,6 +381,8 @@ export interface BuildInvokeSkillInputParams {
   isRevision: boolean;
   priorQuestion?: string;
   priorAnswer?: string;
+  /** Pre-resolved context document paths. When provided, overrides phase.context_documents. */
+  resolvedContextDocumentRefs?: string[];
 }
 
 /**
@@ -418,6 +420,7 @@ export function buildInvokeSkillInput(
     isRevision,
     priorQuestion,
     priorAnswer,
+    resolvedContextDocumentRefs,
   } = params;
 
   return {
@@ -425,8 +428,8 @@ export function buildInvokeSkillInput(
     featureSlug,
     phaseId: phase.id,
     taskType: resolveTaskType(phase.type, isRevision),
-    documentType: phase.id, // used as document label in context
-    contextDocumentRefs: phase.context_documents ?? [],
+    documentType: deriveDocumentType(phase.id),
+    contextDocumentRefs: resolvedContextDocumentRefs ?? phase.context_documents ?? [],
     featureConfig,
     forkJoin,
     isRevision,
@@ -804,6 +807,14 @@ async function dispatchSingleAgent(params: {
   state.activeAgentIds = [agentId];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(phase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : phase.context_documents ?? [];
+
   const input = buildInvokeSkillInput({
     phase,
     agentId,
@@ -813,6 +824,7 @@ async function dispatchSingleAgent(params: {
     isRevision,
     priorQuestion,
     priorAnswer,
+    resolvedContextDocumentRefs: resolvedContextDocs,
   });
 
   let result: SkillActivityResult;
@@ -877,6 +889,14 @@ async function dispatchForkJoin(params: {
   state.activeAgentIds = [...agents];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(phase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : phase.context_documents ?? [];
+
   // Build inputs for all agents (all with forkJoin: true per BR-04a)
   const inputs: Record<string, SkillActivityInput> = {};
   for (const agentId of agents) {
@@ -887,6 +907,7 @@ async function dispatchForkJoin(params: {
       featureConfig: state.featureConfig,
       forkJoin: true,
       isRevision: false,
+      resolvedContextDocumentRefs: resolvedContextDocs,
     });
   }
 
@@ -1160,6 +1181,14 @@ async function runReviewCycle(params: {
   state.activeAgentIds = [...reviewers];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(reviewPhase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : reviewPhase.context_documents ?? [];
+
   // Dispatch reviewer Activities in parallel
   const reviewerResults: Record<string, SkillActivityResult | Error> = {};
   await Promise.allSettled(
@@ -1171,6 +1200,7 @@ async function runReviewCycle(params: {
         featureConfig: state.featureConfig,
         forkJoin: false,
         isRevision: false,
+        resolvedContextDocumentRefs: resolvedContextDocs,
       });
       try {
         const result = await invokeSkill(input);

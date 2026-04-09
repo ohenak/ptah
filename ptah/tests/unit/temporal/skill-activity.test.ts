@@ -1143,3 +1143,95 @@ describe("invokeSkill — adHocInstruction passthrough (Task 29)", () => {
     expect(assembleCall.triggerMessage.content).toBe("Execute Create for TSPEC");
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-CD-02: Pass contextDocumentRefs, taskType, documentType to contextAssembler.assemble()
+// ---------------------------------------------------------------------------
+
+describe("invokeSkill — REQ-CD-02: pass context fields to contextAssembler.assemble()", () => {
+  it("passes contextDocumentRefs to contextAssembler.assemble() when non-empty", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(
+      makeDefaultInput({
+        contextDocumentRefs: [
+          "docs/in-progress/my-feature/REQ-my-feature.md",
+          "docs/in-progress/my-feature/overview.md",
+        ],
+      }),
+    );
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    expect(assembleCall.contextDocumentRefs).toEqual([
+      "docs/in-progress/my-feature/REQ-my-feature.md",
+      "docs/in-progress/my-feature/overview.md",
+    ]);
+  });
+
+  it("does NOT pass contextDocumentRefs when array is empty (preserves backward compatibility)", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(
+      makeDefaultInput({
+        contextDocumentRefs: [],
+      }),
+    );
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    expect(assembleCall.contextDocumentRefs).toBeUndefined();
+  });
+
+  it("passes taskType to contextAssembler.assemble()", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(
+      makeDefaultInput({ taskType: "Review" }),
+    );
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    expect(assembleCall.taskType).toBe("Review");
+  });
+
+  it("passes documentType to contextAssembler.assemble()", async () => {
+    const deps = makeDeps();
+    const contextAssembler = deps.contextAssembler as FakeContextAssembler;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const gitClient = deps.gitClient as FakeGitClient;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(
+      makeDefaultInput({ documentType: "FSPEC" }),
+    );
+
+    expect(contextAssembler.assembleCalls).toHaveLength(1);
+    const assembleCall = contextAssembler.assembleCalls[0]!;
+    expect(assembleCall.documentType).toBe("FSPEC");
+  });
+});

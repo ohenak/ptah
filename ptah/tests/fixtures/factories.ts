@@ -872,6 +872,8 @@ export class FakeContextAssembler implements ContextAssembler {
     worktreePath?: string;
     contextDocuments?: ContextDocumentSet;
     taskType?: TaskType;
+    documentType?: string;
+    contextDocumentRefs?: string[];
   }> = [];
 
   async assemble(params: {
@@ -884,6 +886,8 @@ export class FakeContextAssembler implements ContextAssembler {
     worktreePath?: string;
     contextDocuments?: ContextDocumentSet;
     taskType?: TaskType;
+    documentType?: string;
+    contextDocumentRefs?: string[];
   }): Promise<ContextBundle> {
     this.assembleCalls.push(params);
     if (this.assembleError) throw this.assembleError;

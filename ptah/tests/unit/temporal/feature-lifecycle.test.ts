@@ -488,6 +488,86 @@ describe("buildInvokeSkillInput", () => {
     });
     expect(input.contextDocumentRefs).toEqual([]);
   });
+
+  it("uses resolvedContextDocumentRefs when provided, overriding phase.context_documents", () => {
+    const phase = makePhase({
+      id: "tspec-creation",
+      type: "creation",
+      agent: "eng",
+      context_documents: ["{feature}/REQ", "{feature}/overview"],
+    });
+    const resolvedRefs = [
+      "docs/in-progress/my-feature/REQ-my-feature.md",
+      "docs/in-progress/my-feature/overview.md",
+    ];
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "eng",
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      forkJoin: false,
+      isRevision: false,
+      resolvedContextDocumentRefs: resolvedRefs,
+    });
+    expect(input.contextDocumentRefs).toEqual(resolvedRefs);
+  });
+
+  it("falls back to phase.context_documents when resolvedContextDocumentRefs is not provided", () => {
+    const phase = makePhase({
+      id: "tspec-creation",
+      type: "creation",
+      agent: "eng",
+      context_documents: ["{feature}/REQ"],
+    });
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "eng",
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      forkJoin: false,
+      isRevision: false,
+    });
+    expect(input.contextDocumentRefs).toEqual(["{feature}/REQ"]);
+  });
+
+  it("derives documentType using deriveDocumentType — 'req-creation' produces 'REQ'", () => {
+    const phase = makePhase({ id: "req-creation", type: "creation", agent: "pm" });
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "pm",
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      forkJoin: false,
+      isRevision: false,
+    });
+    expect(input.documentType).toBe("REQ");
+  });
+
+  it("derives documentType using deriveDocumentType — 'fspec-creation' produces 'FSPEC'", () => {
+    const phase = makePhase({ id: "fspec-creation", type: "creation", agent: "pm" });
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "pm",
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      forkJoin: false,
+      isRevision: false,
+    });
+    expect(input.documentType).toBe("FSPEC");
+  });
+
+  it("derives documentType using deriveDocumentType — 'tspec-review' produces 'TSPEC'", () => {
+    const phase = makePhase({ id: "tspec-review", type: "review", reviewers: { default: ["eng"] } });
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "eng",
+      featureSlug: "my-feature",
+      featureConfig: makeFeatureConfig(),
+      forkJoin: false,
+      isRevision: false,
+    });
+    expect(input.documentType).toBe("TSPEC");
+  });
 });
 
 // ---------------------------------------------------------------------------
