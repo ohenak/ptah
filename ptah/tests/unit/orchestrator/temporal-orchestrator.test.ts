@@ -1018,3 +1018,55 @@ describe("handleMessage — fail-silent on Temporal query failure (G7)", () => {
     expect(temporalClient.startedWorkflows).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PROP-DR-24: Edge-case slug handling
+// ---------------------------------------------------------------------------
+
+describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", () => {
+  let discord: FakeDiscordClient;
+  let temporalClient: FakeTemporalClient;
+  let logger: FakeLogger;
+  let agentRegistry: FakeAgentRegistry;
+  let orchestrator: TemporalOrchestrator;
+
+  const pmAgent = makeRegisteredAgent({ id: "pm", display_name: "PM" });
+
+  beforeEach(() => {
+    discord = new FakeDiscordClient();
+    temporalClient = new FakeTemporalClient();
+    logger = new FakeLogger();
+    agentRegistry = new FakeAgentRegistry([pmAgent]);
+    orchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+    );
+  });
+
+  it("uses 'unnamed' fallback slug when thread name is all special characters", async () => {
+    // featureNameToSlug("---") → "unnamed" (fallback), so workflow ID = "ptah-unnamed"
+    // The empty-slug guard in handleMessage is defensive; featureNameToSlug never
+    // returns empty. This test verifies the observable behavior with degenerate input.
+    const msg = createThreadMessage({
+      content: "@pm define requirements",
+      threadName: "--- — some task",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    // Should start a workflow with the fallback slug "unnamed"
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].featureSlug).toBe("unnamed");
+  });
+
+  it("uses 'unnamed' fallback slug when thread name is empty", async () => {
+    const msg = createThreadMessage({
+      content: "@pm define requirements",
+      threadName: "",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].featureSlug).toBe("unnamed");
+  });
+});
