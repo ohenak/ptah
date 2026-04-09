@@ -11,10 +11,12 @@ import {
   FakeGitClient,
   defaultTestConfig,
   defaultTestWorkflowConfig,
+  defaultFeatureWorkflowState,
   createThreadMessage,
   makeRegisteredAgent,
 } from "../../fixtures/factories.js";
 import type { PtahConfig } from "../../../src/types.js";
+import type { FeatureWorkflowState } from "../../../src/temporal/types.js";
 
 function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrchestratorDeps {
   return {
@@ -262,5 +264,60 @@ describe("handleMessage", () => {
     expect(warnings.some((w) => w.message.includes("ack") || w.message.includes("Discord"))).toBe(
       true,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A4: FakeTemporalClient — queryWorkflowState (Map-based + global error injection)
+// ---------------------------------------------------------------------------
+
+describe("FakeTemporalClient.queryWorkflowState", () => {
+  it("returns the state from the Map for a known workflow ID", async () => {
+    const client = new FakeTemporalClient();
+    const state = defaultFeatureWorkflowState({ featureSlug: "my-feature" });
+    client.workflowStates.set("ptah-my-feature", state);
+
+    const result = await client.queryWorkflowState("ptah-my-feature");
+    expect(result).toEqual(state);
+  });
+
+  it("throws WorkflowNotFoundError when workflow ID is not in the Map", async () => {
+    const client = new FakeTemporalClient();
+
+    try {
+      await client.queryWorkflowState("ptah-nonexistent");
+      expect.fail("Expected queryWorkflowState to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).name).toBe("WorkflowNotFoundError");
+      expect((err as Error).message).toContain("ptah-nonexistent");
+    }
+  });
+
+  it("throws global error when queryWorkflowStateError is set (overrides Map lookup)", async () => {
+    const client = new FakeTemporalClient();
+    const state = defaultFeatureWorkflowState({ featureSlug: "my-feature" });
+    client.workflowStates.set("ptah-my-feature", state);
+
+    const globalErr = new Error("Temporal server unreachable");
+    client.queryWorkflowStateError = globalErr;
+
+    await expect(client.queryWorkflowState("ptah-my-feature")).rejects.toThrow(
+      "Temporal server unreachable",
+    );
+  });
+
+  it("supports multiple workflows in the Map simultaneously", async () => {
+    const client = new FakeTemporalClient();
+    const state1 = defaultFeatureWorkflowState({ featureSlug: "feature-a" });
+    const state2 = defaultFeatureWorkflowState({ featureSlug: "feature-b", phaseStatus: "completed" });
+    client.workflowStates.set("ptah-feature-a", state1);
+    client.workflowStates.set("ptah-feature-b", state2);
+
+    const result1 = await client.queryWorkflowState("ptah-feature-a");
+    const result2 = await client.queryWorkflowState("ptah-feature-b");
+    expect(result1.featureSlug).toBe("feature-a");
+    expect(result2.featureSlug).toBe("feature-b");
+    expect(result2.phaseStatus).toBe("completed");
   });
 });
