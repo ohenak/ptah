@@ -61,11 +61,11 @@ Depends on: C1-C4 (cross-review activity), A2 (deriveDocumentType)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E1 | Add `readCrossReviewRecommendation` proxy to workflow (`proxyActivities` with 30s timeout) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E2 | Replace `routingSignalType` proxy in `runReviewCycle` with `readCrossReviewRecommendation` activity call | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E3 | Handle `parse_error` result in review cycle (enter `handleFailureFlow`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E4 | Fix cross-review refs in revision dispatch (use `agentIdToSkillName` + `crossReviewPath` + `deriveDocumentType`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| E5 | Set `phaseStatus = "revision-bound-reached"` before resume/cancel wait | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| E1 | Add `readCrossReviewRecommendation` proxy to workflow (`proxyActivities` with 30s timeout) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E2 | Replace `routingSignalType` proxy in `runReviewCycle` with `readCrossReviewRecommendation` activity call | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E3 | Handle `parse_error` result in review cycle (enter `handleFailureFlow`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E4 | Fix cross-review refs in revision dispatch (use `agentIdToSkillName` + `crossReviewPath` + `deriveDocumentType`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| E5 | Set `phaseStatus = "revision-bound-reached"` before resume/cancel wait | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase F: Fork/Join Fix (REQ-FJ-01)
 

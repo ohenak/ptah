@@ -33,10 +33,13 @@ import type {
   ForkJoinState,
   ForkJoinAgentResult,
   StartWorkflowParams,
+  ReadCrossReviewInput,
+  CrossReviewResult,
 } from "../types.js";
 import type { MergeResult, MergeWorktreeInput, ResolveFeaturePathInput } from "../activities/skill-activity.js";
 import type { FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
 import type { PromotionInput, PromotionResult } from "../../orchestrator/promotion-activity.js";
+import { agentIdToSkillName, crossReviewPath } from "../../orchestrator/pdlc/cross-review-parser.js";
 
 // ---------------------------------------------------------------------------
 // Context document resolution context
@@ -636,6 +639,17 @@ const {
   },
 });
 
+// Cross-review activity proxy — shorter timeout for fast file reads (REQ-RC-01 E1)
+const { readCrossReviewRecommendation } = wf.proxyActivities<{
+  readCrossReviewRecommendation(input: ReadCrossReviewInput): Promise<CrossReviewResult>;
+}>({
+  startToCloseTimeout: "30 seconds",
+  retry: {
+    maximumAttempts: 2,
+    initialInterval: "5 seconds",
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Signal and Query definitions
 // ---------------------------------------------------------------------------
@@ -1214,7 +1228,8 @@ async function runReviewCycle(params: {
     })
   );
 
-  // Collect recommendations
+  // Collect recommendations via cross-review file parsing (REQ-RC-01 E2/E3)
+  const docType = deriveDocumentType(reviewPhase.id);
   let anyRevisionRequested = false;
   for (const reviewerId of reviewers) {
     const result = reviewerResults[reviewerId];
@@ -1233,29 +1248,33 @@ async function runReviewCycle(params: {
       return runReviewCycle(params);
     }
 
-    // Parse recommendation from result
-    // The routingSignalType encodes the recommendation in the reviewer output
-    // (convention: reviewer Activity returns the recommendation in routingSignalType
-    //  when it's a review phase, or we parse from the artifact changes)
-    // For now, we use the routingSignalType as the recommendation proxy
-    // (the real parsing would read the cross-review file, done in Phase G integration)
-    const status = mapRecommendationToStatus(result.routingSignalType);
-    if (status === null) {
-      // Unrecognized recommendation — treat as failure (parse error)
+    // REQ-RC-01 E2: Read cross-review recommendation from file via activity
+    const crossReviewResult = await readCrossReviewRecommendation({
+      featurePath: state.featurePath!,
+      agentId: reviewerId,
+      documentType: docType,
+    });
+
+    // REQ-RC-01 E3: Handle parse_error — enter failure flow
+    if (crossReviewResult.status === "parse_error") {
+      const reason = crossReviewResult.rawValue
+        ? `${crossReviewResult.reason}: ${crossReviewResult.rawValue}`
+        : crossReviewResult.reason!;
       const action = await handleFailureFlow({
         state,
         phaseId: reviewPhase.id,
         agentId: reviewerId,
         errorType: "RecommendationParseError",
-        errorMessage: `Unrecognized recommendation: ${result.routingSignalType}`,
+        errorMessage: reason,
         workflowId,
       });
       if (action === "cancel") return "cancelled";
       return runReviewCycle(params);
     }
 
-    reviewState.reviewerStatuses[reviewerId] = status;
-    if (status === "revision_requested") anyRevisionRequested = true;
+    // approved or revision_requested
+    reviewState.reviewerStatuses[reviewerId] = crossReviewResult.status;
+    if (crossReviewResult.status === "revision_requested") anyRevisionRequested = true;
   }
 
   _state = state;
@@ -1271,6 +1290,10 @@ async function runReviewCycle(params: {
 
   // D11: Check revision bound
   if (reviewState.revisionCount > revisionBound) {
+    // REQ-RC-01 E5: Set phaseStatus before waiting — enables Discord routing (FSPEC-DR-03)
+    state.phaseStatus = "revision-bound-reached";
+    _state = state;
+
     // Notify user and wait for resume-or-cancel signal
     await sendNotification({
       type: "revision-bound",
@@ -1290,11 +1313,14 @@ async function runReviewCycle(params: {
   }
 
   // D10: Dispatch author for revision
-  const crossReviewRefs = reviewState.reviewerStatuses
-    ? Object.keys(reviewState.reviewerStatuses)
-        .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
-        .map((id) => `${state.featurePath}CROSS-REVIEW-${id}-${creationPhase.id}.md`)
-    : [];
+  // REQ-RC-01 E4: Use agentIdToSkillName + crossReviewPath + deriveDocumentType
+  const revisionDocType = deriveDocumentType(reviewPhase.id);
+  const crossReviewRefs = Object.keys(reviewState.reviewerStatuses)
+    .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
+    .map((id) => {
+      const skillName = agentIdToSkillName(id) ?? id;
+      return crossReviewPath(state.featurePath!, skillName, revisionDocType);
+    });
 
   const revisionInput = buildRevisionInput({
     creationPhase,
