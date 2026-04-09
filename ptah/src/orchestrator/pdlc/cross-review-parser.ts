@@ -3,7 +3,7 @@ import type { ParsedRecommendation } from "./v4-types.js";
 // --- Skill-to-Agent mapping ---
 
 const SKILL_TO_AGENT: Record<string, string> = {
-  "backend-engineer": "eng",
+  "engineer": "eng",
   "frontend-engineer": "fe",
   "product-manager": "pm",
   "test-engineer": "qa",

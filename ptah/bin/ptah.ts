@@ -206,6 +206,7 @@ async function main(): Promise<void> {
       // Construct activity closures for the Worker
       const { createActivities } = await import("../src/temporal/activities/skill-activity.js");
       const { createNotificationActivities } = await import("../src/temporal/activities/notification-activity.js");
+      const { createCrossReviewActivities } = await import("../src/temporal/activities/cross-review-activity.js");
       const { createPromotionActivities } = await import("../src/orchestrator/promotion-activity.js");
       const skillActivities = createActivities({
         skillInvoker,
@@ -221,6 +222,7 @@ async function main(): Promise<void> {
         fs,
       });
       const notificationActivities = createNotificationActivities({ discordClient: discord, logger, config });
+      const crossReviewActivities = createCrossReviewActivities({ fs, logger });
       const promotionActivities = createPromotionActivities({
         worktreeManager,
         gitClient: git,
@@ -240,6 +242,7 @@ async function main(): Promise<void> {
             sendNotification: notificationActivities.sendNotification,
             promoteBacklogToInProgress: promotionActivities.promoteBacklogToInProgress,
             promoteInProgressToCompleted: promotionActivities.promoteInProgressToCompleted,
+            readCrossReviewRecommendation: crossReviewActivities.readCrossReviewRecommendation,
           },
           logger,
         });

@@ -872,6 +872,8 @@ export class FakeContextAssembler implements ContextAssembler {
     worktreePath?: string;
     contextDocuments?: ContextDocumentSet;
     taskType?: TaskType;
+    documentType?: string;
+    contextDocumentRefs?: string[];
   }> = [];
 
   async assemble(params: {
@@ -884,6 +886,8 @@ export class FakeContextAssembler implements ContextAssembler {
     worktreePath?: string;
     contextDocuments?: ContextDocumentSet;
     taskType?: TaskType;
+    documentType?: string;
+    contextDocumentRefs?: string[];
   }): Promise<ContextBundle> {
     this.assembleCalls.push(params);
     if (this.assembleError) throw this.assembleError;
@@ -1376,6 +1380,9 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   connectCalls = 0;
   disconnectCalls = 0;
 
+  // Global error injection for queryWorkflowState (simulates Temporal outage)
+  queryWorkflowStateError: Error | null = null;
+
   // Agent Coordination state
   adHocSignals: Array<{ workflowId: string; signal: AdHocRevisionSignal }> = [];
   signalAdHocRevisionError: Error | null = null;
@@ -1414,8 +1421,15 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   }
 
   async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
+    // Global error injection takes priority (simulates Temporal server outage)
+    if (this.queryWorkflowStateError) throw this.queryWorkflowStateError;
+
     const state = this.workflowStates.get(workflowId);
-    if (!state) throw new Error(`Workflow ${workflowId} not found`);
+    if (!state) {
+      const err = new Error(`Workflow ${workflowId} not found`);
+      err.name = "WorkflowNotFoundError";
+      throw err;
+    }
     return state;
   }
 

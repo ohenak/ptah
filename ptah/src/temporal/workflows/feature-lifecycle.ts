@@ -33,10 +33,13 @@ import type {
   ForkJoinState,
   ForkJoinAgentResult,
   StartWorkflowParams,
+  ReadCrossReviewInput,
+  CrossReviewResult,
 } from "../types.js";
 import type { MergeResult, MergeWorktreeInput, ResolveFeaturePathInput } from "../activities/skill-activity.js";
 import type { FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
 import type { PromotionInput, PromotionResult } from "../../orchestrator/promotion-activity.js";
+import { agentIdToSkillName, crossReviewPath } from "../../orchestrator/pdlc/cross-review-parser.js";
 
 // ---------------------------------------------------------------------------
 // Context document resolution context
@@ -61,6 +64,20 @@ const DOC_TYPE_TOKENS: Record<string, string> = {
   PLAN: "PLAN",
   PROPERTIES: "PROPERTIES",
 };
+
+/**
+ * Derive the uppercase document type abbreviation from a phase ID.
+ * Strips the phase type suffix (-creation, -review, -approved) and uppercases.
+ *
+ * Examples:
+ *   "req-review"        -> "REQ"
+ *   "fspec-creation"    -> "FSPEC"
+ *   "tspec-review"      -> "TSPEC"
+ *   "properties-review" -> "PROPERTIES"
+ */
+export function deriveDocumentType(phaseId: string): string {
+  return phaseId.replace(/-(?:creation|review|approved)$/, "").toUpperCase();
+}
 
 /**
  * Extract the NNN prefix from a completed feature path.
@@ -138,7 +155,10 @@ export function evaluateSkipCondition(
   featureConfig: FeatureConfig,
 ): boolean {
   const config = featureConfig as unknown as Record<string, unknown>;
-  const value = config[condition.field];
+  const fieldKey = condition.field.startsWith("config.")
+    ? condition.field.slice(7)
+    : condition.field;
+  const value = config[fieldKey];
 
   if (typeof value !== "boolean") {
     // Unknown field — safe default: do not skip
@@ -367,6 +387,8 @@ export interface BuildInvokeSkillInputParams {
   isRevision: boolean;
   priorQuestion?: string;
   priorAnswer?: string;
+  /** Pre-resolved context document paths. When provided, overrides phase.context_documents. */
+  resolvedContextDocumentRefs?: string[];
 }
 
 /**
@@ -404,6 +426,7 @@ export function buildInvokeSkillInput(
     isRevision,
     priorQuestion,
     priorAnswer,
+    resolvedContextDocumentRefs,
   } = params;
 
   return {
@@ -411,8 +434,8 @@ export function buildInvokeSkillInput(
     featureSlug,
     phaseId: phase.id,
     taskType: resolveTaskType(phase.type, isRevision),
-    documentType: phase.id, // used as document label in context
-    contextDocumentRefs: phase.context_documents ?? [],
+    documentType: deriveDocumentType(phase.id),
+    contextDocumentRefs: resolvedContextDocumentRefs ?? phase.context_documents ?? [],
     featureConfig,
     forkJoin,
     isRevision,
@@ -616,6 +639,17 @@ const {
   },
 });
 
+// Cross-review activity proxy — shorter timeout for fast file reads (REQ-RC-01 E1)
+const { readCrossReviewRecommendation } = wf.proxyActivities<{
+  readCrossReviewRecommendation(input: ReadCrossReviewInput): Promise<CrossReviewResult>;
+}>({
+  startToCloseTimeout: "30 seconds",
+  retry: {
+    maximumAttempts: 2,
+    initialInterval: "5 seconds",
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Signal and Query definitions
 // ---------------------------------------------------------------------------
@@ -790,6 +824,14 @@ async function dispatchSingleAgent(params: {
   state.activeAgentIds = [agentId];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(phase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : phase.context_documents ?? [];
+
   const input = buildInvokeSkillInput({
     phase,
     agentId,
@@ -799,6 +841,7 @@ async function dispatchSingleAgent(params: {
     isRevision,
     priorQuestion,
     priorAnswer,
+    resolvedContextDocumentRefs: resolvedContextDocs,
   });
 
   let result: SkillActivityResult;
@@ -863,6 +906,14 @@ async function dispatchForkJoin(params: {
   state.activeAgentIds = [...agents];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(phase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : phase.context_documents ?? [];
+
   // Build inputs for all agents (all with forkJoin: true per BR-04a)
   const inputs: Record<string, SkillActivityInput> = {};
   for (const agentId of agents) {
@@ -873,6 +924,7 @@ async function dispatchForkJoin(params: {
       featureConfig: state.featureConfig,
       forkJoin: true,
       isRevision: false,
+      resolvedContextDocumentRefs: resolvedContextDocs,
     });
   }
 
@@ -972,28 +1024,17 @@ async function dispatchForkJoin(params: {
         forkJoin: true,
         workflowId,
       });
-      // Re-invoke only the ROUTE_TO_USER agent
-      const reinvokeResult = await invokeSkill(
-        buildInvokeSkillInput({
-          phase,
-          agentId,
-          featureSlug: state.featureSlug,
-          featureConfig: state.featureConfig,
-          forkJoin: true,
-          isRevision: false,
-        })
-      );
-      // Update the result
-      if (reinvokeResult.routingSignalType === "LGTM" || reinvokeResult.routingSignalType === "TASK_COMPLETE") {
-        if (reinvokeResult.routingSignalType === "LGTM") {
-          recordSignOff(state.signOffs, agentId, new Date().toISOString());
-        }
-        agentResults[agentId] = {
-          status: "success",
-          worktreePath: reinvokeResult.worktreePath,
-          routingSignal: reinvokeResult.routingSignalType,
-        };
+      // Use questionResult directly — handleQuestionFlow already re-invoked the agent
+      if (questionResult.routingSignalType === "LGTM") {
+        recordSignOff(state.signOffs, agentId, new Date().toISOString());
       }
+      agentResults[agentId] = {
+        status: questionResult.routingSignalType === "LGTM" || questionResult.routingSignalType === "TASK_COMPLETE"
+          ? "success"
+          : "failed",
+        worktreePath: questionResult.worktreePath,
+        routingSignal: questionResult.routingSignalType,
+      };
     }
     _state = state;
   }
@@ -1157,6 +1198,14 @@ async function runReviewCycle(params: {
   state.activeAgentIds = [...reviewers];
   _state = state;
 
+  // REQ-CD-01: Resolve context document templates before dispatch
+  const resolvedContextDocs = state.featurePath
+    ? resolveContextDocuments(reviewPhase.context_documents ?? [], {
+        featureSlug: state.featureSlug,
+        featurePath: state.featurePath,
+      })
+    : reviewPhase.context_documents ?? [];
+
   // Dispatch reviewer Activities in parallel
   const reviewerResults: Record<string, SkillActivityResult | Error> = {};
   await Promise.allSettled(
@@ -1168,6 +1217,7 @@ async function runReviewCycle(params: {
         featureConfig: state.featureConfig,
         forkJoin: false,
         isRevision: false,
+        resolvedContextDocumentRefs: resolvedContextDocs,
       });
       try {
         const result = await invokeSkill(input);
@@ -1178,7 +1228,8 @@ async function runReviewCycle(params: {
     })
   );
 
-  // Collect recommendations
+  // Collect recommendations via cross-review file parsing (REQ-RC-01 E2/E3)
+  const docType = deriveDocumentType(reviewPhase.id);
   let anyRevisionRequested = false;
   for (const reviewerId of reviewers) {
     const result = reviewerResults[reviewerId];
@@ -1197,29 +1248,33 @@ async function runReviewCycle(params: {
       return runReviewCycle(params);
     }
 
-    // Parse recommendation from result
-    // The routingSignalType encodes the recommendation in the reviewer output
-    // (convention: reviewer Activity returns the recommendation in routingSignalType
-    //  when it's a review phase, or we parse from the artifact changes)
-    // For now, we use the routingSignalType as the recommendation proxy
-    // (the real parsing would read the cross-review file, done in Phase G integration)
-    const status = mapRecommendationToStatus(result.routingSignalType);
-    if (status === null) {
-      // Unrecognized recommendation — treat as failure (parse error)
+    // REQ-RC-01 E2: Read cross-review recommendation from file via activity
+    const crossReviewResult = await readCrossReviewRecommendation({
+      featurePath: state.featurePath!,
+      agentId: reviewerId,
+      documentType: docType,
+    });
+
+    // REQ-RC-01 E3: Handle parse_error — enter failure flow
+    if (crossReviewResult.status === "parse_error") {
+      const reason = crossReviewResult.rawValue
+        ? `${crossReviewResult.reason}: ${crossReviewResult.rawValue}`
+        : crossReviewResult.reason!;
       const action = await handleFailureFlow({
         state,
         phaseId: reviewPhase.id,
         agentId: reviewerId,
         errorType: "RecommendationParseError",
-        errorMessage: `Unrecognized recommendation: ${result.routingSignalType}`,
+        errorMessage: reason,
         workflowId,
       });
       if (action === "cancel") return "cancelled";
       return runReviewCycle(params);
     }
 
-    reviewState.reviewerStatuses[reviewerId] = status;
-    if (status === "revision_requested") anyRevisionRequested = true;
+    // approved or revision_requested
+    reviewState.reviewerStatuses[reviewerId] = crossReviewResult.status;
+    if (crossReviewResult.status === "revision_requested") anyRevisionRequested = true;
   }
 
   _state = state;
@@ -1235,6 +1290,10 @@ async function runReviewCycle(params: {
 
   // D11: Check revision bound
   if (reviewState.revisionCount > revisionBound) {
+    // REQ-RC-01 E5: Set phaseStatus before waiting — enables Discord routing (FSPEC-DR-03)
+    state.phaseStatus = "revision-bound-reached";
+    _state = state;
+
     // Notify user and wait for resume-or-cancel signal
     await sendNotification({
       type: "revision-bound",
@@ -1254,11 +1313,14 @@ async function runReviewCycle(params: {
   }
 
   // D10: Dispatch author for revision
-  const crossReviewRefs = reviewState.reviewerStatuses
-    ? Object.keys(reviewState.reviewerStatuses)
-        .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
-        .map((id) => `${state.featurePath}CROSS-REVIEW-${id}-${creationPhase.id}.md`)
-    : [];
+  // REQ-RC-01 E4: Use agentIdToSkillName + crossReviewPath + deriveDocumentType
+  const revisionDocType = deriveDocumentType(reviewPhase.id);
+  const crossReviewRefs = Object.keys(reviewState.reviewerStatuses)
+    .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
+    .map((id) => {
+      const skillName = agentIdToSkillName(id) ?? id;
+      return crossReviewPath(state.featurePath!, skillName, revisionDocType);
+    });
 
   const revisionInput = buildRevisionInput({
     creationPhase,
