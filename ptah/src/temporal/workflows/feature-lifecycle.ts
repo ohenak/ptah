@@ -63,6 +63,20 @@ const DOC_TYPE_TOKENS: Record<string, string> = {
 };
 
 /**
+ * Derive the uppercase document type abbreviation from a phase ID.
+ * Strips the phase type suffix (-creation, -review, -approved) and uppercases.
+ *
+ * Examples:
+ *   "req-review"        -> "REQ"
+ *   "fspec-creation"    -> "FSPEC"
+ *   "tspec-review"      -> "TSPEC"
+ *   "properties-review" -> "PROPERTIES"
+ */
+export function deriveDocumentType(phaseId: string): string {
+  return phaseId.replace(/-(?:creation|review|approved)$/, "").toUpperCase();
+}
+
+/**
  * Extract the NNN prefix from a completed feature path.
  *
  * Given "docs/completed/015-my-feature/", extracts "015".
@@ -972,28 +986,17 @@ async function dispatchForkJoin(params: {
         forkJoin: true,
         workflowId,
       });
-      // Re-invoke only the ROUTE_TO_USER agent
-      const reinvokeResult = await invokeSkill(
-        buildInvokeSkillInput({
-          phase,
-          agentId,
-          featureSlug: state.featureSlug,
-          featureConfig: state.featureConfig,
-          forkJoin: true,
-          isRevision: false,
-        })
-      );
-      // Update the result
-      if (reinvokeResult.routingSignalType === "LGTM" || reinvokeResult.routingSignalType === "TASK_COMPLETE") {
-        if (reinvokeResult.routingSignalType === "LGTM") {
-          recordSignOff(state.signOffs, agentId, new Date().toISOString());
-        }
-        agentResults[agentId] = {
-          status: "success",
-          worktreePath: reinvokeResult.worktreePath,
-          routingSignal: reinvokeResult.routingSignalType,
-        };
+      // Use questionResult directly — handleQuestionFlow already re-invoked the agent
+      if (questionResult.routingSignalType === "LGTM") {
+        recordSignOff(state.signOffs, agentId, new Date().toISOString());
       }
+      agentResults[agentId] = {
+        status: questionResult.routingSignalType === "LGTM" || questionResult.routingSignalType === "TASK_COMPLETE"
+          ? "success"
+          : "failed",
+        worktreePath: questionResult.worktreePath,
+        routingSignal: questionResult.routingSignalType,
+      };
     }
     _state = state;
   }
