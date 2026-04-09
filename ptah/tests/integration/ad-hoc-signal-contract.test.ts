@@ -67,6 +67,21 @@ describe("Ad-Hoc Signal Contract (Integration)", () => {
     temporalClient = new FakeTemporalClient();
     discord = new FakeDiscordClient();
 
+    // Phase G restructured handleMessage() to check workflow existence first.
+    // Ad-hoc directives are only processed when a workflow IS running (Branch A).
+    // Set up a running workflow state so queryWorkflowState succeeds.
+    temporalClient.workflowStates.set("ptah-my-feature", {
+      featureSlug: "my-feature",
+      featureConfig: { discipline: "backend-only", skipFspec: false },
+      workflowConfig: defaultTestWorkflowConfig(),
+      currentPhaseId: "req-creation",
+      completedPhaseIds: [],
+      activeAgentIds: [],
+      phaseStatus: "running",
+      reviewStates: {},
+      forkJoinState: null,
+    });
+
     // Use the real DefaultAgentRegistry (not FakeAgentRegistry) to verify
     // the orchestrator works with the production registry implementation.
     const agentRegistry = new DefaultAgentRegistry([pmAgent, engAgent]);
