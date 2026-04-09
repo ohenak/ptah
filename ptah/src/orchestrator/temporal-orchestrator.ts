@@ -22,10 +22,44 @@ import type { WorkflowConfig } from "../config/workflow-config.js";
 import type { AgentRegistry } from "./agent-registry.js";
 import type { SkillInvoker } from "./skill-invoker.js";
 import type { TemporalClientWrapper } from "../temporal/client.js";
-import type { StartWorkflowParams, UserAnswerSignal } from "../temporal/types.js";
+import type { StartWorkflowParams, UserAnswerSignal, FeatureWorkflowState, PhaseStatus } from "../temporal/types.js";
 import type { FeatureConfig } from "../types.js";
 import { parseAdHocDirective } from "./ad-hoc-parser.js";
 import { extractFeatureName, featureNameToSlug, featureBranchName } from "./feature-branch.js";
+
+// ---------------------------------------------------------------------------
+// Pure function: parseUserIntent (FSPEC-DR-03)
+// ---------------------------------------------------------------------------
+
+export type UserIntent = "retry" | "cancel" | "resume";
+
+const INTENT_PATTERNS: Array<{ pattern: RegExp; intent: UserIntent }> = [
+  { pattern: /\bretry\b/i, intent: "retry" },
+  { pattern: /\bcancel\b/i, intent: "cancel" },
+  { pattern: /\bresume\b/i, intent: "resume" },
+];
+
+/**
+ * Parse the first recognized intent keyword from a message.
+ * Returns null if no keyword is found.
+ *
+ * Per FSPEC-DR-03 BR-DR-10/11/12:
+ * - Standalone word matching (word boundary regex)
+ * - Case-insensitive
+ * - First match wins by position in the message
+ */
+export function parseUserIntent(content: string): UserIntent | null {
+  let earliest: { intent: UserIntent; index: number } | null = null;
+
+  for (const { pattern, intent } of INTENT_PATTERNS) {
+    const match = pattern.exec(content);
+    if (match && (earliest === null || match.index < earliest.index)) {
+      earliest = { intent, index: match.index };
+    }
+  }
+
+  return earliest?.intent ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Deps interface
@@ -225,29 +259,80 @@ export class TemporalOrchestrator {
   }
 
   // ---------------------------------------------------------------------------
-  // Agent Coordination: Ad-hoc message handling (FSPEC-MR-01)
+  // Discord Routing: handleMessage (FSPEC-DR-01/02/03)
   // ---------------------------------------------------------------------------
 
   async handleMessage(message: ThreadMessage): Promise<void> {
-    // Step 1: Ignore bot messages
-    if (message.isBot) {
+    // Step 1: Bot filter
+    if (message.isBot) return;
+
+    // Step 2: Extract feature slug
+    const featureName = extractFeatureName(message.threadName);
+    const slug = featureNameToSlug(featureName);
+    const workflowId = `ptah-${slug}`;
+
+    // Step 3: Check workflow existence FIRST (FSPEC-DR-01 BR-DR-01)
+    let workflowRunning = false;
+    let workflowState: FeatureWorkflowState | null = null;
+    try {
+      workflowState = await this.temporalClient.queryWorkflowState(workflowId);
+      workflowRunning = true;
+    } catch (err) {
+      if (err instanceof Error && err.name === "WorkflowNotFoundError") {
+        // No workflow exists — Branch B (may start new workflow)
+        workflowRunning = false;
+      } else {
+        // Temporal query failure (server unreachable, timeout) — fail-silent (FSPEC-DR-01)
+        this.logger.warn(`Temporal query failed for ${workflowId}: ${err}`);
+        return;
+      }
+    }
+
+    if (workflowRunning && workflowState) {
+      // --- Branch A: Workflow IS running ---
+
+      // Step 4a: Try ad-hoc directive
+      const directive = parseAdHocDirective(message.content);
+      if (directive) {
+        await this.handleAdHocDirective(directive, message, workflowId, slug);
+        return;
+      }
+
+      // Step 5: State-dependent routing
+      await this.handleStateDependentRouting(message, workflowId, workflowState);
       return;
     }
 
-    // Step 2: Parse directive
-    const directive = parseAdHocDirective(message.content);
-    if (!directive) {
-      // Not an @-directive — pass to existing handling (no-op for now)
+    // --- Branch B: No running workflow ---
+
+    // Step 4b: Check for agent mention anywhere in message
+    if (!this.containsAgentMention(message.content)) return;
+
+    // Guard: empty slug
+    if (!slug) {
+      this.logger.warn("Empty slug derived from thread name; skipping workflow start");
       return;
     }
 
-    // Step 3: Resolve agent
+    // Step 5b: Start new workflow
+    await this.startNewWorkflow(slug, message);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: Ad-hoc directive handling (extracted from original handleMessage)
+  // ---------------------------------------------------------------------------
+
+  private async handleAdHocDirective(
+    directive: { agentIdentifier: string; instruction: string },
+    message: ThreadMessage,
+    workflowId: string,
+    slug: string,
+  ): Promise<void> {
+    // Resolve agent
     const agent = this.agentRegistry.getAgentById(directive.agentIdentifier);
     if (!agent) {
       const allAgents = this.agentRegistry.getAllAgents();
       const knownIds = allAgents.map((a) => a.id).join(", ");
-      const featureName = extractFeatureName(message.threadName);
-      const slug = featureNameToSlug(featureName);
       await this.discord.postPlainMessage(
         message.threadId,
         `Agent @${directive.agentIdentifier} is not part of the ${slug} workflow. Known agents: ${knownIds}.`,
@@ -255,12 +340,7 @@ export class TemporalOrchestrator {
       return;
     }
 
-    // Step 4: Construct workflow ID
-    const featureName = extractFeatureName(message.threadName);
-    const slug = featureNameToSlug(featureName);
-    const workflowId = `ptah-${slug}`;
-
-    // Step 5: Send signal
+    // Send signal
     try {
       await this.temporalClient.signalAdHocRevision(workflowId, {
         targetAgentId: agent.id,
@@ -283,7 +363,7 @@ export class TemporalOrchestrator {
       return;
     }
 
-    // Step 6: Post acknowledgement (BR-05: failure is non-critical)
+    // Post acknowledgement (BR-05: failure is non-critical)
     try {
       const truncated =
         directive.instruction.length > 100
@@ -296,6 +376,150 @@ export class TemporalOrchestrator {
     } catch (error) {
       this.logger.warn(
         `Failed to post Discord ack for ad-hoc dispatch: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: containsAgentMention (FSPEC-DR-01 BR-DR-05)
+  // ---------------------------------------------------------------------------
+
+  private containsAgentMention(content: string): boolean {
+    const allAgents = this.agentRegistry.getAllAgents();
+    return allAgents.some((agent) => {
+      const pattern = new RegExp(`@${agent.id}\\b`, "i");
+      return pattern.test(content);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: startNewWorkflow (FSPEC-DR-01 step 6b)
+  // ---------------------------------------------------------------------------
+
+  private async startNewWorkflow(slug: string, message: ThreadMessage): Promise<void> {
+    const featureConfig: FeatureConfig = {
+      discipline: "fullstack",
+      skipFspec: false,
+      useTechLead: false,
+    };
+
+    try {
+      const workflowId = await this.startWorkflowForFeature({
+        featureSlug: slug,
+        featureConfig,
+      });
+      await this.discord.postPlainMessage(
+        message.threadId,
+        `Started workflow ${workflowId} for ${slug}`,
+      );
+    } catch (err) {
+      if (err instanceof Error && err.name === "WorkflowExecutionAlreadyStartedError") {
+        await this.discord.postPlainMessage(
+          message.threadId,
+          `Workflow already running for ${slug}`,
+        );
+      } else {
+        await this.discord.postPlainMessage(
+          message.threadId,
+          `Failed to start workflow for ${slug}. Please try again.`,
+        );
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: handleStateDependentRouting (FSPEC-DR-02, DR-03)
+  // ---------------------------------------------------------------------------
+
+  private async handleStateDependentRouting(
+    message: ThreadMessage,
+    workflowId: string,
+    state: FeatureWorkflowState,
+  ): Promise<void> {
+    const phaseStatus = state.phaseStatus;
+
+    if (phaseStatus === "waiting-for-user") {
+      // FSPEC-DR-02: Route as user answer
+      try {
+        await this.routeUserAnswer({
+          workflowId,
+          answer: message.content,
+          answeredBy: message.authorName,
+          answeredAt: message.timestamp.toISOString(),
+        });
+      } catch (err) {
+        await this.discord.postPlainMessage(
+          message.threadId,
+          "Failed to deliver answer. Please try again.",
+        );
+      }
+      return;
+    }
+
+    if (phaseStatus === "failed" || phaseStatus === "revision-bound-reached") {
+      // FSPEC-DR-03: Parse intent and route
+      const intent = parseUserIntent(message.content);
+      if (!intent) return; // No keyword — silent ignore
+
+      await this.handleIntentRouting(message, workflowId, phaseStatus, intent);
+      return;
+    }
+
+    // Any other state: silently ignore
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: handleIntentRouting (FSPEC-DR-03 BR-DR-13)
+  // ---------------------------------------------------------------------------
+
+  private async handleIntentRouting(
+    message: ThreadMessage,
+    workflowId: string,
+    state: PhaseStatus,
+    intent: UserIntent,
+  ): Promise<void> {
+    // State-action validation matrix
+    const VALID_ACTIONS: Record<string, UserIntent[]> = {
+      "failed": ["retry", "cancel"],
+      "revision-bound-reached": ["resume", "cancel"],
+    };
+
+    const HINT_MESSAGES: Record<string, string> = {
+      "failed": "Workflow is in failed state. Use 'retry' to re-execute or 'cancel' to abort.",
+      "revision-bound-reached": "Workflow reached revision bound. Use 'resume' to continue or 'cancel' to abort.",
+    };
+
+    const validActions = VALID_ACTIONS[state] ?? [];
+    if (!validActions.includes(intent)) {
+      // Invalid action for current state — post hint
+      const hint = HINT_MESSAGES[state];
+      if (hint) {
+        await this.discord.postPlainMessage(message.threadId, hint);
+      }
+      return;
+    }
+
+    // Route signal
+    try {
+      if (state === "failed") {
+        await this.routeRetryOrCancel({ workflowId, action: intent as "retry" | "cancel" });
+      } else {
+        await this.routeResumeOrCancel({ workflowId, action: intent as "resume" | "cancel" });
+      }
+
+      // Best-effort ack (BR-DR-14)
+      try {
+        await this.discord.postPlainMessage(
+          message.threadId,
+          `Sent ${intent} signal to workflow ${workflowId}`,
+        );
+      } catch {
+        this.logger.warn(`Failed to post ack for ${intent} signal`);
+      }
+    } catch (err) {
+      await this.discord.postPlainMessage(
+        message.threadId,
+        `Failed to send ${intent} signal. Please try again.`,
       );
     }
   }
