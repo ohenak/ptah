@@ -81,13 +81,13 @@ Depends on: A1 (PhaseStatus), A4 (FakeTemporalClient extension). Phase 1 must be
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| G1 | Add `parseUserIntent()` pure function | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G2 | Add `containsAgentMention()` private method | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G3 | Add `startNewWorkflow()` private method | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G4 | Add `handleStateDependentRouting()` — user-answer routing (`waiting-for-user` state) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G5 | Add `handleIntentRouting()` — retry/cancel/resume with state-action validation and hints | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G6 | Restructure `handleMessage()` — workflow existence check first, branch A (ad-hoc + state-dependent), branch B (agent mention + start) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
-| G7 | `handleMessage()` — fail-silent on Temporal query failure (non-WorkflowNotFoundError) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ⬚ Not Started |
+| G1 | Add `parseUserIntent()` pure function | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G2 | Add `containsAgentMention()` private method | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G3 | Add `startNewWorkflow()` private method | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G4 | Add `handleStateDependentRouting()` — user-answer routing (`waiting-for-user` state) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G5 | Add `handleIntentRouting()` — retry/cancel/resume with state-action validation and hints | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G6 | Restructure `handleMessage()` — workflow existence check first, branch A (ad-hoc + state-dependent), branch B (agent mention + start) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
+| G7 | `handleMessage()` — fail-silent on Temporal query failure (non-WorkflowNotFoundError) | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | ✅ Done |
 
 ### Phase H: Integration Tests (REQ-NF-01)
 
