@@ -73,7 +73,7 @@ No dependencies beyond existing code.
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| F1 | Remove redundant `invokeSkill` call in `dispatchForkJoin` ROUTE_TO_USER handling; use `questionResult` directly | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| F1 | Remove redundant `invokeSkill` call in `dispatchForkJoin` ROUTE_TO_USER handling; use `questionResult` directly | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase G: Discord Routing (REQ-DR-01, REQ-DR-02, REQ-DR-03)
 
