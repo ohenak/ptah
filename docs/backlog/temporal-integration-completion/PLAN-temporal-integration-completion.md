@@ -29,7 +29,7 @@ These tasks have no implementation dependencies and are consumed by all subseque
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| B1 | Fix `evaluateSkipCondition` to strip `config.` prefix | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
+| B1 | Fix `evaluateSkipCondition` to strip `config.` prefix | `tests/unit/temporal/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
 
 ### Phase C: Cross-Review Activity (REQ-RC-02)
 
@@ -37,10 +37,10 @@ Depends on: A2 (deriveDocumentType), A3 (SKILL_TO_AGENT fix)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | Create `readCrossReviewRecommendation` activity — approved path | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ⬚ Not Started |
-| C2 | `readCrossReviewRecommendation` — revision_requested path | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ⬚ Not Started |
-| C3 | `readCrossReviewRecommendation` — parse_error paths (file not found, unknown agent, unrecognized value, empty file) | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ⬚ Not Started |
-| C4 | Register `readCrossReviewRecommendation` in `WorkerActivities` interface | — (type-only change, validated by C1-C3 compilation) | `ptah/src/temporal/worker.ts` | ⬚ Not Started |
+| C1 | Create `readCrossReviewRecommendation` activity — approved path | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ✅ Done |
+| C2 | `readCrossReviewRecommendation` — revision_requested path | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ✅ Done |
+| C3 | `readCrossReviewRecommendation` — parse_error paths (file not found, unknown agent, unrecognized value, empty file) | `tests/unit/temporal/cross-review-activity.test.ts` | `ptah/src/temporal/activities/cross-review-activity.ts` | ✅ Done |
+| C4 | Register `readCrossReviewRecommendation` in `WorkerActivities` interface | — (type-only change, validated by C1-C3 compilation) | `ptah/src/temporal/worker.ts` | ✅ Done |
 
 ### Phase D: Context Document Resolution (REQ-CD-01, REQ-CD-02)
 
@@ -48,12 +48,12 @@ Depends on: A2 (deriveDocumentType)
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| D1 | Add `resolvedContextDocumentRefs` to `BuildInvokeSkillInputParams` and update `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D2 | Fix `documentType` derivation in `buildInvokeSkillInput` (use `deriveDocumentType`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D3 | Call `resolveContextDocuments()` in `dispatchSingleAgent` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D4 | Call `resolveContextDocuments()` in `dispatchForkJoin` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D5 | Call `resolveContextDocuments()` in `runReviewCycle` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ⬚ Not Started |
-| D6 | Pass `contextDocumentRefs`, `taskType`, `documentType` to `contextAssembler.assemble()` in `invokeSkill` activity | `tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ⬚ Not Started |
+| D1 | Add `resolvedContextDocumentRefs` to `BuildInvokeSkillInputParams` and update `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D2 | Fix `documentType` derivation in `buildInvokeSkillInput` (use `deriveDocumentType`) | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D3 | Call `resolveContextDocuments()` in `dispatchSingleAgent` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D4 | Call `resolveContextDocuments()` in `dispatchForkJoin` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D5 | Call `resolveContextDocuments()` in `runReviewCycle` before `buildInvokeSkillInput` | `tests/unit/temporal/workflows/feature-lifecycle.test.ts` | `ptah/src/temporal/workflows/feature-lifecycle.ts` | ✅ Done |
+| D6 | Pass `contextDocumentRefs`, `taskType`, `documentType` to `contextAssembler.assemble()` in `invokeSkill` activity | `tests/unit/temporal/skill-activity.test.ts` | `ptah/src/temporal/activities/skill-activity.ts` | ✅ Done |
 
 ### Phase E: Review Cycle Integration (REQ-RC-01)
 
