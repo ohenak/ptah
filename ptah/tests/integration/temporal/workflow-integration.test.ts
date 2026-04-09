@@ -155,9 +155,14 @@ interface MockActivities {
 /** Notifications captured during each test */
 const capturedNotifications: NotificationInput[] = [];
 
+/** Activity call tracking (F-04: verify input parameters passed to activities) */
+const capturedInvokeSkillCalls: SkillActivityInput[] = [];
+const capturedCrossReviewCalls: ReadCrossReviewInput[] = [];
+
 function makeMockActivities(): MockActivities {
   return {
     async invokeSkill(input: SkillActivityInput): Promise<SkillActivityResult> {
+      capturedInvokeSkillCalls.push(input);
       if (activityOverrides.invokeSkill) return activityOverrides.invokeSkill(input);
       const isReviewLike = input.taskType === "Review";
       return {
@@ -187,6 +192,7 @@ function makeMockActivities(): MockActivities {
       return { featurePath: `docs/completed/001-${input.featureSlug}/`, promoted: true };
     },
     async readCrossReviewRecommendation(input: ReadCrossReviewInput): Promise<CrossReviewResult> {
+      capturedCrossReviewCalls.push(input);
       if (activityOverrides.readCrossReviewRecommendation) return activityOverrides.readCrossReviewRecommendation(input);
       // Default: return approved for all cross-review reads
       return { status: "approved" };
@@ -198,6 +204,8 @@ afterEach(() => {
   // Reset overrides and captured state after each test
   activityOverrides = {};
   capturedNotifications.length = 0;
+  capturedInvokeSkillCalls.length = 0;
+  capturedCrossReviewCalls.length = 0;
 });
 
 // ---------------------------------------------------------------------------
@@ -279,6 +287,247 @@ describe("G4: full workflow lifecycle (happy path)", () => {
     expect(state.completedPhaseIds).toContain("req-creation");
     expect(state.completedPhaseIds).toContain("req-review");
   });
+
+  it("verifies readCrossReviewRecommendation receives correct parameters (PROP-RC-05, PROP-NF-01)", async () => {
+    const workflowId = `integration-g4-params-${Date.now()}`;
+
+    activityOverrides.invokeSkill = async (input) => {
+      const isReviewLike = input.taskType === "Review";
+      return {
+        routingSignalType: isReviewLike ? "Approved" : "LGTM",
+        artifactChanges: [],
+        durationMs: 50,
+      };
+    };
+
+    const handle = await testEnv.client.workflow.start("featureLifecycleWorkflow", {
+      taskQueue: TASK_QUEUE,
+      workflowId,
+      args: [makeStartParams()],
+    });
+
+    await handle.result();
+
+    // The review phase (req-review) should have triggered readCrossReviewRecommendation
+    // for reviewer "eng" with documentType derived from "req-review" → "REQ"
+    expect(capturedCrossReviewCalls.length).toBeGreaterThan(0);
+    const reviewCall = capturedCrossReviewCalls.find((c) => c.agentId === "eng");
+    expect(reviewCall).toBeDefined();
+    expect(reviewCall!.documentType).toBe("REQ");
+    expect(reviewCall!.featurePath).toContain("test-feature");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-01: parse_error → handleFailureFlow (PROP-RC-08)
+// ---------------------------------------------------------------------------
+
+describe("PROP-RC-08: parse_error triggers handleFailureFlow", () => {
+  it("enters failure flow when readCrossReviewRecommendation returns parse_error", async () => {
+    const workflowId = `integration-rc08-${Date.now()}`;
+
+    activityOverrides.invokeSkill = async (input) => {
+      const isReviewLike = input.taskType === "Review";
+      return {
+        routingSignalType: isReviewLike ? "Approved" : "LGTM",
+        artifactChanges: [],
+        durationMs: 50,
+      };
+    };
+
+    // Return parse_error for cross-review reads — simulates malformed cross-review file
+    activityOverrides.readCrossReviewRecommendation = async () => ({
+      status: "parse_error" as const,
+      reason: "file_not_found",
+    });
+
+    const handle = await testEnv.client.workflow.start("featureLifecycleWorkflow", {
+      taskQueue: TASK_QUEUE,
+      workflowId,
+      args: [makeStartParams()],
+    });
+
+    // Give the workflow time to reach the failure state
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+
+    // Workflow should be in failed state — send cancel to let it complete
+    await handle.signal("retry-or-cancel", "cancel");
+
+    await handle.result();
+
+    // Verify a failure notification was sent with RecommendationParseError
+    const failureNotification = capturedNotifications.find(
+      (n) => n.type === "failure" && n.message.includes("RecommendationParseError"),
+    );
+    expect(failureNotification).toBeDefined();
+    expect(failureNotification!.message).toContain("file_not_found");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-02: anyRevisionRequested triggers revision dispatch (PROP-RC-07)
+// ---------------------------------------------------------------------------
+
+describe("PROP-RC-07: revision_requested triggers author revision dispatch", () => {
+  it("dispatches author for revision when reviewer returns revision_requested", async () => {
+    const workflowId = `integration-rc07-${Date.now()}`;
+    let revisionDispatchCount = 0;
+
+    activityOverrides.invokeSkill = async (input) => {
+      if (input.taskType === "Revise") {
+        revisionDispatchCount++;
+        // Revision succeeds — author fixes the document
+        return { routingSignalType: "LGTM", artifactChanges: [], durationMs: 50 };
+      }
+      // Creation and review phases complete normally
+      const isReviewLike = input.taskType === "Review";
+      return {
+        routingSignalType: isReviewLike ? "Approved" : "LGTM",
+        artifactChanges: [],
+        durationMs: 50,
+      };
+    };
+
+    let crossReviewCallCount = 0;
+    activityOverrides.readCrossReviewRecommendation = async () => {
+      crossReviewCallCount++;
+      if (crossReviewCallCount === 1) {
+        // First review round: revision requested
+        return { status: "revision_requested" as const };
+      }
+      // Second review round (after revision): approved
+      return { status: "approved" as const };
+    };
+
+    const handle = await testEnv.client.workflow.start("featureLifecycleWorkflow", {
+      taskQueue: TASK_QUEUE,
+      workflowId,
+      args: [makeStartParams()],
+    });
+
+    await handle.result();
+
+    // Author should have been dispatched for revision exactly once
+    expect(revisionDispatchCount).toBe(1);
+    // Cross-review should have been read twice (first: revision_requested, second: approved)
+    expect(crossReviewCallCount).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-03: skipFspec:true skips all FSPEC phases (PROP-NF-05)
+// ---------------------------------------------------------------------------
+
+describe("PROP-NF-05: skipFspec:true skips all FSPEC phases", () => {
+  it("skips fspec-creation, fspec-review, fspec-approved when skipFspec is true", async () => {
+    const workflowId = `integration-nf05-${Date.now()}`;
+    const dispatchedPhases: string[] = [];
+
+    // Workflow config with FSPEC phases that have skip_if: config.skipFspec
+    const workflowConfig: WorkflowConfig = {
+      version: 1,
+      phases: [
+        {
+          id: "req-creation",
+          name: "Requirements Creation",
+          type: "creation",
+          agent: "pm",
+          context_documents: [],
+        },
+        {
+          id: "req-review",
+          name: "Requirements Review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          context_documents: [],
+          revision_bound: 2,
+        },
+        {
+          id: "req-approved",
+          name: "Requirements Approved",
+          type: "approved",
+        },
+        {
+          id: "fspec-creation",
+          name: "FSPEC Creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "config.skipFspec", equals: true },
+          context_documents: [],
+        },
+        {
+          id: "fspec-review",
+          name: "FSPEC Review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          skip_if: { field: "config.skipFspec", equals: true },
+          context_documents: [],
+          revision_bound: 2,
+        },
+        {
+          id: "fspec-approved",
+          name: "FSPEC Approved",
+          type: "approved",
+          skip_if: { field: "config.skipFspec", equals: true },
+        },
+        {
+          id: "tspec-creation",
+          name: "TSPEC Creation",
+          type: "creation",
+          agent: "eng",
+          context_documents: [],
+        },
+        {
+          id: "tspec-approved",
+          name: "TSPEC Approved",
+          type: "approved",
+        },
+      ],
+    };
+
+    activityOverrides.invokeSkill = async (input) => {
+      dispatchedPhases.push(input.phaseId);
+      const isReviewLike = input.taskType === "Review";
+      return {
+        routingSignalType: isReviewLike ? "Approved" : "LGTM",
+        artifactChanges: [],
+        durationMs: 50,
+      };
+    };
+
+    const handle = await testEnv.client.workflow.start("featureLifecycleWorkflow", {
+      taskQueue: TASK_QUEUE,
+      workflowId,
+      args: [makeStartParams({
+        featureConfig: { discipline: "backend-only", skipFspec: true },
+        workflowConfig,
+      })],
+    });
+
+    await handle.result();
+
+    // FSPEC phases should NOT appear in dispatched phases
+    expect(dispatchedPhases).not.toContain("fspec-creation");
+    expect(dispatchedPhases).not.toContain("fspec-review");
+    // fspec-approved is type "approved" (auto-transition), never dispatched anyway
+
+    // REQ and TSPEC phases should have been dispatched
+    expect(dispatchedPhases).toContain("req-creation");
+    expect(dispatchedPhases).toContain("req-review");
+    expect(dispatchedPhases).toContain("tspec-creation");
+
+    // resolveNextPhase recursively skips all FSPEC phases when transitioning
+    // from req-approved. They never enter the main loop, so they are NOT in completedPhaseIds.
+    const state = await handle.query<FeatureWorkflowState>("workflow-state");
+    expect(state.completedPhaseIds).not.toContain("fspec-creation");
+    expect(state.completedPhaseIds).not.toContain("fspec-review");
+    expect(state.completedPhaseIds).not.toContain("fspec-approved");
+    // Non-skipped phases completed normally
+    expect(state.completedPhaseIds).toContain("req-creation");
+    expect(state.completedPhaseIds).toContain("req-review");
+    expect(state.completedPhaseIds).toContain("req-approved");
+    expect(state.completedPhaseIds).toContain("tspec-creation");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -336,6 +585,11 @@ describe("G5: ROUTE_TO_USER signal round trip", () => {
 
     // Question flow should have been invoked twice (first time: question, second: LGTM)
     expect(questionCallCount).toBe(2);
+
+    // PROP-NEG-06: Verify invokeSkill for req-creation was called exactly twice,
+    // not three times (guards against the old fork/join double-invocation bug)
+    const creationCalls = capturedInvokeSkillCalls.filter((c) => c.phaseId === "req-creation");
+    expect(creationCalls).toHaveLength(2);
   });
 });
 

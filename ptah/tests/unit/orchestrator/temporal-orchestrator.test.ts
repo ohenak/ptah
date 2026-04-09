@@ -1023,6 +1023,10 @@ describe("handleMessage — fail-silent on Temporal query failure (G7)", () => {
 // PROP-DR-24: Edge-case slug handling
 // ---------------------------------------------------------------------------
 
+// PROP-DR-24: The `if (!slug)` guard in handleMessage (line 312) is defensive dead code.
+// featureNameToSlug() always returns a non-empty string ("unnamed" fallback for degenerate input).
+// These tests verify the observable behavior: degenerate thread names produce the "unnamed" slug,
+// and the workflow proceeds normally. The warning log path is unreachable with current implementation.
 describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", () => {
   let discord: FakeDiscordClient;
   let temporalClient: FakeTemporalClient;
@@ -1043,9 +1047,6 @@ describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", 
   });
 
   it("uses 'unnamed' fallback slug when thread name is all special characters", async () => {
-    // featureNameToSlug("---") → "unnamed" (fallback), so workflow ID = "ptah-unnamed"
-    // The empty-slug guard in handleMessage is defensive; featureNameToSlug never
-    // returns empty. This test verifies the observable behavior with degenerate input.
     const msg = createThreadMessage({
       content: "@pm define requirements",
       threadName: "--- — some task",
@@ -1056,6 +1057,10 @@ describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", 
     // Should start a workflow with the fallback slug "unnamed"
     expect(temporalClient.startedWorkflows).toHaveLength(1);
     expect(temporalClient.startedWorkflows[0].featureSlug).toBe("unnamed");
+
+    // No warning logged — featureNameToSlug returns "unnamed", not empty
+    const warnings = logger.entriesAt("WARN");
+    expect(warnings.filter((w) => w.message.includes("Empty slug"))).toHaveLength(0);
   });
 
   it("uses 'unnamed' fallback slug when thread name is empty", async () => {
@@ -1068,5 +1073,9 @@ describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", 
 
     expect(temporalClient.startedWorkflows).toHaveLength(1);
     expect(temporalClient.startedWorkflows[0].featureSlug).toBe("unnamed");
+
+    // No warning logged — slug is "unnamed", not empty
+    const warnings = logger.entriesAt("WARN");
+    expect(warnings.filter((w) => w.message.includes("Empty slug"))).toHaveLength(0);
   });
 });
