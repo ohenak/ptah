@@ -1383,6 +1383,7 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   // Global error injection for queryWorkflowState (simulates Temporal outage)
   queryWorkflowStateError: Error | null = null;
 
+
   // Agent Coordination state
   adHocSignals: Array<{ workflowId: string; signal: AdHocRevisionSignal }> = [];
   signalAdHocRevisionError: Error | null = null;
