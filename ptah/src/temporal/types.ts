@@ -17,6 +17,7 @@ export type PhaseStatus =
   | "waiting-for-user"
   | "waiting-for-reviewers"
   | "failed"
+  | "revision-bound-reached"
   | "completed";
 
 // ---------------------------------------------------------------------------
@@ -155,6 +156,22 @@ export interface SkillActivityResult {
   artifactChanges: string[];
   worktreePath?: string;     // if forkJoin, worktree not yet merged
   durationMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-Review Activity (REQ-RC-02)
+// ---------------------------------------------------------------------------
+
+export interface ReadCrossReviewInput {
+  featurePath: string;
+  agentId: string;
+  documentType: string;  // e.g., "REQ", "TSPEC"
+}
+
+export interface CrossReviewResult {
+  status: "approved" | "revision_requested" | "parse_error";
+  reason?: string;       // only when status === "parse_error"
+  rawValue?: string;     // only when status === "parse_error" and value was found but unrecognized
 }
 
 // ---------------------------------------------------------------------------

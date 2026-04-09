@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PhaseDefinition, WorkflowConfig } from "../../../src/config/workflow-config.js";
 import type { FeatureConfig } from "../../../src/orchestrator/pdlc/phases.js";
-import type { SkillActivityInput } from "../../../src/temporal/types.js";
+import type { SkillActivityInput, PhaseStatus, ReadCrossReviewInput, CrossReviewResult } from "../../../src/temporal/types.js";
 import {
   resolveNextPhase,
   evaluateSkipCondition,
@@ -41,6 +41,7 @@ import {
   isCompletionReady,
   needsBacklogPromotion,
   buildContinueAsNewPayload,
+  deriveDocumentType,
 } from "../../../src/temporal/workflows/feature-lifecycle.js";
 
 // ---------------------------------------------------------------------------
@@ -1102,5 +1103,117 @@ describe("PROP-TF-89: featureLifecycleWorkflow determinism — no non-determinis
       .filter((line) => !line.trim().startsWith("//"))
       .filter((line) => /@temporalio\/(client|worker)/.test(line));
     expect(linesWithClientImport).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A1: PhaseStatus extension — "revision-bound-reached"
+// ---------------------------------------------------------------------------
+
+describe("PhaseStatus type — revision-bound-reached", () => {
+  it("accepts 'revision-bound-reached' as a valid PhaseStatus value", () => {
+    const status: PhaseStatus = "revision-bound-reached";
+    expect(status).toBe("revision-bound-reached");
+  });
+
+  it("accepts all existing PhaseStatus values alongside revision-bound-reached", () => {
+    const statuses: PhaseStatus[] = [
+      "running",
+      "waiting-for-user",
+      "waiting-for-reviewers",
+      "failed",
+      "revision-bound-reached",
+      "completed",
+    ];
+    expect(statuses).toHaveLength(6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A1: ReadCrossReviewInput type
+// ---------------------------------------------------------------------------
+
+describe("ReadCrossReviewInput type", () => {
+  it("accepts a well-formed ReadCrossReviewInput object", () => {
+    const input: ReadCrossReviewInput = {
+      featurePath: "docs/in-progress/auth/",
+      agentId: "eng",
+      documentType: "REQ",
+    };
+    expect(input.featurePath).toBe("docs/in-progress/auth/");
+    expect(input.agentId).toBe("eng");
+    expect(input.documentType).toBe("REQ");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A1: CrossReviewResult type
+// ---------------------------------------------------------------------------
+
+describe("CrossReviewResult type", () => {
+  it("accepts an approved result", () => {
+    const result: CrossReviewResult = { status: "approved" };
+    expect(result.status).toBe("approved");
+    expect(result.reason).toBeUndefined();
+    expect(result.rawValue).toBeUndefined();
+  });
+
+  it("accepts a revision_requested result", () => {
+    const result: CrossReviewResult = { status: "revision_requested" };
+    expect(result.status).toBe("revision_requested");
+  });
+
+  it("accepts a parse_error result with reason", () => {
+    const result: CrossReviewResult = {
+      status: "parse_error",
+      reason: "Cross-review file not found",
+    };
+    expect(result.status).toBe("parse_error");
+    expect(result.reason).toBe("Cross-review file not found");
+  });
+
+  it("accepts a parse_error result with reason and rawValue", () => {
+    const result: CrossReviewResult = {
+      status: "parse_error",
+      reason: "Unrecognized recommendation",
+      rawValue: "Maybe approved?",
+    };
+    expect(result.status).toBe("parse_error");
+    expect(result.reason).toBe("Unrecognized recommendation");
+    expect(result.rawValue).toBe("Maybe approved?");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A2: deriveDocumentType — pure function
+// ---------------------------------------------------------------------------
+
+describe("deriveDocumentType", () => {
+  it("derives 'REQ' from 'req-review'", () => {
+    expect(deriveDocumentType("req-review")).toBe("REQ");
+  });
+
+  it("derives 'FSPEC' from 'fspec-creation'", () => {
+    expect(deriveDocumentType("fspec-creation")).toBe("FSPEC");
+  });
+
+  it("derives 'TSPEC' from 'tspec-review'", () => {
+    expect(deriveDocumentType("tspec-review")).toBe("TSPEC");
+  });
+
+  it("derives 'PROPERTIES' from 'properties-review'", () => {
+    expect(deriveDocumentType("properties-review")).toBe("PROPERTIES");
+  });
+
+  it("derives 'REQ' from 'req-creation'", () => {
+    expect(deriveDocumentType("req-creation")).toBe("REQ");
+  });
+
+  it("derives 'TSPEC' from 'tspec-approved'", () => {
+    expect(deriveDocumentType("tspec-approved")).toBe("TSPEC");
+  });
+
+  it("uppercases phase IDs without a known suffix", () => {
+    expect(deriveDocumentType("impl")).toBe("IMPL");
   });
 });
