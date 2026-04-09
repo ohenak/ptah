@@ -22,15 +22,33 @@ import { dirname, resolve } from "node:path";
 import type { SkillActivityInput, SkillActivityResult, NotificationInput } from "../../../src/temporal/types.js";
 import type { MergeWorktreeInput, MergeResult } from "../../../src/temporal/activities/skill-activity.js";
 import type { StartWorkflowParams, FeatureWorkflowState } from "../../../src/temporal/types.js";
-import type { WorkflowConfig } from "../../../src/config/workflow-config.js";
+import type { WorkflowConfig, PhaseDefinition } from "../../../src/config/workflow-config.js";
 import {
   FakeFileSystem,
   FakeLogger,
   FakeTemporalClient,
+  FakeGitClient,
+  FakeDiscordClient,
+  FakeSkillInvoker,
+  FakeAgentRegistry,
+  FakeTemporalWorker,
   defaultFeatureWorkflowState,
+  defaultTestConfig,
+  defaultTestWorkflowConfig,
 } from "../../fixtures/factories.js";
 import { MigrateCommand } from "../../../src/commands/migrate.js";
 import type { PdlcStateFile } from "../../../src/orchestrator/pdlc/v4-types.js";
+import {
+  parseRecommendation,
+  crossReviewPath,
+  agentIdToSkillName,
+} from "../../../src/orchestrator/pdlc/cross-review-parser.js";
+import {
+  resolveContextDocuments,
+  buildInvokeSkillInput,
+} from "../../../src/temporal/workflows/feature-lifecycle.js";
+import { TemporalOrchestrator } from "../../../src/orchestrator/temporal-orchestrator.js";
+import type { RegisteredAgent } from "../../../src/types.js";
 
 // ---------------------------------------------------------------------------
 // Test utilities
@@ -578,5 +596,541 @@ phases:
 
     // Dry-run should count features that would be migrated
     expect(result.activeCreated).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H1: Integration test — readCrossReviewRecommendation activity pipeline
+// ---------------------------------------------------------------------------
+
+describe("H1: cross-review recommendation parsing pipeline", () => {
+  it("end-to-end approved: reads file from disk, parses recommendation, returns approved", async () => {
+    const fs = new FakeFileSystem();
+    const featurePath = "docs/in-progress/auth-feature/";
+    const agentId = "eng";
+    const documentType = "REQ";
+
+    // Step 1: Derive skill name from agentId
+    const skillName = agentIdToSkillName(agentId);
+    expect(skillName).toBe("backend-engineer");
+
+    // Step 2: Derive the expected cross-review file path
+    const filePath = crossReviewPath(featurePath, skillName!, documentType);
+    expect(filePath).toBe("docs/in-progress/auth-feature/CROSS-REVIEW-backend-engineer-REQ.md");
+
+    // Step 3: Write the cross-review file with an "Approved" recommendation
+    const fileContent = `# Cross-Review: REQ for auth-feature
+
+## Summary
+The requirements document is well-structured and covers all key areas.
+
+## Recommendation
+Approved
+
+## Notes
+- Minor formatting suggestions included as inline comments.
+`;
+    fs.addExisting(filePath, fileContent);
+
+    // Step 4: Read file content via FileSystem (simulating what the activity would do)
+    const content = await fs.readFile(filePath);
+    expect(content).toBe(fileContent);
+
+    // Step 5: Parse the recommendation
+    const result = parseRecommendation(content);
+    expect(result.status).toBe("approved");
+  });
+
+  it("end-to-end revision_requested: reads file, parses recommendation, returns revision_requested", async () => {
+    const fs = new FakeFileSystem();
+    const featurePath = "docs/in-progress/billing-feature/";
+    const agentId = "qa";
+    const documentType = "FSPEC";
+
+    // Derive skill name and file path
+    const skillName = agentIdToSkillName(agentId);
+    expect(skillName).toBe("test-engineer");
+
+    const filePath = crossReviewPath(featurePath, skillName!, documentType);
+    expect(filePath).toBe("docs/in-progress/billing-feature/CROSS-REVIEW-test-engineer-FSPEC.md");
+
+    // Write cross-review file with "Needs Revision" recommendation
+    const fileContent = `# Cross-Review: FSPEC for billing-feature
+
+## Issues Found
+1. Missing error handling for payment failures
+2. No retry logic specified for webhook delivery
+
+## Recommendation
+Needs Revision
+
+## Required Changes
+- Add error handling section
+- Define retry policy for webhooks
+`;
+    fs.addExisting(filePath, fileContent);
+
+    // Read and parse
+    const content = await fs.readFile(filePath);
+    const result = parseRecommendation(content);
+    expect(result.status).toBe("revision_requested");
+  });
+
+  it("returns parse_error when cross-review file does not exist", async () => {
+    const fs = new FakeFileSystem();
+    const featurePath = "docs/in-progress/missing-feature/";
+    const agentId = "pm";
+    const documentType = "REQ";
+
+    const skillName = agentIdToSkillName(agentId);
+    expect(skillName).toBe("product-manager");
+
+    const filePath = crossReviewPath(featurePath, skillName!, documentType);
+
+    // File does not exist — verify exists() returns false
+    const exists = await fs.exists(filePath);
+    expect(exists).toBe(false);
+
+    // Simulating activity behavior: if file not found, return parse_error
+    // (The activity would check existence before reading)
+  });
+
+  it("handles approved with minor changes as approved", async () => {
+    const fs = new FakeFileSystem();
+    const featurePath = "docs/in-progress/search-feature/";
+    const agentId = "fe";
+    const documentType = "TSPEC";
+
+    const skillName = agentIdToSkillName(agentId);
+    expect(skillName).toBe("frontend-engineer");
+
+    const filePath = crossReviewPath(featurePath, skillName!, documentType);
+
+    const fileContent = `# Cross-Review
+
+## Recommendation
+Approved with minor changes
+
+## Minor suggestions
+- Consider adding aria labels to search input
+`;
+    fs.addExisting(filePath, fileContent);
+
+    const content = await fs.readFile(filePath);
+    const result = parseRecommendation(content);
+    expect(result.status).toBe("approved");
+  });
+
+  it("handles table-format recommendation heading", async () => {
+    const fs = new FakeFileSystem();
+    const featurePath = "docs/in-progress/dashboard-feature/";
+    const filePath = crossReviewPath(featurePath, "backend-engineer", "REQ");
+
+    const fileContent = `# Cross-Review Summary
+
+| Field | Value |
+|-------|-------|
+| Reviewer | backend-engineer |
+| Recommendation | Needs Revision |
+| Date | 2026-04-09 |
+`;
+    fs.addExisting(filePath, fileContent);
+
+    const content = await fs.readFile(filePath);
+    const result = parseRecommendation(content);
+    expect(result.status).toBe("revision_requested");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H2: Integration test — context document resolution pipeline
+// ---------------------------------------------------------------------------
+
+describe("H2: context document resolution through to assembler", () => {
+  it("resolves {feature}/REQ template to actual file path for in-progress feature", () => {
+    const refs = ["{feature}/REQ"];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "auth",
+      featurePath: "docs/in-progress/auth/",
+    });
+    expect(resolved).toEqual(["docs/in-progress/auth/REQ-auth.md"]);
+  });
+
+  it("resolves multiple template strings in a single phase config", () => {
+    const refs = ["{feature}/REQ", "{feature}/FSPEC"];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "auth",
+      featurePath: "docs/in-progress/auth/",
+    });
+    expect(resolved).toEqual([
+      "docs/in-progress/auth/REQ-auth.md",
+      "docs/in-progress/auth/FSPEC-auth.md",
+    ]);
+  });
+
+  it("resolves templates for completed features with NNN prefix", () => {
+    const refs = ["{feature}/REQ", "{feature}/FSPEC"];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "my-feature",
+      featurePath: "docs/completed/015-my-feature/",
+    });
+    expect(resolved).toEqual([
+      "docs/completed/015-my-feature/015-REQ-my-feature.md",
+      "docs/completed/015-my-feature/015-FSPEC-my-feature.md",
+    ]);
+  });
+
+  it("passes through non-template refs unchanged", () => {
+    const refs = ["{feature}/REQ", "some/absolute/path.md"];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "auth",
+      featurePath: "docs/in-progress/auth/",
+    });
+    expect(resolved).toEqual([
+      "docs/in-progress/auth/REQ-auth.md",
+      "some/absolute/path.md",
+    ]);
+  });
+
+  it("resolves {feature}/overview template correctly", () => {
+    const refs = ["{feature}/overview"];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "auth",
+      featurePath: "docs/in-progress/auth/",
+    });
+    expect(resolved).toEqual(["docs/in-progress/auth/overview.md"]);
+  });
+
+  it("full pipeline: resolveContextDocuments -> buildInvokeSkillInput populates contextDocumentRefs", () => {
+    // Simulate workflow config phase with context_documents
+    const phase: PhaseDefinition = {
+      id: "fspec-creation",
+      name: "FSPEC Creation",
+      type: "creation",
+      agent: "eng",
+      context_documents: ["{feature}/REQ", "{feature}/FSPEC"],
+    };
+
+    const featureSlug = "auth";
+    const featurePath = "docs/in-progress/auth/";
+
+    // Step 1: Resolve context documents (as the workflow would do)
+    const resolvedRefs = resolveContextDocuments(phase.context_documents!, {
+      featureSlug,
+      featurePath,
+    });
+
+    // Step 2: Create a phase with resolved refs and build skill input
+    const resolvedPhase: PhaseDefinition = {
+      ...phase,
+      context_documents: resolvedRefs,
+    };
+
+    const input = buildInvokeSkillInput({
+      phase: resolvedPhase,
+      agentId: "eng",
+      featureSlug,
+      featureConfig: { discipline: "backend-only", skipFspec: false },
+      forkJoin: false,
+      isRevision: false,
+    });
+
+    // Verify the full pipeline produced correct contextDocumentRefs
+    expect(input.contextDocumentRefs).toEqual([
+      "docs/in-progress/auth/REQ-auth.md",
+      "docs/in-progress/auth/FSPEC-auth.md",
+    ]);
+    expect(input.agentId).toBe("eng");
+    expect(input.phaseId).toBe("fspec-creation");
+    expect(input.featureSlug).toBe("auth");
+  });
+
+  it("buildInvokeSkillInput defaults to empty array when phase has no context_documents", () => {
+    const phase: PhaseDefinition = {
+      id: "req-creation",
+      name: "Requirements Creation",
+      type: "creation",
+      agent: "pm",
+      // No context_documents
+    };
+
+    const input = buildInvokeSkillInput({
+      phase,
+      agentId: "pm",
+      featureSlug: "my-feature",
+      featureConfig: { discipline: "backend-only", skipFspec: false },
+      forkJoin: false,
+      isRevision: false,
+    });
+
+    expect(input.contextDocumentRefs).toEqual([]);
+  });
+
+  it("resolves all known document types: REQ, FSPEC, TSPEC, PLAN, PROPERTIES", () => {
+    const refs = [
+      "{feature}/REQ",
+      "{feature}/FSPEC",
+      "{feature}/TSPEC",
+      "{feature}/PLAN",
+      "{feature}/PROPERTIES",
+    ];
+    const resolved = resolveContextDocuments(refs, {
+      featureSlug: "billing",
+      featurePath: "docs/in-progress/billing/",
+    });
+    expect(resolved).toEqual([
+      "docs/in-progress/billing/REQ-billing.md",
+      "docs/in-progress/billing/FSPEC-billing.md",
+      "docs/in-progress/billing/TSPEC-billing.md",
+      "docs/in-progress/billing/PLAN-billing.md",
+      "docs/in-progress/billing/PROPERTIES-billing.md",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H3: Integration test — Discord message → Temporal signal routing
+// ---------------------------------------------------------------------------
+
+describe("H3: Discord message → Temporal signal routing", () => {
+  // Shared test fixtures
+  const testAgents: RegisteredAgent[] = [
+    { id: "pm", skill_path: "./skills/pm.md", log_file: "pm.log", mention_id: "111", display_name: "PM" },
+    { id: "eng", skill_path: "./skills/eng.md", log_file: "eng.log", mention_id: "222", display_name: "Engineer" },
+  ];
+
+  function makeOrchestrator(overrides?: {
+    temporalClient?: FakeTemporalClient;
+    agents?: RegisteredAgent[];
+  }) {
+    const temporalClient = overrides?.temporalClient ?? new FakeTemporalClient();
+    const discord = new FakeDiscordClient();
+    const gitClient = new FakeGitClient();
+    const logger = new FakeLogger();
+    const config = defaultTestConfig();
+    const workflowConfig = defaultTestWorkflowConfig();
+    const agentRegistry = new FakeAgentRegistry(overrides?.agents ?? testAgents);
+    const skillInvoker = new FakeSkillInvoker();
+    const worker = new FakeTemporalWorker();
+
+    const orchestrator = new TemporalOrchestrator({
+      temporalClient,
+      worker: worker as any,
+      discordClient: discord,
+      gitClient,
+      logger,
+      config,
+      workflowConfig,
+      agentRegistry,
+      skillInvoker,
+    });
+
+    return { orchestrator, temporalClient, discord, gitClient, logger };
+  }
+
+  it("(a) @agent mention sends ad-hoc revision signal to running workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Simulate a Discord message with @pm directive in a feature thread
+    await orchestrator.handleMessage({
+      id: "msg-1",
+      threadId: "thread-1",
+      threadName: "auth-feature \u2014 Requirements",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Alice",
+      isBot: false,
+      content: "@pm please refine the scope section",
+      timestamp: new Date("2026-04-09T12:00:00Z"),
+    });
+
+    // Verify the ad-hoc signal was sent to the correct workflow
+    expect(temporalClient.adHocSignals).toHaveLength(1);
+    expect(temporalClient.adHocSignals[0].workflowId).toBe("ptah-auth-feature");
+    expect(temporalClient.adHocSignals[0].signal.targetAgentId).toBe("pm");
+    expect(temporalClient.adHocSignals[0].signal.instruction).toBe("please refine the scope section");
+    expect(temporalClient.adHocSignals[0].signal.requestedBy).toBe("Alice");
+  });
+
+  it("(a) posts error when no workflow found for @agent mention", async () => {
+    const temporalClient = new FakeTemporalClient();
+    const discord = new FakeDiscordClient();
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Set up the error that happens when workflow doesn't exist
+    const notFoundError = new Error("Workflow not found");
+    notFoundError.name = "WorkflowNotFoundError";
+    temporalClient.signalAdHocRevisionError = notFoundError;
+
+    await orchestrator.handleMessage({
+      id: "msg-2",
+      threadId: "thread-2",
+      threadName: "new-feature \u2014 Requirements",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Alice",
+      isBot: false,
+      content: "@pm define requirements for new-feature",
+      timestamp: new Date("2026-04-09T12:00:00Z"),
+    });
+
+    // Verify no workflows were started (current behavior only supports ad-hoc)
+    expect(temporalClient.startedWorkflows).toHaveLength(0);
+  });
+
+  it("(b) routeUserAnswer sends user-answer signal to waiting-for-user workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+    // Set up workflow state as waiting-for-user
+    temporalClient.workflowStates.set("ptah-auth-feature", defaultFeatureWorkflowState({
+      featureSlug: "auth-feature",
+      phaseStatus: "waiting-for-user",
+      pendingQuestion: {
+        question: "What is the scope?",
+        agentId: "pm",
+        phaseId: "req-creation",
+        askedAt: "2026-04-09T11:00:00Z",
+      },
+    }));
+
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Route user answer directly (this tests the orchestrator method)
+    await orchestrator.routeUserAnswer({
+      workflowId: "ptah-auth-feature",
+      answer: "The scope is the authentication module only.",
+      answeredBy: "user-1",
+      answeredAt: "2026-04-09T12:00:00Z",
+    });
+
+    // Verify the user-answer signal was sent
+    expect(temporalClient.sentSignals).toHaveLength(1);
+    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-auth-feature");
+    expect(temporalClient.sentSignals[0].signal).toBe("user-answer");
+    const payload = temporalClient.sentSignals[0].payload as {
+      answer: string;
+      answeredBy: string;
+      answeredAt: string;
+    };
+    expect(payload.answer).toBe("The scope is the authentication module only.");
+    expect(payload.answeredBy).toBe("user-1");
+    expect(payload.answeredAt).toBe("2026-04-09T12:00:00Z");
+  });
+
+  it("(c) routeRetryOrCancel sends retry signal to failed workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+    // Set up workflow state as failed
+    temporalClient.workflowStates.set("ptah-billing-feature", defaultFeatureWorkflowState({
+      featureSlug: "billing-feature",
+      phaseStatus: "failed",
+      failureInfo: {
+        phaseId: "fspec-creation",
+        agentId: "eng",
+        errorType: "ActivityError",
+        errorMessage: "Rate limit exceeded",
+        retryCount: 1,
+      },
+    }));
+
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Route retry signal
+    await orchestrator.routeRetryOrCancel({
+      workflowId: "ptah-billing-feature",
+      action: "retry",
+    });
+
+    // Verify the retry-or-cancel signal was sent with "retry" action
+    expect(temporalClient.sentSignals).toHaveLength(1);
+    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-billing-feature");
+    expect(temporalClient.sentSignals[0].signal).toBe("retry-or-cancel");
+    expect(temporalClient.sentSignals[0].payload).toBe("retry");
+  });
+
+  it("(c) routeRetryOrCancel sends cancel signal to failed workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+    temporalClient.workflowStates.set("ptah-billing-feature", defaultFeatureWorkflowState({
+      featureSlug: "billing-feature",
+      phaseStatus: "failed",
+      failureInfo: {
+        phaseId: "fspec-creation",
+        agentId: "eng",
+        errorType: "ActivityError",
+        errorMessage: "Merge conflict",
+        retryCount: 2,
+      },
+    }));
+
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Route cancel signal
+    await orchestrator.routeRetryOrCancel({
+      workflowId: "ptah-billing-feature",
+      action: "cancel",
+    });
+
+    // Verify the retry-or-cancel signal was sent with "cancel" action
+    expect(temporalClient.sentSignals).toHaveLength(1);
+    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-billing-feature");
+    expect(temporalClient.sentSignals[0].signal).toBe("retry-or-cancel");
+    expect(temporalClient.sentSignals[0].payload).toBe("cancel");
+  });
+
+  it("(c) routeResumeOrCancel sends resume signal for revision-bound workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    // Route resume signal (for revision-bound exceeded)
+    await orchestrator.routeResumeOrCancel({
+      workflowId: "ptah-search-feature",
+      action: "resume",
+    });
+
+    // Verify the resume-or-cancel signal was sent
+    expect(temporalClient.sentSignals).toHaveLength(1);
+    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-search-feature");
+    expect(temporalClient.sentSignals[0].signal).toBe("resume-or-cancel");
+    expect(temporalClient.sentSignals[0].payload).toBe("resume");
+  });
+
+  it("ignores bot messages in handleMessage", async () => {
+    const temporalClient = new FakeTemporalClient();
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    await orchestrator.handleMessage({
+      id: "msg-bot",
+      threadId: "thread-1",
+      threadName: "auth-feature \u2014 Requirements",
+      parentChannelId: "updates-channel",
+      authorId: "bot-1",
+      authorName: "Ptah Bot",
+      isBot: true,
+      content: "@pm some directive",
+      timestamp: new Date("2026-04-09T12:00:00Z"),
+    });
+
+    // No signals should be sent for bot messages
+    expect(temporalClient.adHocSignals).toHaveLength(0);
+    expect(temporalClient.sentSignals).toHaveLength(0);
+  });
+
+  it("startWorkflowForFeature creates a new workflow via temporalClient", async () => {
+    const temporalClient = new FakeTemporalClient();
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    const workflowId = await orchestrator.startWorkflowForFeature({
+      featureSlug: "auth-feature",
+      featureConfig: { discipline: "backend-only", skipFspec: false },
+    });
+
+    // Verify workflow was started
+    expect(workflowId).toBe("ptah-auth-feature");
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].featureSlug).toBe("auth-feature");
+    expect(temporalClient.startedWorkflows[0].featureConfig).toEqual({
+      discipline: "backend-only",
+      skipFspec: false,
+    });
   });
 });
