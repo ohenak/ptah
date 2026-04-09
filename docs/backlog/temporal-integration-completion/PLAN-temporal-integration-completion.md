@@ -6,7 +6,7 @@
 | **Requirements** | [REQ-temporal-integration-completion](REQ-temporal-integration-completion.md) |
 | **Functional Specifications** | [FSPEC-temporal-integration-completion](FSPEC-temporal-integration-completion.md) |
 | **Date** | 2026-04-08 |
-| **Status** | Draft |
+| **Status** | Complete |
 
 ## 1. Summary
 
@@ -95,9 +95,9 @@ Depends on: All previous phases complete.
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| H1 | Integration test: review cycle with `readCrossReviewRecommendation` activity producing approved/revision_requested | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ⬚ Not Started |
-| H2 | Integration test: context document resolution from template strings through to assembler | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ⬚ Not Started |
-| H3 | Integration test: Discord message → Temporal signal routing (workflow start, user-answer, retry-or-cancel) | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ⬚ Not Started |
+| H1 | Integration test: review cycle with `readCrossReviewRecommendation` activity producing approved/revision_requested | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ✅ Done |
+| H2 | Integration test: context document resolution from template strings through to assembler | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ✅ Done |
+| H3 | Integration test: Discord message → Temporal signal routing (workflow start, user-answer, retry-or-cancel) | `tests/integration/temporal/workflow-integration.test.ts` | — (test only) | ✅ Done |
 
 Status key: ⬚ Not Started | 🔴 Test Written (Red) | 🟢 Test Passing (Green) | 🔵 Refactored | ✅ Done
 
