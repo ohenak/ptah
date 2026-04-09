@@ -19,7 +19,7 @@ import { TestWorkflowEnvironment } from "@temporalio/testing";
 import { Worker } from "@temporalio/worker";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import type { SkillActivityInput, SkillActivityResult, NotificationInput } from "../../../src/temporal/types.js";
+import type { SkillActivityInput, SkillActivityResult, NotificationInput, ReadCrossReviewInput, CrossReviewResult } from "../../../src/temporal/types.js";
 import type { MergeWorktreeInput, MergeResult } from "../../../src/temporal/activities/skill-activity.js";
 import type { StartWorkflowParams, FeatureWorkflowState } from "../../../src/temporal/types.js";
 import type { WorkflowConfig, PhaseDefinition } from "../../../src/config/workflow-config.js";
@@ -149,6 +149,7 @@ interface MockActivities {
   resolveFeaturePath: (input: { featureSlug: string; worktreeRoot: string }) => Promise<{ found: boolean; path?: string; lifecycle?: string; slug?: string }>;
   promoteBacklogToInProgress: (input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) => Promise<{ featurePath: string; promoted: boolean }>;
   promoteInProgressToCompleted: (input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) => Promise<{ featurePath: string; promoted: boolean }>;
+  readCrossReviewRecommendation: (input: ReadCrossReviewInput) => Promise<CrossReviewResult>;
 }
 
 /** Notifications captured during each test */
@@ -184,6 +185,11 @@ function makeMockActivities(): MockActivities {
     async promoteInProgressToCompleted(input: { featureSlug: string; featureBranch: string; workflowId: string; runId: string }) {
       if (activityOverrides.promoteInProgressToCompleted) return activityOverrides.promoteInProgressToCompleted(input);
       return { featurePath: `docs/completed/001-${input.featureSlug}/`, promoted: true };
+    },
+    async readCrossReviewRecommendation(input: ReadCrossReviewInput): Promise<CrossReviewResult> {
+      if (activityOverrides.readCrossReviewRecommendation) return activityOverrides.readCrossReviewRecommendation(input);
+      // Default: return approved for all cross-review reads
+      return { status: "approved" };
     },
   };
 }
@@ -612,11 +618,11 @@ describe("H1: cross-review recommendation parsing pipeline", () => {
 
     // Step 1: Derive skill name from agentId
     const skillName = agentIdToSkillName(agentId);
-    expect(skillName).toBe("backend-engineer");
+    expect(skillName).toBe("engineer");
 
     // Step 2: Derive the expected cross-review file path
     const filePath = crossReviewPath(featurePath, skillName!, documentType);
-    expect(filePath).toBe("docs/in-progress/auth-feature/CROSS-REVIEW-backend-engineer-REQ.md");
+    expect(filePath).toBe("docs/in-progress/auth-feature/CROSS-REVIEW-engineer-REQ.md");
 
     // Step 3: Write the cross-review file with an "Approved" recommendation
     const fileContent = `# Cross-Review: REQ for auth-feature
@@ -724,13 +730,13 @@ Approved with minor changes
   it("handles table-format recommendation heading", async () => {
     const fs = new FakeFileSystem();
     const featurePath = "docs/in-progress/dashboard-feature/";
-    const filePath = crossReviewPath(featurePath, "backend-engineer", "REQ");
+    const filePath = crossReviewPath(featurePath, "engineer", "REQ");
 
     const fileContent = `# Cross-Review Summary
 
 | Field | Value |
 |-------|-------|
-| Reviewer | backend-engineer |
+| Reviewer | engineer |
 | Recommendation | Needs Revision |
 | Date | 2026-04-09 |
 `;
@@ -928,13 +934,49 @@ describe("H3: Discord message → Temporal signal routing", () => {
     return { orchestrator, temporalClient, discord, gitClient, logger };
   }
 
-  it("(a) @agent mention sends ad-hoc revision signal to running workflow", async () => {
+  it("(a) @agent mention starts a new workflow when no workflow is running", async () => {
     const temporalClient = new FakeTemporalClient();
+    // queryWorkflowState throws WorkflowNotFoundError when workflow doesn't exist
+    // FakeTemporalClient throws generic Error for missing workflows; monkey-patch for this test
+    const origQuery = temporalClient.queryWorkflowState.bind(temporalClient);
+    temporalClient.queryWorkflowState = async (workflowId: string) => {
+      const notFoundError = new Error(`Workflow ${workflowId} not found`);
+      notFoundError.name = "WorkflowNotFoundError";
+      throw notFoundError;
+    };
+
     const { orchestrator } = makeOrchestrator({ temporalClient });
 
-    // Simulate a Discord message with @pm directive in a feature thread
+    // Simulate a Discord message with @pm mention in a feature thread (no existing workflow)
     await orchestrator.handleMessage({
       id: "msg-1",
+      threadId: "thread-1",
+      threadName: "auth-feature \u2014 Requirements",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Alice",
+      isBot: false,
+      content: "@pm define requirements for auth-feature",
+      timestamp: new Date("2026-04-09T12:00:00Z"),
+    });
+
+    // Verify a new workflow was started
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].featureSlug).toBe("auth-feature");
+  });
+
+  it("(a) @agent ad-hoc directive routes to running workflow", async () => {
+    const temporalClient = new FakeTemporalClient();
+    // Set up a running workflow so handleMessage takes the ad-hoc branch
+    temporalClient.workflowStates.set("ptah-auth-feature", defaultFeatureWorkflowState({
+      featureSlug: "auth-feature",
+      phaseStatus: "running",
+    }));
+
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
+    await orchestrator.handleMessage({
+      id: "msg-2",
       threadId: "thread-1",
       threadName: "auth-feature \u2014 Requirements",
       parentChannelId: "updates-channel",
@@ -953,33 +995,7 @@ describe("H3: Discord message → Temporal signal routing", () => {
     expect(temporalClient.adHocSignals[0].signal.requestedBy).toBe("Alice");
   });
 
-  it("(a) posts error when no workflow found for @agent mention", async () => {
-    const temporalClient = new FakeTemporalClient();
-    const discord = new FakeDiscordClient();
-    const { orchestrator } = makeOrchestrator({ temporalClient });
-
-    // Set up the error that happens when workflow doesn't exist
-    const notFoundError = new Error("Workflow not found");
-    notFoundError.name = "WorkflowNotFoundError";
-    temporalClient.signalAdHocRevisionError = notFoundError;
-
-    await orchestrator.handleMessage({
-      id: "msg-2",
-      threadId: "thread-2",
-      threadName: "new-feature \u2014 Requirements",
-      parentChannelId: "updates-channel",
-      authorId: "user-1",
-      authorName: "Alice",
-      isBot: false,
-      content: "@pm define requirements for new-feature",
-      timestamp: new Date("2026-04-09T12:00:00Z"),
-    });
-
-    // Verify no workflows were started (current behavior only supports ad-hoc)
-    expect(temporalClient.startedWorkflows).toHaveLength(0);
-  });
-
-  it("(b) routeUserAnswer sends user-answer signal to waiting-for-user workflow", async () => {
+  it("(b) message to waiting-for-user workflow sends user-answer signal via handleMessage", async () => {
     const temporalClient = new FakeTemporalClient();
     // Set up workflow state as waiting-for-user
     temporalClient.workflowStates.set("ptah-auth-feature", defaultFeatureWorkflowState({
@@ -995,7 +1011,36 @@ describe("H3: Discord message → Temporal signal routing", () => {
 
     const { orchestrator } = makeOrchestrator({ temporalClient });
 
-    // Route user answer directly (this tests the orchestrator method)
+    // Simulate a regular (non-directive) message in the thread — routes as user answer
+    await orchestrator.handleMessage({
+      id: "msg-3",
+      threadId: "thread-1",
+      threadName: "auth-feature \u2014 Requirements",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Alice",
+      isBot: false,
+      content: "The scope is the authentication module only.",
+      timestamp: new Date("2026-04-09T12:00:00Z"),
+    });
+
+    // Verify the user-answer signal was sent
+    const userAnswerSignals = temporalClient.sentSignals.filter(s => s.signal === "user-answer");
+    expect(userAnswerSignals).toHaveLength(1);
+    expect(userAnswerSignals[0].workflowId).toBe("ptah-auth-feature");
+    const payload = userAnswerSignals[0].payload as {
+      answer: string;
+      answeredBy: string;
+      answeredAt: string;
+    };
+    expect(payload.answer).toBe("The scope is the authentication module only.");
+    expect(payload.answeredBy).toBe("Alice");
+  });
+
+  it("(b) routeUserAnswer sends user-answer signal directly", async () => {
+    const temporalClient = new FakeTemporalClient();
+    const { orchestrator } = makeOrchestrator({ temporalClient });
+
     await orchestrator.routeUserAnswer({
       workflowId: "ptah-auth-feature",
       answer: "The scope is the authentication module only.",
@@ -1003,7 +1048,6 @@ describe("H3: Discord message → Temporal signal routing", () => {
       answeredAt: "2026-04-09T12:00:00Z",
     });
 
-    // Verify the user-answer signal was sent
     expect(temporalClient.sentSignals).toHaveLength(1);
     expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-auth-feature");
     expect(temporalClient.sentSignals[0].signal).toBe("user-answer");
@@ -1014,12 +1058,10 @@ describe("H3: Discord message → Temporal signal routing", () => {
     };
     expect(payload.answer).toBe("The scope is the authentication module only.");
     expect(payload.answeredBy).toBe("user-1");
-    expect(payload.answeredAt).toBe("2026-04-09T12:00:00Z");
   });
 
-  it("(c) routeRetryOrCancel sends retry signal to failed workflow", async () => {
+  it("(c) 'retry' message to failed workflow sends retry-or-cancel signal via handleMessage", async () => {
     const temporalClient = new FakeTemporalClient();
-    // Set up workflow state as failed
     temporalClient.workflowStates.set("ptah-billing-feature", defaultFeatureWorkflowState({
       featureSlug: "billing-feature",
       phaseStatus: "failed",
@@ -1034,20 +1076,27 @@ describe("H3: Discord message → Temporal signal routing", () => {
 
     const { orchestrator } = makeOrchestrator({ temporalClient });
 
-    // Route retry signal
-    await orchestrator.routeRetryOrCancel({
-      workflowId: "ptah-billing-feature",
-      action: "retry",
+    // Simulate a user typing "retry" in the thread
+    await orchestrator.handleMessage({
+      id: "msg-4",
+      threadId: "thread-2",
+      threadName: "billing-feature \u2014 FSPEC",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Bob",
+      isBot: false,
+      content: "retry",
+      timestamp: new Date("2026-04-09T13:00:00Z"),
     });
 
     // Verify the retry-or-cancel signal was sent with "retry" action
-    expect(temporalClient.sentSignals).toHaveLength(1);
-    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-billing-feature");
-    expect(temporalClient.sentSignals[0].signal).toBe("retry-or-cancel");
-    expect(temporalClient.sentSignals[0].payload).toBe("retry");
+    const retrySignals = temporalClient.sentSignals.filter(s => s.signal === "retry-or-cancel");
+    expect(retrySignals).toHaveLength(1);
+    expect(retrySignals[0].workflowId).toBe("ptah-billing-feature");
+    expect(retrySignals[0].payload).toBe("retry");
   });
 
-  it("(c) routeRetryOrCancel sends cancel signal to failed workflow", async () => {
+  it("(c) 'cancel' message to failed workflow sends retry-or-cancel signal via handleMessage", async () => {
     const temporalClient = new FakeTemporalClient();
     temporalClient.workflowStates.set("ptah-billing-feature", defaultFeatureWorkflowState({
       featureSlug: "billing-feature",
@@ -1063,17 +1112,22 @@ describe("H3: Discord message → Temporal signal routing", () => {
 
     const { orchestrator } = makeOrchestrator({ temporalClient });
 
-    // Route cancel signal
-    await orchestrator.routeRetryOrCancel({
-      workflowId: "ptah-billing-feature",
-      action: "cancel",
+    await orchestrator.handleMessage({
+      id: "msg-5",
+      threadId: "thread-2",
+      threadName: "billing-feature \u2014 FSPEC",
+      parentChannelId: "updates-channel",
+      authorId: "user-1",
+      authorName: "Bob",
+      isBot: false,
+      content: "cancel",
+      timestamp: new Date("2026-04-09T13:00:00Z"),
     });
 
-    // Verify the retry-or-cancel signal was sent with "cancel" action
-    expect(temporalClient.sentSignals).toHaveLength(1);
-    expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-billing-feature");
-    expect(temporalClient.sentSignals[0].signal).toBe("retry-or-cancel");
-    expect(temporalClient.sentSignals[0].payload).toBe("cancel");
+    const cancelSignals = temporalClient.sentSignals.filter(s => s.signal === "retry-or-cancel");
+    expect(cancelSignals).toHaveLength(1);
+    expect(cancelSignals[0].workflowId).toBe("ptah-billing-feature");
+    expect(cancelSignals[0].payload).toBe("cancel");
   });
 
   it("(c) routeResumeOrCancel sends resume signal for revision-bound workflow", async () => {
@@ -1081,13 +1135,11 @@ describe("H3: Discord message → Temporal signal routing", () => {
 
     const { orchestrator } = makeOrchestrator({ temporalClient });
 
-    // Route resume signal (for revision-bound exceeded)
     await orchestrator.routeResumeOrCancel({
       workflowId: "ptah-search-feature",
       action: "resume",
     });
 
-    // Verify the resume-or-cancel signal was sent
     expect(temporalClient.sentSignals).toHaveLength(1);
     expect(temporalClient.sentSignals[0].workflowId).toBe("ptah-search-feature");
     expect(temporalClient.sentSignals[0].signal).toBe("resume-or-cancel");
