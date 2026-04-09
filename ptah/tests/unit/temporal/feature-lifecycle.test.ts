@@ -188,6 +188,50 @@ describe("resolveNextPhase", () => {
     );
   });
 
+  // REQ-SC-01 / REQ-NF-02: Tests using real YAML convention with "config." prefix
+  it("skips phases when skip_if uses YAML convention 'config.skipFspec' prefix", () => {
+    const phases: PhaseDefinition[] = [
+      makePhase({ id: "phase-a" }),
+      makePhase({
+        id: "phase-b",
+        skip_if: { field: "config.skipFspec", equals: true },
+      }),
+      makePhase({
+        id: "phase-c",
+        skip_if: { field: "config.skipFspec", equals: true },
+      }),
+      makePhase({
+        id: "phase-d",
+        skip_if: { field: "config.skipFspec", equals: true },
+      }),
+      makePhase({ id: "phase-e" }),
+    ];
+    const config = makeConfig(phases);
+    const fc = makeFeatureConfig({ skipFspec: true });
+
+    const next = resolveNextPhase("phase-a", config, fc);
+
+    // All three FSPEC-like phases should be skipped
+    expect(next).toBe("phase-e");
+  });
+
+  it("does NOT skip phases when skip_if uses 'config.' prefix but condition is false", () => {
+    const phases: PhaseDefinition[] = [
+      makePhase({ id: "phase-a" }),
+      makePhase({
+        id: "phase-b",
+        skip_if: { field: "config.skipFspec", equals: true },
+      }),
+      makePhase({ id: "phase-c" }),
+    ];
+    const config = makeConfig(phases);
+    const fc = makeFeatureConfig({ skipFspec: false });
+
+    const next = resolveNextPhase("phase-a", config, fc);
+
+    expect(next).toBe("phase-b");
+  });
+
   it("explicit transition takes precedence over skip_if on the current phase", () => {
     // When the current phase has an explicit transition, it bypasses array ordering
     // and skip_if is evaluated on the target of the explicit transition
@@ -234,6 +278,31 @@ describe("evaluateSkipCondition", () => {
     // skip_if field === false (i.e., skip when skipFspec is false)
     const result = evaluateSkipCondition({ field: "skipFspec", equals: false }, fc);
     expect(result).toBe(true);
+  });
+
+  // REQ-SC-01 / REQ-NF-02: Tests using real YAML convention with "config." prefix
+  it("strips 'config.' prefix and returns true when field matches (YAML convention)", () => {
+    const fc = makeFeatureConfig({ skipFspec: true });
+    const result = evaluateSkipCondition({ field: "config.skipFspec", equals: true }, fc);
+    expect(result).toBe(true);
+  });
+
+  it("strips 'config.' prefix and returns false when field does not match (YAML convention)", () => {
+    const fc = makeFeatureConfig({ skipFspec: false });
+    const result = evaluateSkipCondition({ field: "config.skipFspec", equals: true }, fc);
+    expect(result).toBe(false);
+  });
+
+  it("strips 'config.' prefix with equals: false condition (YAML convention)", () => {
+    const fc = makeFeatureConfig({ skipFspec: false });
+    const result = evaluateSkipCondition({ field: "config.skipFspec", equals: false }, fc);
+    expect(result).toBe(true);
+  });
+
+  it("returns false for unknown field with 'config.' prefix", () => {
+    const fc = makeFeatureConfig();
+    const result = evaluateSkipCondition({ field: "config.unknownField", equals: true }, fc);
+    expect(result).toBe(false);
   });
 });
 

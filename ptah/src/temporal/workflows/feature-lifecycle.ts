@@ -152,7 +152,10 @@ export function evaluateSkipCondition(
   featureConfig: FeatureConfig,
 ): boolean {
   const config = featureConfig as unknown as Record<string, unknown>;
-  const value = config[condition.field];
+  const fieldKey = condition.field.startsWith("config.")
+    ? condition.field.slice(7)
+    : condition.field;
+  const value = config[fieldKey];
 
   if (typeof value !== "boolean") {
     // Unknown field — safe default: do not skip
