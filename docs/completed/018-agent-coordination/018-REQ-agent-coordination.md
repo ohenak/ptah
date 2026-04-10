@@ -430,7 +430,7 @@ The re-run must use the latest artifacts from the shared branch (i.e., each casc
 **Acceptance Criteria:**
 ```
 WHO:   As a user
-GIVEN: The workflow for feature 021 has phases: pm → eng-review → qa-cross-review → ...
+GIVEN: The workflow for feature 018 has phases: pm → eng-review → qa-cross-review → ...
        and an adHocRevision for pm completes
 WHEN:  The pm ad-hoc activity finishes and pushes updated artifacts
 THEN:  The workflow automatically schedules eng-review and qa-cross-review to re-run,

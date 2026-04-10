@@ -319,7 +319,7 @@ Temporal solves problem 1 (event-sourced workflows survive crashes, retry automa
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | Ptah supports connecting to: (1) a local development server started via `temporal server start-dev` (default), (2) Temporal Cloud (SaaS), or (3) a self-hosted Temporal server. Connection configured via `temporal.address`, `temporal.namespace`, and optional `temporal.tls` in `ptah.config.json`. `ptah init` generates a `temporal` section defaulting to `localhost:7233` (`temporal server start-dev`). Docker Compose-based deployment is a separate feature — see [REQ-018](../018-temporal-docker-compose/018-REQ-temporal-docker-compose.md). |
+| **Description** | Ptah supports connecting to: (1) a local development server started via `temporal server start-dev` (default), (2) Temporal Cloud (SaaS), or (3) a self-hosted Temporal server. Connection configured via `temporal.address`, `temporal.namespace`, and optional `temporal.tls` in `ptah.config.json`. `ptah init` generates a `temporal` section defaulting to `localhost:7233` (`temporal server start-dev`). Docker Compose-based deployment is a separate feature — see [REQ-temporal-docker-compose](../../backlog/temporal-docker-compose/REQ-temporal-docker-compose.md). |
 | **Acceptance Criteria** | **Who:** Developer **Given:** A `ptah.config.json` with default `temporal.address: "localhost:7233"` and `temporal.namespace: "default"` **When:** The developer runs `temporal server start-dev` and then `ptah start` **Then:** The Orchestrator connects to the local Temporal dev server. Changing to a Temporal Cloud endpoint with TLS requires only config changes. |
 | **Priority** | P0 |
 | **Source Stories** | US-26, US-28 |

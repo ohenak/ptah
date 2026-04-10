@@ -4,7 +4,7 @@
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | REQ-018 |
+| **Document ID** | REQ-temporal-docker-compose |
 | **Parent Document** | [REQ-015 — Temporal Foundation](../015-temporal-foundation/015-REQ-temporal-foundation.md) |
 | **Version** | 1.0 |
 | **Date** | April 2, 2026 |

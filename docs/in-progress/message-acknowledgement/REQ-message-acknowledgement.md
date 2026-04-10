@@ -4,8 +4,8 @@
 
 | Field | Detail |
 |-------|--------|
-| **Document ID** | REQ-017 |
-| **Parent Document** | [REQ-019 — Discord-to-Temporal Integration](../../completed/019-discord-temporal-integration/019-REQ-discord-temporal-integration.md) |
+| **Document ID** | REQ-message-acknowledgement |
+| **Parent Document** | [REQ-017 — Temporal Integration Completion](../../completed/017-temporal-integration-completion/017-REQ-temporal-integration-completion.md) |
 | **Version** | 1.0 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
