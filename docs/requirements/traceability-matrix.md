@@ -597,6 +597,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 3.1 | April 3, 2026 | Product Manager | Added feature message-acknowledgement (Message Acknowledgement). 3 new user stories (US-33, US-34, US-35). 9 requirements added: MA domain (6 reqs: REQ-MA-01 through REQ-MA-06) + 3 non-functional (REQ-NF-MA-01 through REQ-NF-MA-03). All pending FSPEC/TSPEC. REQ at docs/in-progress/message-acknowledgement/REQ-message-acknowledgement.md. Total requirements: 172. |
 | 3.2 | April 7, 2026 | Product Manager | Added feature temporal-integration-completion (Temporal Integration Completion). 7 new user stories (US-01 through US-07, feature-scoped). 11 requirements added across 5 domains: RC (Review Cycle, 2 reqs), CD (Context Documents, 2 reqs), DR (Discord Routing, 3 reqs), SC (Skip Condition, 1 req), FJ (Fork/Join, 1 req), plus 2 non-functional (NF-01, NF-02). All pending FSPEC/TSPEC. REQ at docs/backlog/temporal-integration-completion/REQ-temporal-integration-completion.md. Total requirements: 183. |
 | 3.3 | April 7, 2026 | Product Manager | FSPEC for temporal-integration-completion. 4 FSPECs created: FSPEC-RC-01 (review cycle parsing flow, covers REQ-RC-01 + RC-02), FSPEC-DR-01 (workflow start trigger, covers REQ-DR-01), FSPEC-DR-02 (user answer routing, covers REQ-DR-02), FSPEC-DR-03 (retry/cancel routing, covers REQ-DR-03). 5 requirements need no FSPEC (CD-01, CD-02, SC-01, FJ-01 are straightforward wiring; NF-01, NF-02 are test requirements). FSPEC at docs/backlog/temporal-integration-completion/FSPEC-temporal-integration-completion.md. Total requirements: 183. |
+| 3.4 | April 10, 2026 | Product Manager | Added feature fix-req-overwrite-on-start (Fix REQ Overwrite On Workflow Start). Urgent bug fix for REQ-017. 3 new user stories (US-01, US-02, US-03, feature-scoped). 15 requirements added across 3 domains: PD (Phase Detection, 4 reqs: REQ-PD-01 through REQ-PD-04), WS (Workflow Start, 5 reqs: REQ-WS-01 through REQ-WS-05), ER (Error Reporting, 3 reqs: REQ-ER-01 through REQ-ER-03), plus 4 non-functional (REQ-NF-01 through REQ-NF-04). Parent: REQ-017. REQ at docs/backlog/fix-req-overwrite-on-start/REQ-fix-req-overwrite-on-start.md. Total requirements: 198. |
 
 ---
 
@@ -615,6 +616,29 @@ This matrix provides full traceability from user scenarios through requirements 
 | US-07 | REQ-FJ-01 | — (bug fix) | P1 | 1 | Draft |
 | US-01, US-02, US-03 | REQ-NF-01 | — | P1 | 2 | Draft |
 | US-06 | REQ-NF-02 | — | P0 | 1 | Draft |
+
+---
+
+## Feature: fix-req-overwrite-on-start — Traceability View
+
+| User Story | Requirement | FSPEC | Priority | Phase | Status |
+|---|---|---|---|---|---|
+| US-01 | REQ-PD-01 | — (no behavioral complexity) | P0 | 1 | Draft |
+| US-02, US-03 | REQ-PD-02 | — | P0 | 1 | Draft |
+| US-01 | REQ-PD-03 | — | P1 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-PD-04 | — | P0 | 1 | Draft |
+| US-01 | REQ-WS-01 | — | P0 | 1 | Draft |
+| US-02 | REQ-WS-02 | — | P0 | 1 | Draft |
+| US-01 | REQ-WS-03 | — | P0 | 1 | Draft |
+| US-01 | REQ-WS-04 | — | P0 | 1 | Draft |
+| US-01 | REQ-WS-05 | — | P0 | 1 | Draft |
+| US-03 | REQ-ER-01 | — | P0 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-ER-02 | — | P1 | 1 | Draft |
+| US-01 | REQ-ER-03 | — | P0 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-NF-01 | — | P1 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-NF-02 | — | P0 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-NF-03 | — | P0 | 1 | Draft |
+| US-01, US-02, US-03 | REQ-NF-04 | — | P1 | 1 | Draft |
 
 ---
 
