@@ -8,7 +8,7 @@
 | **Requirements** | [REQ-fix-req-overwrite-on-start.md](REQ-fix-req-overwrite-on-start.md) v3.0 |
 | **Date** | 2026-04-10 |
 | **Author** | Engineer |
-| **Status** | Draft |
+| **Status** | In Review |
 
 ---
 
@@ -36,6 +36,8 @@ No new runtime dependencies. All changes use the existing project stack.
 ```
 ptah/
 ├── src/
+│   ├── services/
+│   │   └── filesystem.ts              # UPDATED: NodeFileSystem.exists() catches ENOENT only
 │   └── orchestrator/
 │       ├── phase-detector.ts          # NEW: PhaseDetector interface + DefaultPhaseDetector
 │       └── temporal-orchestrator.ts   # UPDATED: add phaseDetector dep, update startNewWorkflow
@@ -132,8 +134,8 @@ export interface PhaseDetector {
 
 **Design rationale:**
 - Throws are intentionally not caught inside `detect()` so that `TemporalOrchestrator.startNewWorkflow()` can handle I/O failures per REQ-ER-03 (log + Discord reply + no workflow start).
-- `NodeFileSystem.exists()` internally catches all errors and returns `false`, so in production I/O failures will silently behave as "file not found" and fall back to `req-creation`. This is an accepted trade-off documented in REQ-PD-01/02 Out of Scope (pathological edge cases excluded) and is consistent with the prohibition on extending `FileSystem`.
-- `FakeFileSystem` in tests can be configured to throw from `exists()` (via a new `existsError` field), enabling REQ-ER-03 test coverage despite the `NodeFileSystem` limitation.
+- `NodeFileSystem.exists()` is updated within this TSPEC to selectively catch only `ENOENT` errors (file or directory genuinely not found) and propagate all other errors (e.g., `EACCES`, `EIO`). This is not an extension of the `FileSystem` interface — the interface signature is unchanged. This correction enables REQ-ER-03 to be satisfied in production: a real I/O error propagates out of `detect()` and is caught by `startNewWorkflow()`'s try/catch, which logs the error and posts a Discord reply. See §4.4 for the implementation.
+- `FakeFileSystem` in tests can be configured to throw from `exists()` (via a new `existsError` field), enabling REQ-ER-03 coverage in unit tests without requiring a real permission-denied filesystem state.
 
 ### 4.3 Concrete Implementation: `DefaultPhaseDetector`
 
@@ -222,7 +224,28 @@ export class DefaultPhaseDetector implements PhaseDetector {
 }
 ```
 
-### 4.4 Updated: `TemporalOrchestratorDeps`
+### 4.4 Updated: `NodeFileSystem.exists()` in `src/services/filesystem.ts`
+
+`NodeFileSystem.exists()` currently catches all errors and returns `false`. The updated implementation catches only `ENOENT` (file or directory genuinely absent), propagating real I/O errors so that `DefaultPhaseDetector.detect()` and `TemporalOrchestrator.startNewWorkflow()` can surface them to the user per REQ-ER-03:
+
+```typescript
+async exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(path.resolve(this._cwd, filePath));
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return false;  // file/dir genuinely absent
+    throw err;                            // propagate real I/O errors (EACCES, EIO, etc.)
+  }
+}
+```
+
+The `FileSystem` interface is untouched — same method signature, no new methods. No other methods in `NodeFileSystem` are changed. Existing integration tests for `exists()` (nonexistent path → `false`; existing file → `true`; existing dir → `true`) continue to pass unchanged.
+
+---
+
+### 4.5 Updated: `TemporalOrchestratorDeps`
 
 **File:** `ptah/src/orchestrator/temporal-orchestrator.ts`
 
@@ -253,7 +276,7 @@ private readonly phaseDetector: PhaseDetector;
 this.phaseDetector = deps.phaseDetector;
 ```
 
-### 4.5 Updated: `TemporalOrchestrator.startNewWorkflow()`
+### 4.6 Updated: `TemporalOrchestrator.startNewWorkflow()`
 
 Replace the existing `startNewWorkflow` private method with:
 
@@ -309,7 +332,7 @@ private async startNewWorkflow(slug: string, message: ThreadMessage): Promise<vo
 
 Note: The import `PhaseDetectionResult` must also be added at the top of the file.
 
-### 4.6 Composition Root Update: `bin/ptah.ts`
+### 4.7 Composition Root Update: `bin/ptah.ts`
 
 In the `start` case, after the existing `featureResolver` instantiation line, add:
 
@@ -370,7 +393,7 @@ Phase detection: slug=<slug> lifecycle=<lifecycle> reqPresent=<bool> overviewPre
 |----------|-----------|----------|
 | `FileSystem.exists()` returns `false` for all paths | `DefaultPhaseDetector` | Normal — resolves to `req-creation` |
 | `FileSystem.exists()` throws (FakeFileSystem in tests) | `DefaultPhaseDetector` → propagates | `startNewWorkflow()` catches; logs error; posts Discord reply with slug + `"transient error during phase detection"`; does NOT start workflow |
-| `FileSystem.exists()` throws (NodeFileSystem in production) | N/A | `NodeFileSystem.exists()` internally swallows all errors and returns `false`. I/O errors are NOT surfaced in production. This is an accepted trade-off per REQ-PD-01/02 (pathological edge cases out of scope) and the prohibition on extending `FileSystem`. |
+| `FileSystem.exists()` throws real I/O error (NodeFileSystem in production) | `DefaultPhaseDetector` → propagates | `NodeFileSystem.exists()` (updated in this TSPEC — see §4.4) catches only `ENOENT`; all other errors (e.g., `EACCES`, `EIO`) propagate out of `detect()` and are caught by `startNewWorkflow()`'s try/catch, which logs the error and posts a Discord reply. REQ-ER-03 is satisfied in production. |
 | Cross-lifecycle inconsistency (Cases A, B, C, H) | `DefaultPhaseDetector` | Logs warning with slug + both paths; continues with resolved result per general rule |
 | `WorkflowExecutionAlreadyStartedError` from Temporal | `TemporalOrchestrator.startNewWorkflow()` | Posts "Workflow already running for `<slug>`" in thread (existing behavior preserved) |
 | Other `startWorkflowForFeature` error | `TemporalOrchestrator.startNewWorkflow()` | Posts "Failed to start workflow for `<slug>`. Please try again." (existing behavior preserved) |
@@ -466,7 +489,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
 | 2 | REQ present in `backlog` only → returns `req-review`, `backlog` | REQ-WS-01, REQ-PD-01 | unit |
 | 3 | Overview only in `in-progress`, no REQ → returns `req-creation`, `in-progress` | REQ-WS-02, REQ-PD-02 | unit |
 | 4 | Overview only in `backlog`, no REQ → returns `req-creation`, `backlog` | REQ-WS-02 | unit |
-| 5 | Neither REQ nor overview anywhere → returns `req-creation` | REQ-WS-02 | unit |
+| 5 | Neither REQ nor overview anywhere → returns `req-creation`, `in-progress` (covers REQ-NF-02 scenario 4 "PM Phase 0 bootstrap not disrupted" [REQ-WS-02, REQ-PD-04]; the read-only invariant — zero write/delete/rename operations — is additionally asserted in test #9) | REQ-WS-02, REQ-NF-02, REQ-PD-04 | unit |
 | 6 | Case B (overview in `in-progress`, REQ+overview in `backlog`) → `backlog`, `req-review`, warning containing slug + both paths | REQ-PD-03 | unit |
 | 7 | Case C (REQ in both folders) → `in-progress`, `req-review`, warning containing slug + both paths | REQ-PD-03 | unit |
 | 8 | Case H (overview in both folders, no REQ) → `in-progress`, `req-creation`, warning containing slug + both paths | REQ-PD-03 | unit |
@@ -489,6 +512,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
 |---|-------------|-----|------|
 | 16 | `resolveNextPhase()` with sequential config never returns a phase at array index lower than the input phase (REQ-WS-06a) | REQ-WS-06 | unit |
 | 17 | `ptah.workflow.yaml`: no phase at index ≥ index of `req-review` has a `transition` pointing to `req-creation` (REQ-WS-06b) | REQ-WS-06 | unit |
+| 18 | `resolveNextPhase()` walked forward from `req-review` in a sequential config that includes `req-creation` before `req-review`: `req-creation` never appears in the resulting phase sequence; and the sequence from `req-review` onward is identical to the suffix of the full sequence starting from `req-creation` with `req-creation` omitted (REQ-WS-04 activity-sequence AC) | REQ-WS-04 | unit |
 
 ---
 
@@ -503,7 +527,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
 | REQ-WS-01 | `DefaultPhaseDetector.detect()` → `startAtPhase: "req-review"` → `startWorkflowForFeature(startAtPhase)` | When `inProgressReq || backlogReq`, returns `"req-review"`; passed to `startWorkflowForFeature` |
 | REQ-WS-02 | `DefaultPhaseDetector.detect()` → `startAtPhase: "req-creation"` | When no REQ found, returns `"req-creation"` |
 | REQ-WS-03 | `TemporalOrchestrator.startNewWorkflow()` + `FakePhaseDetector` (unit test) | Test verifies `startFeatureWorkflow` receives `startAtPhase: "req-review"` and `FakeFileSystem` records zero write operations |
-| REQ-WS-04 | Existing `featureLifecycleWorkflow` behavior (no change) | `buildInitialWorkflowState` sets `currentPhaseId = "req-review"` when `startAtPhase = "req-review"`; subsequent phase progression is unchanged |
+| REQ-WS-04 | `resolveNextPhase()` (test #18 in `feature-lifecycle.test.ts`) + existing `buildInitialWorkflowState` test | Test #18 walks `resolveNextPhase()` forward from `req-review` in a sequential config and asserts: (a) `req-creation` never appears in the resulting sequence; (b) the sequence from `req-review` onward equals the suffix of the full sequence from `req-creation` with `req-creation` omitted. The existing `buildInitialWorkflowState` test ("starts at the specified phase when startAtPhase is provided") at `feature-lifecycle.test.ts:342` verifies that `currentPhaseId` is set to the requested start phase. Together these cover the REQ-WS-04 activity-sequence AC. |
 | REQ-WS-05 | `TemporalOrchestrator.handleMessage()` Branch A (no change) | Ad-hoc path checked before `startNewWorkflow` — `phaseDetector.detect()` is never called for running workflows |
 | REQ-WS-06 | `resolveNextPhase()` unit test (a) + `ptah.workflow.yaml` config integrity test (b) | (a) Pure function test with sequential config; (b) YAML loaded and inspected for backward transitions |
 | REQ-ER-02 | `DefaultPhaseDetector.detect()` — `logger.info()` call | Structured key-value message logged after every successful detection |
@@ -518,6 +542,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
 
 | Integration Point | File | Change Type | Notes |
 |------------------|------|-------------|-------|
+| `NodeFileSystem.exists()` | `src/services/filesystem.ts:36-43` | Behavior change | Catch only `ENOENT`; propagate all other errors to enable REQ-ER-03 in production (see §4.4) |
 | `TemporalOrchestratorDeps` | `temporal-orchestrator.ts:68-78` | Add field | Add `phaseDetector: PhaseDetector` |
 | `TemporalOrchestrator` constructor | `temporal-orchestrator.ts:126-136` | Add assignment | `this.phaseDetector = deps.phaseDetector` |
 | `TemporalOrchestrator.startNewWorkflow()` | `temporal-orchestrator.ts:399-428` | Replace body | Phase detection before workflow start |
@@ -535,7 +560,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
 
 None. All REQ-level decisions have been resolved in REQ v3.0:
 
-- **Q-01 resolved:** `FileSystem.exists()` is sufficient; no interface extension required. Accepted trade-off: production I/O errors silently fall back to `req-creation`.
+- **Q-01 resolved:** `FileSystem.exists()` is sufficient; no interface extension required. `NodeFileSystem.exists()` is updated to catch only `ENOENT` and propagate all other errors, satisfying REQ-ER-03 in production without any interface change (§4.4). No REQ update is required.
 - **Q-02 resolved:** `FeatureResolver` interface must not be modified. `DefaultPhaseDetector` makes independent `fs.exists()` calls per path. `FeatureResolver` is not used by `PhaseDetector`.
 - **REQ-WS-06:** Two-part test — `resolveNextPhase()` algorithm unit test + `ptah.workflow.yaml` config integrity test.
 - **TemporalOrchestratorDeps extension:** Expected and pre-authorized in REQ-PD-03 Scope Boundaries.
@@ -547,3 +572,4 @@ None. All REQ-level decisions have been resolved in REQ v3.0:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-10 | Engineer | Initial TSPEC for fix-req-overwrite-on-start |
+| 1.1 | 2026-04-10 | Engineer | Addressed product-manager cross-review findings. **F-01 (High):** Updated `NodeFileSystem.exists()` to catch only `ENOENT` and propagate real I/O errors (EACCES, EIO, etc.), satisfying REQ-ER-03 in production without extending the `FileSystem` interface (option b from PM review). Added §4.4 with implementation; updated §3 project structure, §4.2 design rationale, §6 error handling row 3, §9 integration points, and §10 open questions accordingly. **F-02 (Medium):** Added test #18 to §7.5 for REQ-WS-04 activity-sequence AC (`resolveNextPhase()` walked forward from `req-review`); updated §8 REQ-WS-04 mapping to cite test #18 alongside the existing `buildInitialWorkflowState` test. **F-03 (Low):** Annotated test #5 description to explicitly reference REQ-NF-02 scenario 4, REQ-PD-04, and the link to test #9's read-only assertion. |
