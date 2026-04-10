@@ -34,19 +34,52 @@ const NOTIFICATION_LABELS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Snowflake detection — Discord snowflakes are numeric strings (17-20 digits)
+// ---------------------------------------------------------------------------
+
+const SNOWFLAKE_PATTERN = /^\d{17,20}$/;
+
+// ---------------------------------------------------------------------------
 // Activity factory
 // ---------------------------------------------------------------------------
 
 export function createNotificationActivities(deps: NotificationActivityDeps) {
   const { discordClient, logger, config } = deps;
 
+  // Cache resolved channel IDs (name → snowflake) to avoid repeated lookups
+  const channelIdCache = new Map<string, string>();
+
+  async function resolveToSnowflake(channelNameOrId: string): Promise<string> {
+    // Already a snowflake — use directly
+    if (SNOWFLAKE_PATTERN.test(channelNameOrId)) {
+      return channelNameOrId;
+    }
+
+    // Check cache
+    const cached = channelIdCache.get(channelNameOrId);
+    if (cached) return cached;
+
+    // Resolve name → ID via Discord API
+    const resolved = await discordClient.findChannelByName(
+      config.discord.server_id,
+      channelNameOrId,
+    );
+    if (!resolved) {
+      throw new Error(`Channel '${channelNameOrId}' not found in server ${config.discord.server_id}`);
+    }
+
+    channelIdCache.set(channelNameOrId, resolved);
+    return resolved;
+  }
+
   async function sendNotification(input: NotificationInput): Promise<void> {
     const { type, featureSlug, phaseId, agentId, message, workflowId } = input;
 
     const label = NOTIFICATION_LABELS[type] ?? "Notification";
 
-    // Determine target channel based on notification type
-    const channelId = resolveChannelId(type, config);
+    // Determine target channel and resolve to snowflake ID
+    const channelNameOrId = resolveChannelName(type, config);
+    const channelId = await resolveToSnowflake(channelNameOrId);
 
     const formattedMessage = formatNotification({
       label,
@@ -72,7 +105,7 @@ export function createNotificationActivities(deps: NotificationActivityDeps) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function resolveChannelId(type: string, config: PtahConfig): string {
+function resolveChannelName(type: string, config: PtahConfig): string {
   // Route to appropriate Discord channel based on notification type
   switch (type) {
     case "question":
