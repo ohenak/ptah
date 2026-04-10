@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-fix-req-overwrite-on-start |
 | **Parent Document** | [REQ-017 Temporal Integration Completion](../../completed/017-temporal-integration-completion/017-REQ-temporal-integration-completion.md) |
-| **Version** | 1.0 |
+| **Version** | 2.0 |
 | **Date** | 2026-04-10 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -20,7 +20,14 @@ This document specifies a **bug fix** for a data-loss defect in the Discord-trig
 
 The fix makes the workflow start phase-aware so existing REQ documents are detected, preserved, and routed into the review cycle instead of regenerated from scratch.
 
-This is intentionally scoped as a minimal, targeted bug fix. Any broader changes to the Discord command surface (new mention identities, new command verbs, backlog bootstrap) are tracked separately in `REQ-orchestrator-discord-commands`.
+This is intentionally scoped as a minimal, targeted bug fix. The scope is restricted to two user scenarios:
+
+1. A REQ already exists → start at `req-review` instead of `req-creation`.
+2. Only an overview exists → start at `req-creation` as today (unchanged).
+
+Any broader changes to the Discord command surface (new mention identities, new command verbs, backlog bootstrap, or missing-folder error handling) are tracked separately in `REQ-orchestrator-discord-commands`. In particular, the "feature folder missing" error path (former US-03 / REQ-ER-01) is **out of scope** for this fix to avoid breaking the existing PM skill Phase 0 bootstrap flow, which creates the feature folder during `req-creation` execution.
+
+> **Parent confirmation (Q-03):** REQ-017 (Temporal Integration Completion) is the correct parent. This fix targets the Discord routing layer that REQ-017 formalized via `startNewWorkflow`. REQ-015 introduced the Temporal foundation, but the specific `startNewWorkflow` path with unconditional `req-creation` was formalized in REQ-017.
 
 ---
 
@@ -39,19 +46,10 @@ This is intentionally scoped as a minimal, targeted bug fix. Any broader changes
 
 | Attribute | Detail |
 |-----------|--------|
-| **Description** | A user has created `docs/backlog/<slug>/overview.md` (either manually or via the future backlog-bootstrap flow) but has not yet written a REQ. They post to Discord to kick off the workflow. |
+| **Description** | A user has created `docs/backlog/<slug>/overview.md` (either manually or via the PM skill's Phase 0 bootstrap) but has not yet written a REQ. They post to Discord to kick off the workflow. |
 | **Goals** | Have the PM agent generate the REQ from the overview and continue through the full lifecycle. |
 | **Pain points** | This is the current happy path and must continue to work unchanged. |
 | **Key needs** | When no REQ exists but an overview does, the workflow starts at `req-creation` as today. |
-
-### US-03: User starts a workflow for a feature that does not exist on disk
-
-| Attribute | Detail |
-|-----------|--------|
-| **Description** | A user posts to Discord mentioning an agent in a thread whose name resolves to a slug for which no feature folder exists in `docs/backlog/` or `docs/in-progress/`. |
-| **Goals** | Receive a clear, actionable error message explaining the feature was not found and what to do next. |
-| **Pain points** | Today, the workflow starts anyway and runs against an empty context, producing low-quality output and polluting the branch with commits against a non-existent feature. |
-| **Key needs** | The orchestrator detects the missing folder, does not start a workflow, and replies in the Discord thread with a specific error. |
 
 ---
 
@@ -63,7 +61,7 @@ This is intentionally scoped as a minimal, targeted bug fix. Any broader changes
 |----|-----------|-----------------|
 | A-01 | `TemporalClient.startFeatureWorkflow` already accepts a `startAtPhase` argument and the `featureLifecycleWorkflow` correctly honors it for the `req-review` phase. | If the workflow cannot actually resume at `req-review` without first running `req-creation`, the fix requires deeper workflow changes and must be escalated. |
 | A-02 | REQ files on disk always follow the naming convention `REQ-<slug>.md` in the feature folder (backlog or in-progress), with no other prefix. | If legacy features use different naming, the detection logic must be widened. |
-| A-03 | Feature folder resolution (backlog vs in-progress) is already handled by the existing workflow and this fix only needs to read both locations. | If lifecycle promotion moves the REQ mid-start, detection could see a stale state. |
+| A-03 | Feature folder resolution (backlog vs in-progress) is already handled by the existing `FeatureResolver` abstraction. The fix extends this resolver rather than introducing a parallel detection path. | If `FeatureResolver` does not support extension, a new abstraction is needed, increasing scope. |
 | A-04 | The Discord trigger flow currently routes every new mention-based workflow start through `startNewWorkflow` in `temporal-orchestrator.ts`. | If additional entry points exist, they must receive the same fix. |
 
 ### 3.2 Constraints
@@ -74,6 +72,7 @@ This is intentionally scoped as a minimal, targeted bug fix. Any broader changes
 | C-02 | The fix must not modify the PM agent's behavior when it is legitimately asked to create a REQ from an overview. | Preserving US-02 (the current happy path). |
 | C-03 | The fix must be testable via an integration test that exercises both real filesystem layouts (overview-only and REQ-present) without requiring a live Temporal server. | Project test-pyramid standards. |
 | C-04 | No existing test in the ptah test suite may regress as a result of this change. | Project quality gate. |
+| C-05 | The fix must reuse the existing `FeatureResolver` abstraction (`ptah/src/orchestrator/feature-resolver.ts`) for slug-to-folder resolution. Any new REQ-existence checks must accept a `FileSystem` dependency through constructor injection and must not instantiate a filesystem client directly. | Avoids duplicate detection paths drifting from `FeatureResolver`; consistent with the project's dependency injection pattern. |
 
 ---
 
@@ -83,7 +82,6 @@ This is intentionally scoped as a minimal, targeted bug fix. Any broader changes
 |---------|--------|----------------|----------|--------|
 | REQ preservation | Rate of hand-authored REQ files overwritten by workflow start | Manual audit of git history for `REQ-<slug>.md` changes authored by the `pm` agent within the first commit of a workflow run | 100% (current bug) | 0% |
 | Phase accuracy | Percentage of Discord-triggered workflow starts that begin at the correct phase given on-disk state | Integration test coverage of both fixtures (overview-only, REQ-present) | 50% (always `req-creation`) | 100% |
-| Error clarity | Percentage of "feature not found" starts that produce an actionable Discord reply instead of a failed workflow | Integration test | 0% | 100% |
 
 ---
 
@@ -101,12 +99,35 @@ Requirements are grouped by functional domain.
 
 ### 5.1 Phase Detection (PD)
 
+**Scope note:** Phase detection is restricted to the **active lifecycle folders** (`docs/in-progress/` and `docs/backlog/`). If a slug resolves only to `docs/completed/<NNN>-<slug>/`, the orchestrator treats it as having no active-lifecycle folder: `reqPresent=false`, `overviewPresent=false`. The existing Temporal workflow-id uniqueness constraint then prevents a duplicate workflow from starting for an already-completed feature. This behavior is intentional and consistent with the "minimal fix" scope.
+
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source Scenarios | Dependencies |
 |----|-------|-------------|---------------------|----------|-------|-----------------|--------------|
-| REQ-PD-01 | Detect existing REQ in feature folder | Before starting any new workflow for a slug, the orchestrator must inspect the filesystem to determine whether a Requirements Document already exists. Detection must check both `docs/in-progress/<slug>/REQ-<slug>.md` and `docs/backlog/<slug>/REQ-<slug>.md`, in that order. | WHO: As the orchestrator GIVEN: a Discord trigger resolves to slug `<slug>` WHEN: I prepare to start a new workflow THEN: I check `docs/in-progress/<slug>/REQ-<slug>.md` first and `docs/backlog/<slug>/REQ-<slug>.md` second, and record whether a REQ exists on disk | P0 | 1 | [US-01] | — |
-| REQ-PD-02 | Detect existing overview in feature folder | The orchestrator must also determine whether `overview.md` exists in the resolved feature folder. Detection must check both lifecycle locations in the same order as REQ-PD-01. | WHO: As the orchestrator GIVEN: a Discord trigger resolves to slug `<slug>` WHEN: I prepare to start a new workflow THEN: I check `docs/in-progress/<slug>/overview.md` first and `docs/backlog/<slug>/overview.md` second, and record whether an overview exists on disk | P0 | 1 | [US-02], [US-03] | — |
-| REQ-PD-03 | Feature folder resolution is deterministic | When a REQ is present in one lifecycle folder and only an overview is present in the other (an inconsistent state), the orchestrator must prefer the `in-progress` location and log a warning. | WHO: As the orchestrator GIVEN: `docs/in-progress/<slug>/REQ-<slug>.md` exists AND `docs/backlog/<slug>/overview.md` also exists WHEN: I resolve the feature folder THEN: I choose `in-progress`, log a warning naming both paths, and proceed using the `in-progress` artifacts | P1 | 1 | [US-01] | [REQ-PD-01], [REQ-PD-02] |
-| REQ-PD-04 | No destructive side effects during detection | Phase detection must be read-only. No file may be created, moved, deleted, or modified during detection. | WHO: As the orchestrator GIVEN: a Discord trigger WHEN: I run phase detection THEN: the filesystem is byte-for-byte identical before and after detection | P0 | 1 | [US-01], [US-02], [US-03] | [REQ-PD-01], [REQ-PD-02] |
+| REQ-PD-01 | Detect existing REQ in feature folder | Before starting any new workflow for a slug, the orchestrator must inspect the active lifecycle filesystem to determine whether a Requirements Document already exists. Detection must check both `docs/in-progress/<slug>/REQ-<slug>.md` and `docs/backlog/<slug>/REQ-<slug>.md`, in that order. Completed features (`docs/completed/`) are outside this detection scope. **A REQ is considered to exist when `REQ-<slug>.md` is a regular file (not a directory or symlink to a non-file) with a size greater than zero bytes.** | WHO: As the orchestrator GIVEN: a Discord trigger resolves to slug `<slug>` WHEN: I prepare to start a new workflow THEN: I check `docs/in-progress/<slug>/REQ-<slug>.md` first and `docs/backlog/<slug>/REQ-<slug>.md` second, record whether a REQ exists on disk (regular file, size > 0), and treat any slug that resolves only to `docs/completed/` as having no REQ | P0 | 1 | [US-01] | — |
+| REQ-PD-02 | Detect existing overview in feature folder | The orchestrator must determine whether `overview.md` exists by checking both active lifecycle folders in the same order as REQ-PD-01: `docs/in-progress/<slug>/overview.md` first, then `docs/backlog/<slug>/overview.md`. Completed features are outside this detection scope. **An overview is considered to exist when `overview.md` is a regular file (not a directory or symlink to a non-file) with a size greater than zero bytes.** | WHO: As the orchestrator GIVEN: a Discord trigger resolves to slug `<slug>` WHEN: I prepare to start a new workflow THEN: I check `docs/in-progress/<slug>/overview.md` first and `docs/backlog/<slug>/overview.md` second, and record whether an overview exists on disk (regular file, size > 0) | P0 | 1 | [US-02] | — |
+| REQ-PD-03 | Feature folder resolution is deterministic | When detection finds artifacts in more than one lifecycle folder, or finds a REQ without an accompanying overview, the orchestrator must apply the following exhaustive decision table to choose one resolved folder. A warning is logged for all inconsistent-state cases (B, C, D). | See decision table and acceptance criteria below. | P1 | 1 | [US-01] | [REQ-PD-01], [REQ-PD-02] |
+| REQ-PD-04 | No destructive side effects during detection | Phase detection must be read-only. No file may be created, moved, deleted, or modified during detection. | WHO: As the orchestrator GIVEN: a Discord trigger WHEN: I run phase detection THEN: the filesystem is byte-for-byte identical before and after detection | P0 | 1 | [US-01], [US-02] | [REQ-PD-01], [REQ-PD-02] |
+
+#### REQ-PD-03: Decision Table
+
+The resolved folder is chosen by scanning in-progress first, then backlog. "REQ" means `REQ-<slug>.md` is present; "overview" means `overview.md` is present; "—" means absent.
+
+| Case | `docs/in-progress/<slug>/` | `docs/backlog/<slug>/` | Resolved Folder | Start Phase | State |
+|------|---------------------------|----------------------|-----------------|-------------|-------|
+| A | REQ + overview | overview only | `in-progress` | `req-review` | Inconsistent — log warning naming both paths |
+| B | overview only | REQ + overview | `backlog` | `req-review` | Inconsistent — log warning naming both paths |
+| C | REQ (any) | REQ (any) | `in-progress` | `req-review` | Inconsistent — log warning naming both paths |
+| D | — (nothing or empty) | REQ (no overview required) | `backlog` | `req-review` | Normal (PM can hand-draft a REQ without first writing overview) |
+| E | overview only | — (nothing) | `in-progress` | `req-creation` | Normal |
+| F | — (nothing) | overview only | `backlog` | `req-creation` | Normal |
+| G | REQ + overview | — (nothing) | `in-progress` | `req-review` | Normal |
+| H | overview only | overview only | `in-progress` | `req-creation` | Mildly inconsistent (duplicate overview) — log warning |
+
+**General resolution rule (covers all cases):** The resolved folder is the first folder (in-progress → backlog order) that contains a REQ. If no REQ is found, the resolved folder is the first folder (in-progress → backlog order) that contains an overview.
+
+**Acceptance criteria for REQ-PD-03:**
+
+WHO: As the orchestrator GIVEN: artifacts exist in more than one lifecycle folder or a REQ exists without an overview WHEN: I resolve the feature folder THEN: I apply the decision table above to choose exactly one resolved folder, for all inconsistent-state cases (A, B, C, H) emit a warning log entry that contains as literal substrings the slug and both the `docs/in-progress/<slug>/` path and the `docs/backlog/<slug>/` path, and proceed using only the artifacts from the resolved folder.
 
 ### 5.2 Workflow Start (WS)
 
@@ -114,17 +135,18 @@ Requirements are grouped by functional domain.
 |----|-------|-------------|---------------------|----------|-------|-----------------|--------------|
 | REQ-WS-01 | Start at req-review when REQ exists | When phase detection finds an existing REQ on disk, the orchestrator must start the feature lifecycle workflow at phase `req-review`, passing `startAtPhase: "req-review"` to `TemporalClient.startFeatureWorkflow`. | WHO: As the orchestrator GIVEN: `REQ-<slug>.md` exists on disk for slug `<slug>` WHEN: a Discord trigger requests a new workflow THEN: I call `startFeatureWorkflow` with `startAtPhase: "req-review"` and the workflow begins at that phase | P0 | 1 | [US-01] | [REQ-PD-01] |
 | REQ-WS-02 | Start at req-creation when only overview exists | When phase detection finds an overview but no REQ, the orchestrator must start the workflow at phase `req-creation`, matching the current behavior. | WHO: As the orchestrator GIVEN: `overview.md` exists on disk for slug `<slug>` AND no `REQ-<slug>.md` exists WHEN: a Discord trigger requests a new workflow THEN: I call `startFeatureWorkflow` with `startAtPhase: "req-creation"` (or equivalent default) | P0 | 1 | [US-02] | [REQ-PD-01], [REQ-PD-02] |
-| REQ-WS-03 | Never invoke req-creation when REQ exists | When the workflow is started at `req-review`, the `req-creation` phase activity must not run under any circumstance. This invariant must be preserved across retries, recovery, and any failure of the review cycle. | WHO: As the orchestrator GIVEN: the workflow was started at `req-review` because a REQ existed WHEN: the workflow executes THEN: the `req-creation` activity is never called and `REQ-<slug>.md` is not written, modified, moved, or deleted by the PM agent | P0 | 1 | [US-01] | [REQ-WS-01] |
-| REQ-WS-04 | Preserve workflow continuation semantics | Starting at `req-review` must still route through all subsequent phases (`req-approved`, `fspec-creation`, ..., `done`) using the same configuration as a workflow started at `req-creation`. The only observable difference is the skipped creation activity. | WHO: As the orchestrator GIVEN: a workflow started at `req-review` WHEN: the review phase completes successfully THEN: the workflow transitions to `req-approved` and continues through the remaining phases identically to a workflow that started at `req-creation` | P0 | 1 | [US-01] | [REQ-WS-01] |
+| REQ-WS-03 | Never pass req-creation when REQ exists (orchestrator invariant) | When `startNewWorkflow` detects an existing REQ, the `startAtPhase` argument passed to `TemporalClient.startFeatureWorkflow` must be exactly `"req-review"` and no write operation may be issued against `REQ-<slug>.md` during that call. This invariant is verifiable via a fake `TemporalClient` and fake `FileSystem` in a unit or integration test. | WHO: As the orchestrator GIVEN: `REQ-<slug>.md` exists on disk WHEN: `startNewWorkflow` is called THEN: `startFeatureWorkflow` receives `startAtPhase: "req-review"` AND the fake `FileSystem` records zero write, delete, or rename operations on `REQ-<slug>.md` | P0 | 1 | [US-01] | [REQ-WS-01] |
+| REQ-WS-04 | Preserve workflow continuation semantics | Starting at `req-review` must still route through all subsequent phases (`req-approved`, `fspec-creation`, ..., `done`) in the same sequence as a workflow that completed `req-creation`. The only observable difference is that the `req-creation` activity does not appear in the activity sequence. | WHO: As the orchestrator GIVEN: a workflow started at `req-review` WHEN: the review phase completes successfully THEN: the workflow invokes the `req-review` activity first and then the same sequence of activities as a workflow that started at `req-creation` and reached `req-review`, with `req-creation` absent from the sequence | P0 | 1 | [US-01] | [REQ-WS-01] |
 | REQ-WS-05 | Preserve existing agent-mention routing | The fix must not alter the existing semantics of agent mentions (`@pm`, `@eng`, `@qa`) for ad-hoc directives against already-running workflows. Only the `startNewWorkflow` path is modified. | WHO: As a user GIVEN: a workflow is already running for slug `<slug>` WHEN: I post `@pm please clarify REQ-DI-01` in the thread THEN: the existing ad-hoc directive routing behaves identically to today | P0 | 1 | [US-01] | — |
+| REQ-WS-06 | Workflow definition must not loop back to req-creation (workflow-level invariant) | The `featureLifecycleWorkflow` state machine definition must not include any transition from `req-review` or any later phase back to `req-creation`. This invariant is verifiable by static inspection of the workflow definition or a targeted unit test of the state machine. | WHO: As the system GIVEN: a `featureLifecycleWorkflow` instance that was started at `req-review` or has advanced past `req-creation` WHEN: any activity in the workflow completes or retries THEN: no transition to `req-creation` is possible from the current state | P0 | 1 | [US-01] | [REQ-WS-03] |
 
 ### 5.3 Error Reporting (ER)
 
 | ID | Title | Description | Acceptance Criteria | Priority | Phase | Source Scenarios | Dependencies |
 |----|-------|-------------|---------------------|----------|-------|-----------------|--------------|
-| REQ-ER-01 | Reply when feature folder is missing | When phase detection finds neither an overview nor a REQ for the resolved slug in either lifecycle folder, the orchestrator must not start a workflow and must reply in the invoking Discord thread with an error that names the slug and the expected paths. | WHO: As a user GIVEN: neither `docs/backlog/<slug>/` nor `docs/in-progress/<slug>/` exists WHEN: I post a mention that resolves to slug `<slug>` THEN: the orchestrator posts a reply naming `<slug>` and listing the two expected paths, and does NOT call `startFeatureWorkflow` | P0 | 1 | [US-03] | [REQ-PD-01], [REQ-PD-02] |
-| REQ-ER-02 | Log phase detection decision | Every successful phase-detection decision must be logged with the slug, the resolved lifecycle folder, the detected artifacts, and the chosen `startAtPhase`. | WHO: As an operator GIVEN: the orchestrator starts a new workflow WHEN: phase detection completes THEN: a structured log entry contains `slug`, `lifecycle`, `reqPresent`, `overviewPresent`, and `startAtPhase` | P1 | 1 | [US-01], [US-02], [US-03] | [REQ-PD-01], [REQ-PD-02] |
-| REQ-ER-03 | Surface infrastructure failures distinctly | If filesystem access fails during phase detection (permissions, I/O error), the orchestrator must not silently fall back to `req-creation`. It must log the error and reply in Discord with a transient error notice so the user knows to retry. | WHO: As a user GIVEN: phase detection cannot read the feature folder due to an I/O error WHEN: I trigger a workflow start THEN: I see a Discord reply indicating a transient error and the workflow is NOT started | P0 | 1 | [US-01] | [REQ-PD-01] |
+| REQ-ER-01 | [DEPRECATED] Reply when feature folder is missing | **Deprecated in v1.1.** Removed from scope to avoid breaking the PM skill's Phase 0 bootstrap flow, which creates the feature folder during `req-creation` execution. The missing-folder error path is deferred to `REQ-orchestrator-discord-commands`. When neither REQ nor overview exists for a slug, the orchestrator preserves today's behavior (starts at `req-creation`; the PM skill Phase 0 bootstrap creates the folder and overview). | N/A | — | — | — | — |
+| REQ-ER-02 | Log phase detection decision | Every successful phase-detection decision must be logged with the slug, the resolved lifecycle folder, the detected artifacts, and the chosen `startAtPhase`. "Structured" here means key-value pairs embedded in the message string (e.g., `slug=<slug> lifecycle=<lifecycle> reqPresent=<bool> overviewPresent=<bool> startAtPhase=<phase>`). The existing `Logger` interface (string messages only) is sufficient; no interface extension is required. | WHO: As an operator GIVEN: the orchestrator starts a new workflow WHEN: phase detection completes THEN: a log entry is emitted via the existing `Logger` interface (not `console.log`) containing the key-value fields `slug`, `lifecycle`, `reqPresent`, `overviewPresent`, and `startAtPhase` embedded in the message string | P1 | 1 | [US-01], [US-02] | [REQ-PD-01], [REQ-PD-02] |
+| REQ-ER-03 | Surface infrastructure failures distinctly | If filesystem access fails during phase detection (permissions, I/O error), the orchestrator must not silently fall back to `req-creation`. It must log the error and reply in the invoking Discord thread (not the parent channel) with a transient error notice so the user knows to retry. | WHO: As a user GIVEN: phase detection cannot read the feature folder due to an I/O error WHEN: I trigger a workflow start THEN: I receive a Discord reply in the invoking thread (not the parent channel) that contains, as literal substrings, the slug and the string `transient error during phase detection`, AND the workflow is NOT started | P0 | 1 | [US-01] | [REQ-PD-01] |
 
 ---
 
@@ -132,10 +154,10 @@ Requirements are grouped by functional domain.
 
 | ID | Title | Description | Acceptance Criteria | Priority | Phase |
 |----|-------|-------------|---------------------|----------|-------|
-| REQ-NF-01 | Phase detection latency | Phase detection (two filesystem stat calls) must add no more than 50 ms to the workflow-start path on a warm cache. | Integration test asserts detection completes under 50 ms on local disk | P1 | 1 |
-| REQ-NF-02 | Test coverage | The fix must be covered by at least one integration test per acceptance scenario: REQ-present → starts at `req-review`; overview-only → starts at `req-creation`; neither → Discord error. | Coverage report shows the three scenarios exercised | P0 | 1 |
+| REQ-NF-01 | [DEPRECATED] Phase detection latency | **Deprecated in v2.0.** Wall-clock assertions at 50 ms resolution are structurally flaky in CI, especially on Windows, on shared runners, and under parallel test execution. Two `fs.stat` calls cannot plausibly approach 50 ms on any supported environment, so this NFR has no defensive value and only flakiness risk. Removed. | N/A | — | — |
+| REQ-NF-02 | Test coverage | The fix must be covered by at least one test per acceptance scenario. The minimum required test matrix is: (1) REQ present in `in-progress` → starts at `req-review` [REQ-WS-01]; (2) REQ present in `backlog` only → starts at `req-review` [REQ-WS-01]; (3) Overview-only (no REQ) → starts at `req-creation` [REQ-WS-02]; (4) Neither REQ nor overview → starts at `req-creation`, PM Phase 0 bootstrap not disrupted [REQ-WS-02]; (5) Inconsistent state (REQ in backlog, overview in in-progress) → resolves to backlog, warning log contains slug and both paths, starts at `req-review` [REQ-PD-03]; (6) Inconsistent state (REQ in both folders) → resolves to in-progress, warning log contains slug and both paths, starts at `req-review` [REQ-PD-03]; (7) I/O error during detection → Discord reply in invoking thread contains slug and `transient error during phase detection`, workflow NOT started [REQ-ER-03]; (8) Read-only guarantee: zero write/delete/rename operations issued against any file during detection [REQ-PD-04]; (9) Ad-hoc directive against running workflow routes through existing ad-hoc path, not through `startNewWorkflow` [REQ-WS-05]. | Coverage report shows all nine scenarios exercised | P0 | 1 |
 | REQ-NF-03 | Backwards compatibility | No public API (Discord message shape, workflow argument shape outside `startAtPhase`, or config file schema) may change as part of this fix. | Existing tests remain green; schema files unchanged | P0 | 1 |
-| REQ-NF-04 | Observability | The structured log entry from REQ-ER-02 must be emitted via the existing logger interface, not via `console.log` directly. | Code review check | P1 | 1 |
+| REQ-NF-04 | Observability | The log entry from REQ-ER-02 must be emitted via the existing `Logger` interface, not via `console.log` directly. | Code review check | P1 | 1 |
 
 ---
 
@@ -143,7 +165,7 @@ Requirements are grouped by functional domain.
 
 | ID | Risk | Likelihood | Impact | Mitigation | Related Requirements |
 |----|------|-----------|--------|------------|---------------------|
-| R-01 | `featureLifecycleWorkflow` does not actually honor `startAtPhase: "req-review"` correctly and re-runs `req-creation` anyway. | Medium | High | Validate the assumption as the first step of implementation: write the REQ-present integration test before any code changes, confirm it reproduces the bug, and only then implement the fix. | [REQ-WS-01], [REQ-WS-03] |
+| R-01 | `featureLifecycleWorkflow` does not actually honor `startAtPhase: "req-review"` correctly and re-runs `req-creation` anyway. | Medium | High | Verification is deferred to the PLAN phase but must be the **first task** in the PLAN: write the failing integration test that reproduces the bug (REQ-present → confirm req-creation still runs), confirm the test fails, then implement the fix and confirm the test passes. This "test-first" ordering is a PLAN-phase hard requirement, not optional. | [REQ-WS-01], [REQ-WS-03] |
 | R-02 | Inconsistent lifecycle state (REQ in `backlog/`, overview in `in-progress/`) is more common than expected, and the deterministic preference in REQ-PD-03 silently masks migration bugs. | Low | Medium | The warning log in REQ-PD-03 makes the inconsistency discoverable. If support volume indicates the warning is insufficient, escalate to a hard error in a follow-up. | [REQ-PD-03] |
 | R-03 | Phase detection races with an in-progress file write from another agent on the same branch. | Low | Low | Discord-triggered workflow starts are serialized per thread by Temporal's workflow-id uniqueness; there is no concurrent writer at start time. | [REQ-PD-04] |
 
@@ -155,21 +177,46 @@ Requirements are grouped by functional domain.
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 10 | REQ-PD-01, REQ-PD-02, REQ-PD-04, REQ-WS-01, REQ-WS-02, REQ-WS-03, REQ-WS-04, REQ-WS-05, REQ-ER-01, REQ-ER-03, REQ-NF-02, REQ-NF-03 |
-| P1 | 4 | REQ-PD-03, REQ-ER-02, REQ-NF-01, REQ-NF-04 |
+| P0 | 12 | REQ-PD-01, REQ-PD-02, REQ-PD-04, REQ-WS-01, REQ-WS-02, REQ-WS-03, REQ-WS-04, REQ-WS-05, REQ-WS-06, REQ-ER-03, REQ-NF-02, REQ-NF-03 |
+| P1 | 3 | REQ-PD-03, REQ-ER-02, REQ-NF-04 |
 | P2 | 0 | — |
+| DEPRECATED | 2 | REQ-ER-01, REQ-NF-01 |
 
-Note: P0 count of 10 covers the functional requirements; non-functional P0s are counted separately.
+**Total active requirements: 15 (12 P0 + 3 P1). REQ-ER-01 and REQ-NF-01 are deprecated and carry no implementation obligation.**
 
 ### By Phase
 
 | Phase | Count | IDs |
 |-------|-------|-----|
-| Phase 1 | 15 | All requirements |
+| Phase 1 | 15 | All active requirements (REQ-PD-01–04, REQ-WS-01–06, REQ-ER-02–03, REQ-NF-02–04) |
 
 ---
 
-## 9. Approval
+## 9. Scope Boundaries
+
+### In Scope
+
+- Phase detection for `docs/in-progress/` and `docs/backlog/` lifecycle folders
+- Routing `startNewWorkflow` to `req-review` when a REQ exists on disk
+- Exhaustive decision table for cross-lifecycle inconsistency
+- Structured (key-value) log entry for each phase-detection decision
+- Infrastructure error surfacing to Discord
+
+### Out of Scope
+
+- Missing-folder Discord error (deferred to `REQ-orchestrator-discord-commands`)
+- Completed-feature re-start prevention beyond Temporal's built-in workflow-id deduplication
+- New Discord command verbs or mention identities
+- Any change to the PM agent's `req-creation` behavior
+- Logger interface extension (existing string-message interface is sufficient)
+
+### Assumptions
+
+See Section 3.1.
+
+---
+
+## 10. Approval
 
 | Role | Name | Date | Status |
 |------|------|------|--------|
@@ -182,6 +229,8 @@ Note: P0 count of 10 covers the functional requirements; non-functional P0s are 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-10 | Product Manager | Initial requirements document (split from the combined orchestrator-discord-commands draft, scoped down to the urgent REQ-overwrite bug fix). |
+| 1.1 | 2026-04-10 | Product Manager | Addressed engineer cross-review findings. F-01: deprecated REQ-ER-01 and dropped US-03 (missing-folder error deferred to orchestrator-discord-commands). F-02: restricted phase detection scope to active lifecycle folders; completed features fall through to Temporal deduplication. F-03: expanded REQ-PD-03 into exhaustive decision table (Cases A–H). F-04: added constraint C-05 requiring FeatureResolver reuse. F-05: fixed REQ-PD-02 description wording. F-06: corrected P0 count to 11. F-07: clarified REQ-ER-02 "structured" logging. Q-03: confirmed REQ-017 parent. Q-04: updated R-01 mitigation to mandate test-first as first PLAN task. Added explicit scope boundaries (Section 9). |
+| 2.0 | 2026-04-10 | Product Manager | Addressed test engineer cross-review findings. TE-F-01: deprecated REQ-NF-01 (latency assertion structurally flaky; wall-clock tests at 50 ms resolution not suitable for CI). TE-F-02: narrowed REQ-WS-04 "identically" to a specific activity-sequence contract; removed the untestable global comparison. TE-F-03: added explicit "exists" definition to REQ-PD-01 and REQ-PD-02 (regular file, size > 0). TE-F-04: split REQ-WS-03 into unit-testable orchestrator invariant (REQ-WS-03) and workflow-definition invariant (new REQ-WS-06). TE-F-05: expanded REQ-NF-02 from 2 scenarios to the full 9-scenario test matrix covering all functional requirements. TE-F-06: pinned REQ-ER-03 Discord reply content as substring contract (slug + `transient error during phase detection`; must be in invoking thread, not parent channel). TE-F-09: pinned REQ-PD-03 warning log content as substring contract (slug + both paths). Updated Section 8 counts to P0=12, P1=3, deprecated=2. |
 
 ---
 
