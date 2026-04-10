@@ -82,6 +82,7 @@ describe("Ad-Hoc Signal Contract (Integration)", () => {
       forkJoinState: null,
     });
 
+
     // Use the real DefaultAgentRegistry (not FakeAgentRegistry) to verify
     // the orchestrator works with the production registry implementation.
     const agentRegistry = new DefaultAgentRegistry([pmAgent, engAgent]);
