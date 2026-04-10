@@ -1,3 +1,0 @@
-# 020 Message Acknowledgement
-
-When Ptah receives a Discord thread message and processes it — either starting a new Temporal workflow or routing a `user-answer` signal to an existing one — it currently gives the user no visible feedback. The user has no way to know whether their message was received, what action was taken, or whether something went wrong. This feature adds per-message acknowledgement directly in the Discord thread: an emoji reaction for instant confirmation and, where context is useful, a brief plain-text reply describing what happened (workflow started, answer received, or error details).

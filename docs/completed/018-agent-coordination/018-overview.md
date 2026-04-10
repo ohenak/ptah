@@ -1,4 +1,4 @@
-# 021 Agent Coordination
+# 018 Agent Coordination
 
 Two runtime coordination gaps discovered during feature 016 execution.
 
