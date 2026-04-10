@@ -1,168 +1,101 @@
-# Engineer Cross-Review: REQ-fix-req-overwrite-on-start (v2.0)
+# Engineer Cross-Review: REQ-fix-req-overwrite-on-start (v3.0)
 
 | Field | Detail |
 |-------|--------|
 | **Reviewer** | Engineer (eng) |
-| **Document Reviewed** | [REQ-fix-req-overwrite-on-start.md](REQ-fix-req-overwrite-on-start.md) v2.0 |
+| **Document Reviewed** | [REQ-fix-req-overwrite-on-start.md](REQ-fix-req-overwrite-on-start.md) v3.0 |
 | **Date** | 2026-04-10 |
-| **Recommendation** | **Needs revision** |
+| **Recommendation** | **Approved** |
 
 ---
 
 ## Summary
 
-Version 2.0 is substantially better than v1.0. The decision table, the explicit "file, size > 0" existence definition, the 9-scenario test matrix, and the deprecation of the latency NFR are all improvements. However, two Medium-severity implementation ambiguities remain that will likely cause the TSPEC to drift from the REQ's intent if not resolved beforehand. Both are grounded in concrete code observations against the current codebase.
+Version 3.0 resolves all four findings raised against v2.0. Both Medium-severity findings (F-01: `FileSystem` interface extension ambiguity; F-02: `FeatureResolver` conflict with REQ-PD-03 resolution logic) are fully addressed. Both Low-severity findings (F-03: REQ-WS-06 testability; F-04: `TemporalOrchestratorDeps` wiring gap) are fully addressed. No new findings at Medium or High severity were identified.
 
 ---
 
-## Findings
+## Resolution Verification
 
-### F-01 — `FileSystem.exists()` cannot satisfy the "regular file, size > 0" definition without interface extension (Medium)
+### F-01 — `FileSystem.exists()` sufficiency (was Medium)
 
-**Severity:** Medium
+**Status: Resolved.**
 
-REQ-PD-01 and REQ-PD-02 define file existence as:
+REQ-PD-01 and REQ-PD-02 now read: _"A REQ is considered to exist when `REQ-<slug>.md` is present as a non-empty file at the expected path. The TSPEC author may implement this using `FileSystem.exists()` for the practical case; extending the `FileSystem` interface is not required by this REQ. (Edge cases such as a directory named `REQ-<slug>.md` or a zero-byte file at that path are pathological and out of scope.)"_
 
-> "A REQ is considered to exist when `REQ-<slug>.md` is a regular file (not a directory or symlink to a non-file) with a size greater than zero bytes."
+Section 9 (Out of Scope) now explicitly lists "`FileSystem` interface extension."
 
-The current `FileSystem` interface ([filesystem.ts](../../../ptah/src/services/filesystem.ts)) exposes:
-
-```typescript
-exists(path: string): Promise<boolean>;
-```
-
-`NodeFileSystem.exists()` is implemented as `fs.access()` ([filesystem.ts:36-43](../../../ptah/src/services/filesystem.ts#L36-L43)), which:
-- Returns `true` for **directories** (so `docs/in-progress/<slug>/REQ-<slug>.md/` — a directory at that path — would be misdetected as a REQ)
-- Does **not** check file size (an empty file would be misdetected as a REQ)
-
-Implementing the REQ-PD-01/02 definition correctly requires one of:
-
-- **Option A:** Add a new method to `FileSystem` (e.g., `statFile(path): Promise<{ isFile: boolean; size: number } | null>`) — requires interface + implementation changes, and may affect existing tests via C-04.
-- **Option B:** Treat the "regular file, size > 0" language as aspirational/behavioral intent, and accept that `FileSystem.exists()` is sufficient for the practical case (a directory named `REQ-<slug>.md` is pathological and the size-0 edge case is negligible). Document this as an explicit accepted trade-off.
-- **Option C:** Leave resolution to the TSPEC author, who will decide based on risk tolerance.
-
-The REQ should explicitly choose one option so the TSPEC author does not independently add a `FileSystem` interface extension (scope) or silently use `exists()` while the REQ appears to demand something stricter.
-
-**Recommended resolution:** State explicitly in REQ-PD-01 and REQ-PD-02 that "the detection mechanism used by the TSPEC author may rely on `FileSystem.exists()` for the practical case; the 'regular file, size > 0' definition states the ideal semantics and the TSPEC may choose the implementation method." This removes ambiguity without mandating scope.
+The TSPEC author has unambiguous authority to use `NodeFileSystem.exists()` (backed by `fs.access()`) without writing a `statFile` method or modifying the `FileSystem` interface.
 
 ---
 
-### F-02 — C-05 ("reuse FeatureResolver") conflicts with the REQ-PD-03 decision table's resolution logic (Medium)
+### F-02 — `FeatureResolver` conflict with REQ-PD-03 (was Medium)
 
-**Severity:** Medium
+**Status: Resolved.**
 
-C-05 states:
+C-05 now reads: _"REQ-file-presence checks must be made independently on each lifecycle folder path (e.g., `FileSystem.exists("docs/in-progress/<slug>/REQ-<slug>.md")`). The `FeatureResolver` interface (`FeatureResolver`) and its concrete implementation (`DefaultFeatureResolver`) must not be modified as part of this fix — `FeatureResolver.resolve()` may optionally be used for directory-existence checks but is not required."_
 
-> "The fix must reuse the existing `FeatureResolver` abstraction for slug-to-folder resolution."
+A-03 now reads: _"The fix introduces a new detection component (e.g., `PhaseDetector`) that checks for REQ and overview file presence independently using `FileSystem`. `FeatureResolver`'s interface and implementation are not modified."_
 
-`DefaultFeatureResolver.resolve()` ([feature-resolver.ts:49-131](../../../ptah/src/orchestrator/feature-resolver.ts#L49-L131)) returns the **first matching directory** across in-progress → backlog → completed. The return type is:
+Section 9 (Out of Scope) now lists "`FeatureResolver` interface or `DefaultFeatureResolver` implementation modification."
 
-```typescript
-{ found: true; path: string; lifecycle: "backlog" | "in-progress" | "completed" }
-```
-
-This is a single-folder result. It does NOT search both folders independently or check for REQ file presence inside the resolved folder.
-
-The REQ-PD-03 general resolution rule requires:
-
-> "The resolved folder is the first folder (in-progress → backlog order) that contains a REQ."
-
-This requires checking **whether `REQ-<slug>.md` exists inside each candidate folder independently** — which `FeatureResolver.resolve()` does not do. For example, Case B (overview in in-progress, REQ in backlog) requires returning `backlog`, but `FeatureResolver.resolve()` would return `in-progress` because the `in-progress/<slug>/` directory exists first.
-
-As a result, the TSPEC author faces a fork:
-
-- **Interpretation A (narrower):** "Reuse `FeatureResolver` for directory-existence checks only." Create a new `PhaseDetector` class that calls `FeatureResolver.resolve()` or directly uses `FileSystem.exists()` on each folder path, then performs independent REQ/overview stat checks inside each candidate folder. This satisfies C-05's spirit (DI pattern, no new filesystem singleton) without requiring `FeatureResolver.resolve()` to change.
-- **Interpretation B (broader):** "Extend `FeatureResolver` to also check for REQ presence." Add a new method or subtype. This changes the interface and likely requires test updates (C-04 risk).
-
-Without guidance, the TSPEC author may pick Interpretation B and land a breaking change to `FeatureResolver` that wasn't in scope.
-
-**Recommended resolution:** Add a clarifying note to C-05, e.g.: _"C-05 means the new detection component must accept `FileSystem` (and optionally `FeatureResolver`) via constructor injection and must not instantiate either directly. `FeatureResolver.resolve()` may be used for directory-existence checks, but REQ-file-presence checks must be made independently on each lifecycle folder. `FeatureResolver`'s interface and `DefaultFeatureResolver`'s implementation must not be modified as part of this fix."_
-
-This resolves the ambiguity, keeps `FeatureResolver` closed for modification, and prevents unintended interface churn.
+The TSPEC author can correctly implement Case B (overview in `in-progress`, REQ in `backlog`) by calling `FileSystem.exists()` on each path independently, without relying on `FeatureResolver.resolve()` for REQ-presence logic. The conflict between C-05 and REQ-PD-03 is eliminated.
 
 ---
 
-### F-03 — REQ-WS-06 testability claim is phase-config-dependent, not code-verifiable (Low)
+### F-03 — REQ-WS-06 testability (was Low)
 
-**Severity:** Low
+**Status: Resolved.**
 
-REQ-WS-06 states:
+REQ-WS-06 now specifies two distinct acceptance tests:
 
-> "The `featureLifecycleWorkflow` state machine definition must not include any transition from `req-review` or any later phase back to `req-creation`. This invariant is verifiable by static inspection of the workflow definition or a targeted unit test of the state machine."
+> _(a) **Algorithm test** — a unit test of `resolveNextPhase()` with a sequential test `WorkflowConfig` confirms the phase-advancement algorithm never returns a phase earlier in the array than the current phase; (b) **Config integrity test** — a test loading the production `ptah.workflow.yaml` confirms no phase at array index ≥ the index of `req-review` has a `transition` field pointing back to `req-creation`._
 
-In practice, `featureLifecycleWorkflow` is **phase-config-agnostic** — it processes whatever phases appear in `WorkflowConfig`. There is no hard-coded `req-creation` or `req-review` in the workflow code. Whether backward transitions are possible is entirely a property of the YAML config file, not the TypeScript code.
-
-`resolveNextPhase()` ([feature-lifecycle.ts](../../../ptah/src/temporal/workflows/feature-lifecycle.ts)) is a pure function that:
-- Follows `transition` links (explicit jump)
-- Otherwise advances to the next phase by array index
-
-A "no backward transition" invariant could be written as a unit test of `resolveNextPhase()` given a test WorkflowConfig — but it would test the algorithm, not the production config. The production config test would need to load `ptah.workflow.yaml` and verify that no phase in the `req-review`-onward sequence has a `transition` pointing to `req-creation`.
-
-**Recommended clarification:** Split REQ-WS-06 into two distinct acceptance tests: (a) a unit test of `resolveNextPhase()` confirming no backward transitions when given a config with sequential phases; (b) a config-integrity test confirming that the production workflow config has no `transition` back to `req-creation` from any phase at index ≥ the index of `req-review`. This avoids an underspecified "static inspection" claim.
+This correctly separates the code-verifiable invariant (`resolveNextPhase()` with a test config) from the production-config integrity check (loading `ptah.workflow.yaml`). Both are independently implementable.
 
 ---
 
-### F-04 — `TemporalOrchestratorDeps` wiring gap should be acknowledged (Low)
+### F-04 — `TemporalOrchestratorDeps` wiring (was Low)
 
-**Severity:** Low
+**Status: Resolved.**
 
-The fix must inject phase detection into `startNewWorkflow` ([temporal-orchestrator.ts:399-428](../../../ptah/src/orchestrator/temporal-orchestrator.ts#L399-L428)). `TemporalOrchestrator` currently accepts dependencies via `TemporalOrchestratorDeps` ([temporal-orchestrator.ts:68-78](../../../ptah/src/orchestrator/temporal-orchestrator.ts#L68-L78)):
+Section 9 (In Scope) now reads: _"Adding one new dependency to `TemporalOrchestratorDeps` to wire in the new detection component (e.g., a `PhaseDetector`). This is expected and is not scope creep — `TemporalOrchestrator` currently has no filesystem access and requires it to perform phase detection."_
 
-```typescript
-export interface TemporalOrchestratorDeps {
-  temporalClient: TemporalClientWrapper;
-  worker: Worker;
-  discordClient: DiscordClient;
-  gitClient: GitClient;
-  logger: Logger;
-  config: PtahConfig;
-  workflowConfig: WorkflowConfig;
-  agentRegistry: AgentRegistry;
-  skillInvoker: SkillInvoker;
-}
-```
-
-There is no `FileSystem` and no `FeatureResolver`. Adding phase detection requires adding at least one new dependency to `TemporalOrchestratorDeps`. The TSPEC author should know this is expected and not scope creep. Without an explicit acknowledgment in the REQ, the TSPEC author might choose a workaround (static import, module singleton) that violates the project's DI contract.
-
-**Recommended addition:** Add to Section 3.1 or the Scope Boundaries: _"The fix will require adding a new dependency to `TemporalOrchestratorDeps` (either a `FileSystem` instance or a new `PhaseDetector` abstraction that wraps filesystem access). This is expected and not scope creep."_
+The TSPEC author will add the new dependency without treating it as an unanticipated scope increase or resorting to a module singleton.
 
 ---
 
-## Clarification Questions
+## New Findings
 
-### Q-01 — Does the TSPEC author have latitude to use `FileSystem.exists()` for REQ detection?
+No new High or Medium findings.
 
-See F-01. If the "regular file, size > 0" language is aspirational (intent-description) rather than an interface requirement, the TSPEC author can use `exists()` without further changes. If it is a hard requirement, `FileSystem` needs a new method, which is a scope increase. Which is the PM's intent?
+### F-05 — Decision table gap: `in-progress` REQ-only (no overview) cases are handled by general rule only (Low / Informational)
 
-### Q-02 — Is `FeatureResolver.resolve()` allowed to change as part of this fix?
+**Severity:** Low (informational only — no revision required)
 
-See F-02. If the answer is yes, the TSPEC author can extend `FeatureResolver` with a new method that checks REQ presence. If the answer is no, the TSPEC author must implement REQ-file-presence checks independently in a new component without modifying `FeatureResolver`. This choice significantly affects the TSPEC's architecture section.
+Cases G (in-progress REQ+overview, backlog nothing) and D (in-progress nothing, backlog REQ) are explicitly enumerated. However, the combination "in-progress has REQ but no overview, backlog has nothing" (and similar REQ-without-overview sub-cases) is not assigned a named case letter. It is correctly handled by the **General resolution rule** ("The resolved folder is the first folder (in-progress → backlog order) that contains a REQ"), but there is no named row for it.
+
+This is informational: the general rule is a complete and correct algorithmic statement of the table, and the `(any)` notation in Case C ("REQ (any) | REQ (any)") correctly signals that overview presence is irrelevant when REQ exists in both folders. The TSPEC author should implement the general rule as the canonical algorithm and treat the lettered cases as examples, not as an exhaustive enumeration of all 16 input combinations.
+
+**No revision needed.** This observation was also implicitly present in the v2.0 review positive observations ("REQ-PD-03 decision table is exhaustive and correct") — the prior reviewer accepted the level of enumeration as sufficient.
 
 ---
 
 ## Positive Observations
 
-- **A-01 is now code-verified.** `buildInitialWorkflowState` at [feature-lifecycle.ts:271-282](../../../ptah/src/temporal/workflows/feature-lifecycle.ts#L271-L282) validates `startAtPhase` against the config and sets it as `currentPhaseId`. The workflow will correctly start at `req-review` when instructed.
-- **Deprecating REQ-NF-01 was the right call.** `NodeFileSystem.exists()` on a warm OS disk cache is effectively instantaneous; a 50 ms assertion would be structurally fragile in CI.
-- **REQ-PD-03 decision table is exhaustive and correct.** The 8-case table covers every observable combination of artifacts across the two lifecycle folders. The general resolution rule is a clean algorithmic statement of the table.
-- **REQ-WS-03 + REQ-WS-06 split is correct.** Separating the orchestrator-level invariant (testable with fakes) from the workflow-definition invariant (testable via config inspection) is the right architectural distinction.
-- **9-scenario test matrix in REQ-NF-02 is directly implementable.** Each scenario maps to a specific test case with concrete preconditions and observable outputs.
-- **The `startNewWorkflow` injection point is confirmed correct.** All new-workflow starts go through `startNewWorkflow` ([temporal-orchestrator.ts:399-428](../../../ptah/src/orchestrator/temporal-orchestrator.ts#L399-L428)); the ad-hoc directive path and state-dependent routing are entirely separate.
-- **REQ-ER-03's "invoking thread, not parent channel" is already correct by default.** The existing `startNewWorkflow` error handling posts to `message.threadId`, which is the thread ID — matching REQ-ER-03's requirement.
+- **All prior Medium findings resolved cleanly.** The PM chose Interpretation A for both F-01 and F-02 (accept `FileSystem.exists()` as sufficient; new `PhaseDetector` makes independent checks), which keeps scope minimal and `FeatureResolver` closed for modification. This is the correct call.
+- **C-05 is now precise and implementation-ready.** The constraint names the new component, specifies constructor injection, and gives a concrete path example. The TSPEC author can proceed without resolving ambiguity.
+- **REQ-WS-06 split is correctly specified.** Test (a) is a pure unit test; test (b) is a config-integrity test against the real YAML. Both are independently implementable and independently fail-able.
+- **`TemporalOrchestratorDeps` extension is pre-authorized.** The TSPEC author will not need to make a scope decision at implementation time.
+- **REQ-NF-02 9-scenario matrix is complete and directly maps to acceptance criteria.** Scenario 7 (I/O error → Discord reply with substring contract) and scenario 8 (read-only guarantee via fake `FileSystem` write audit) are particularly well-specified.
+- **REQ-ER-03 substring contract is pinned.** "transient error during phase detection" + slug as required literal substrings gives the test engineer a deterministic assertion target.
+- **REQ-PD-03 warning log substring contract is pinned.** Both `docs/in-progress/<slug>/` and `docs/backlog/<slug>/` paths required as literal substrings gives an equally deterministic assertion.
+- **Scope boundary between this fix and `REQ-orchestrator-discord-commands` is crisp.** REQ-ER-01 deprecation rationale is clear and does not leave the TSPEC author uncertain about what to do when neither REQ nor overview exists.
 
 ---
 
 ## Recommendation
 
-**Needs revision.**
+**Approved.**
 
-F-01 and F-02 are Medium severity. Without resolution, the TSPEC author will be forced to make implementation choices (FileSystem interface extension, FeatureResolver modification) that may introduce unintended scope — or will pick an interpretation that diverges from the PM's intent. F-03 and F-04 are Low severity and should be fixed for completeness.
-
-**Suggested minimal revision scope:**
-
-1. Add a PM decision to REQ-PD-01/02: is "regular file, size > 0" a hard interface requirement (implying `FileSystem` extension) or a behavioral description that `FileSystem.exists()` may approximate? (resolves F-01)
-2. Add a clarifying sentence to C-05 stating that `FeatureResolver`'s interface must not be modified, and that REQ-file-presence checks are made independently via `FileSystem` inside a new detection component. (resolves F-02)
-3. Refine REQ-WS-06's acceptance criteria to distinguish the `resolveNextPhase()` unit test from the production-config integrity test. (resolves F-03)
-4. Add a note to Scope Boundaries or Assumptions acknowledging that `TemporalOrchestratorDeps` will receive a new dependency. (resolves F-04)
-
-With those four targeted changes, the REQ is ready for TSPEC.
+All previously identified High and Medium findings have been resolved. The remaining Low observation (F-05) is informational and requires no document change. The REQ is ready for TSPEC authoring.
