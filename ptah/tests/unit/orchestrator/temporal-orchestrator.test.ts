@@ -1072,6 +1072,91 @@ describe("handleMessage — startNewWorkflow uses phaseDetector (B1 R-01 regress
 });
 
 // ---------------------------------------------------------------------------
+// D1: Tests #13–15 — startNewWorkflow phase-detector integration (Red → Green in D2)
+// ---------------------------------------------------------------------------
+
+describe("handleMessage — startNewWorkflow phase-aware routing (D1)", () => {
+  let discord: FakeDiscordClient;
+  let temporalClient: FakeTemporalClient;
+  let logger: FakeLogger;
+  let agentRegistry: FakeAgentRegistry;
+  let gitClient: FakeGitClient;
+  let phaseDetector: FakePhaseDetector;
+  let orchestrator: TemporalOrchestrator;
+
+  const pmAgent = makeRegisteredAgent({ id: "pm", display_name: "PM" });
+
+  beforeEach(() => {
+    discord = new FakeDiscordClient();
+    temporalClient = new FakeTemporalClient();
+    logger = new FakeLogger();
+    gitClient = new FakeGitClient();
+    agentRegistry = new FakeAgentRegistry([pmAgent]);
+    phaseDetector = new FakePhaseDetector();
+    orchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry, gitClient, phaseDetector }),
+    );
+    // No workflow state set — Branch B (no running workflow)
+  });
+
+  // Test #13: No REQ found → startWorkflowForFeature called with startAtPhase: "req-creation"
+  it("passes startAtPhase: req-creation to startWorkflowForFeature when phaseDetector returns req-creation", async () => {
+    // FakePhaseDetector default: startAtPhase = "req-creation"
+    const msg = createThreadMessage({
+      content: "@pm define requirements",
+      threadName: "auth — define requirements",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].startAtPhase).toBe("req-creation");
+  });
+
+  // Test #14: phaseDetector.detect() throws → Discord reply to threadId with slug + error phrase, no workflow started
+  it("posts transient-error reply to invoking threadId and does not start workflow when detect() throws", async () => {
+    const slug = "auth";
+    phaseDetector.detectError = new Error("EACCES: permission denied");
+
+    const msg = createThreadMessage({
+      content: "@pm define requirements",
+      threadName: "auth — define requirements",
+      threadId: "thread-99",
+    });
+    await orchestrator.handleMessage(msg);
+
+    // No workflow should have been started (REQ-ER-03)
+    expect(temporalClient.startedWorkflows).toHaveLength(0);
+
+    // Discord reply posted to the invoking threadId (not parent channel) — REQ-ER-03 thread-target AC
+    expect(discord.postPlainMessageCalls).toHaveLength(1);
+    const reply = discord.postPlainMessageCalls[0];
+    expect(reply.threadId).toBe("thread-99");
+    expect(reply.content).toContain(slug);
+    expect(reply.content).toContain("transient error during phase detection");
+  });
+
+  // Test #15: Branch A (running workflow + ad-hoc directive) → detect() NOT called
+  it("does not call phaseDetector.detect() when routing through Branch A (running workflow + ad-hoc)", async () => {
+    // Set up a running workflow — triggers Branch A
+    temporalClient.workflowStates.set(
+      "ptah-auth",
+      defaultFeatureWorkflowState({ featureSlug: "auth", phaseStatus: "running" }),
+    );
+
+    const msg = createThreadMessage({
+      content: "@pm address feedback from review",
+      threadName: "auth — define requirements",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    // detect() must not have been called
+    expect(phaseDetector.detectedSlugs).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PROP-DR-24: Edge-case slug handling
 // ---------------------------------------------------------------------------
 
