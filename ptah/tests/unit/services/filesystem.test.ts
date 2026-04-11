@@ -1,8 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { NodeFileSystem } from "../../../src/services/filesystem.js";
+
+// Partial mock: only 'access' is replaced with a spy; all other methods remain real.
+// This allows existing tests (appendFile, rename, copyFile, readDirMatching) to
+// continue using the real filesystem, while E1 tests can inject errors into access().
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...original,
+    access: vi.fn((...args: Parameters<typeof original.access>) => original.access(...args)),
+  };
+});
 
 describe("NodeFileSystem — appendFile (unit)", () => {
   let tmpDir: string;
@@ -134,5 +145,35 @@ describe("NodeFileSystem — readDirMatching (unit)", () => {
   it("returns empty array when directory does not exist", async () => {
     const result = await fileSystem.readDirMatching("nonexistent", /\.md$/);
     expect(result).toEqual([]);
+  });
+});
+
+// E1: NodeFileSystem.exists() error propagation (REQ-ER-03)
+// Uses vi.mock("node:fs/promises") partial mock (access spy, all others real).
+describe("NodeFileSystem.exists() error propagation (REQ-ER-03)", () => {
+  afterEach(() => {
+    vi.mocked(fs.access).mockClear();
+  });
+
+  it("returns false when fs.access throws ENOENT (file genuinely absent)", async () => {
+    const enoent = Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    vi.mocked(fs.access).mockRejectedValueOnce(enoent);
+    const fileSystem = new NodeFileSystem("/fake/cwd");
+    const result = await fileSystem.exists("any-path");
+    expect(result).toBe(false);
+  });
+
+  it("rejects with the same error when fs.access throws EACCES", async () => {
+    const eacces = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    vi.mocked(fs.access).mockRejectedValueOnce(eacces);
+    const fileSystem = new NodeFileSystem("/fake/cwd");
+    await expect(fileSystem.exists("any-path")).rejects.toMatchObject({ code: "EACCES" });
+  });
+
+  it("rejects with the same error when fs.access throws EIO", async () => {
+    const eio = Object.assign(new Error("EIO: input/output error"), { code: "EIO" });
+    vi.mocked(fs.access).mockRejectedValueOnce(eio);
+    const fileSystem = new NodeFileSystem("/fake/cwd");
+    await expect(fileSystem.exists("any-path")).rejects.toMatchObject({ code: "EIO" });
   });
 });
