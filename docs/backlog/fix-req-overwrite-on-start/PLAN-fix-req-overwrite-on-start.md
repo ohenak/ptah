@@ -5,7 +5,8 @@
 | **Technical Specification** | [TSPEC-fix-req-overwrite-on-start](TSPEC-fix-req-overwrite-on-start.md) v1.1 |
 | **Requirements** | [REQ-fix-req-overwrite-on-start](REQ-fix-req-overwrite-on-start.md) v3.0 |
 | **Date** | 2026-04-10 |
-| **Status** | Draft |
+| **Version** | 1.1 |
+| **Status** | In Review |
 
 ---
 
@@ -33,9 +34,9 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 |---|------|-----------|-------------|--------|
 | A1 | Add `existsError: Error \| null = null` field to `FakeFileSystem`; update `exists()` to throw when set; add `existsError` injection test to `fake-filesystem.test.ts` | `tests/unit/fixtures/fake-filesystem.test.ts` | `tests/fixtures/factories.ts` |  ⬚ Not Started |
 | A2 | Create `FakePhaseDetector` class in `factories.ts` (fields: `result`, `detectError`, `detectedSlugs`); add `fake-phase-detector.test.ts` with: (a) default `result` returned, (b) `detectError` causes throw, (c) all slug args recorded in `detectedSlugs` | `tests/unit/fixtures/fake-phase-detector.test.ts` | `tests/fixtures/factories.ts` |  ⬚ Not Started |
-| A3 | Add `phaseDetector: PhaseDetector` field to `TemporalOrchestratorDeps` interface; update `makeDeps()` in `temporal-orchestrator.test.ts` to include `phaseDetector: new FakePhaseDetector()` (default `startAtPhase: "req-creation"`); confirm existing tests still pass | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` |  ⬚ Not Started |
+| A3 | Create **minimal stub** `src/orchestrator/phase-detector.ts` with only the `PhaseDetectionResult` type and `PhaseDetector` interface (no JSDoc, no implementation class); add `phaseDetector: PhaseDetector` field to `TemporalOrchestratorDeps` interface with `import type { PhaseDetector } from "./phase-detector.js"`; update `makeDeps()` in `temporal-orchestrator.test.ts` to include `phaseDetector: new FakePhaseDetector()` (default `startAtPhase: "req-creation"`); confirm existing tests still pass | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts`, `src/orchestrator/phase-detector.ts` (stub) |  ⬚ Not Started |
 
-> **A3 sequencing note:** A3 requires A2 (FakePhaseDetector) to be complete first. A1 and A2 can be done in parallel. A3 will cause a TypeScript compile error in `temporal-orchestrator.ts` until `PhaseDetector` is imported — create the type import from `./phase-detector.js` (file created in Phase C, but the `import type` statement is added here to allow compilation). Alternatively, create a minimal stub `phase-detector.ts` (interface only, no implementation) as part of A3 to unblock compilation.
+> **A3 sequencing note:** A3 requires A2 (FakePhaseDetector) to be complete first. A1 and A2 can be done in parallel. To unblock the TypeScript compile in both `temporal-orchestrator.ts` and `factories.ts`, A3 **creates a minimal stub** `src/orchestrator/phase-detector.ts` containing only the `PhaseDetectionResult` type and the `PhaseDetector` interface (no implementation class, no JSDoc yet). C1 then replaces this stub with the full interface and JSDoc. This unambiguous ordering avoids dangling `import type` references to a nonexistent module and gives C1 a clear "replace stub" action.
 
 ---
 
@@ -53,7 +54,7 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | Define `PhaseDetectionResult` type and `PhaseDetector` interface with full JSDoc in `phase-detector.ts` (no implementation class yet); verify A3's import compiles cleanly | — (interface only, no runtime test needed) | `src/orchestrator/phase-detector.ts` |  ⬚ Not Started |
+| C1 | **Replace the A3 stub** in `phase-detector.ts` with the full interface and JSDoc per TSPEC §4.2 (still no implementation class); verify all existing imports still compile cleanly | — (interface only, no runtime test needed) | `src/orchestrator/phase-detector.ts` |  ⬚ Not Started |
 | C2 | Write `phase-detector.test.ts` with tests #1–11 covering all `DefaultPhaseDetector` behaviors; confirm all 11 tests FAIL (Red) because class doesn't exist | `tests/unit/orchestrator/phase-detector.test.ts` | — |  ⬚ Not Started |
 | C3 | Implement `DefaultPhaseDetector` — decision table (Cases A–H), warning logic, structured log entry; confirm tests #1–11 GREEN; refactor | `tests/unit/orchestrator/phase-detector.test.ts` | `src/orchestrator/phase-detector.ts` |  ⬚ Not Started |
 
@@ -63,16 +64,19 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| D1 | Write tests #13–15 in `temporal-orchestrator.test.ts`: (13) no REQ → `req-creation`; (14) `detect()` throws → Discord reply with slug + "transient error during phase detection", no workflow started; (15) Branch A (running workflow + ad-hoc) → `detect()` NOT called. Confirm RED. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | — |  ⬚ Not Started |
+| D1 | Write tests #13–15 in `temporal-orchestrator.test.ts`: (13) no REQ → `req-creation`; (14) `detect()` throws → Discord reply posted to `message.threadId` (the invoking thread, **not** the parent channel) with slug + "transient error during phase detection" as literal substrings, no workflow started; (15) Branch A (running workflow + ad-hoc) → `detect()` NOT called. Confirm RED. Test #14 MUST assert the `FakeDiscordClient.postPlainMessage` call received `message.threadId` as its target (REQ-ER-03 thread-target AC). | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | — |  ⬚ Not Started |
 | D2 | Replace `startNewWorkflow()` body per TSPEC §4.6: call `this.phaseDetector.detect(slug)` in a try/catch; pass `detection.startAtPhase` to `startWorkflowForFeature`; handle catch with `logger.error()` + Discord reply; confirm tests #12–15 GREEN including the R-01 regression. Refactor. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | `src/orchestrator/temporal-orchestrator.ts` |  ⬚ Not Started |
 
 ---
 
 ### Phase E: NodeFileSystem.exists() Error-Propagation Fix
 
+> **TDD ordering:** E1 writes the failing unit tests that pin the REQ-ER-03 production-coverage behavior (per test-engineer cross-review F-01). E2 implements the one-line semantic fix. E1 must be confirmed RED before E2 begins.
+
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| E1 | Update `NodeFileSystem.exists()` to catch only `ENOENT` and propagate all other errors per TSPEC §4.4; run `tests/integration/services/filesystem.test.ts` and confirm all three `exists()` tests (nonexistent → false, existing file → true, existing dir → true) remain GREEN; no new tests needed (existing coverage is sufficient per TSPEC) | `tests/integration/services/filesystem.test.ts` | `src/services/filesystem.ts` |  ⬚ Not Started |
+| E1 | **(R-01 for REQ-ER-03 production coverage)** Add three new tests to `tests/unit/services/filesystem.test.ts` under a new `describe("NodeFileSystem.exists() error propagation (REQ-ER-03)")` block using `vi.mock("node:fs/promises")`: (a) `fs.access` throws `ENOENT` → `exists()` resolves `false`; (b) `fs.access` throws `EACCES` → `exists()` rejects with the same error (match on `.code === "EACCES"`); (c) `fs.access` throws `EIO` → `exists()` rejects with the same error (match on `.code === "EIO"`). Confirm all three FAIL (Red) against current implementation — test (a) may already be green, but (b) and (c) MUST fail because the current `catch` swallows everything. Record the failure output. | `tests/unit/services/filesystem.test.ts` | — |  ⬚ Not Started |
+| E2 | Update `NodeFileSystem.exists()` to catch only `ENOENT` and propagate all other errors per TSPEC §4.4; confirm the three E1 tests are now GREEN; also run `tests/integration/services/filesystem.test.ts` and confirm all three existing `exists()` integration tests (nonexistent → false, existing file → true, existing dir → true) remain GREEN. Refactor. | `tests/unit/services/filesystem.test.ts`, `tests/integration/services/filesystem.test.ts` | `src/services/filesystem.ts` |  ⬚ Not Started |
 
 ---
 
@@ -105,7 +109,7 @@ A2 ──┘         │
                │
                C1 ──→ C2 ──→ C3 ──→ D1 ──→ D2 (GREEN for B1)
                                            │
-                                           E1 (independent, can run after D2)
+                                           E1 (RED) ──→ E2 (GREEN) — independent branch, can run after D2
                                            │
                                            F1, F2, F3 (independent of each other, after D2)
                                            │
@@ -117,9 +121,11 @@ A2 ──┘         │
 **Parallelizable:**
 - A1 and A2 can be done simultaneously
 - F1, F2, F3 can be done in any order after D2 (they don't depend on each other)
-- E1 can be done alongside F1-F3 (it modifies a different file)
+- E1 → E2 can be done alongside F1-F3 (it modifies a different file; E1 must precede E2 per TDD ordering)
 
-**Hard constraint (R-01):** B1 must be confirmed RED before C1 begins.
+**Hard constraints:**
+- **R-01 (REQ §7):** B1 must be confirmed RED before C1 begins.
+- **TDD for Phase E:** E1 must be confirmed RED before E2 begins (pins REQ-ER-03 production coverage per test-engineer F-01).
 
 ---
 
@@ -134,7 +140,8 @@ A2 ──┘         │
 | `src/orchestrator/phase-detector.ts` | New file | C1, C3 | `PhaseDetectionResult` type, `PhaseDetector` interface, `DefaultPhaseDetector` class |
 | `tests/unit/orchestrator/phase-detector.test.ts` | New file | C2, C3 | Tests #1–11 |
 | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | Add to `makeDeps()` + add tests | A3, B1, D1 | `phaseDetector` default + tests #12–15 |
-| `src/services/filesystem.ts` | Behavior change to `NodeFileSystem.exists()` | E1 | ENOENT-only catch |
+| `tests/unit/services/filesystem.test.ts` | Add tests | E1 | New `describe` block for `NodeFileSystem.exists()` error propagation (REQ-ER-03); stubs `node:fs/promises` via `vi.mock` |
+| `src/services/filesystem.ts` | Behavior change to `NodeFileSystem.exists()` | E2 | ENOENT-only catch |
 | `tests/unit/temporal/feature-lifecycle.test.ts` | Add tests | F1, F2, F3 | Tests #16–18 |
 | `bin/ptah.ts` | Add instantiation + wiring | G1 | `new DefaultPhaseDetector(fs, logger)` |
 
@@ -147,10 +154,22 @@ A2 ──┘         │
 - [ ] All tasks completed and status updated to ✅
 - [ ] All tests pass (`npm test` in `ptah/`) — 0 failures, 0 skipped
 - [ ] R-01: Test B1 was confirmed RED before implementation began (documented in commit message)
+- [ ] Phase E TDD: E1's three `NodeFileSystem.exists()` propagation tests were confirmed RED (for EACCES and EIO cases) before E2's implementation change (documented in commit message)
 - [ ] Tests #1–18 from TSPEC §7.5 all pass
-- [ ] REQ-ER-03 satisfied in production: `NodeFileSystem.exists()` propagates non-ENOENT errors through `DefaultPhaseDetector.detect()` to `startNewWorkflow()`'s catch block
+- [ ] REQ-ER-03 satisfied in production: `NodeFileSystem.exists()` propagates non-ENOENT errors through `DefaultPhaseDetector.detect()` to `startNewWorkflow()`'s catch block, **verified by the E1 unit tests** (not only by the test-double chain in tests #11 and #14)
+- [ ] REQ-ER-03 thread-target AC verified: test #14 asserts the Discord reply is posted to `message.threadId` (the invoking thread), not the parent channel
 - [ ] Code reviewed against all acceptance criteria in REQ v3.0
 - [ ] Implementation matches TSPEC v1.1 (protocols, decision table, error handling, test doubles)
 - [ ] Existing tests remain green (no regressions)
+- [ ] Composition-root wiring (G1) verified: TypeScript strict mode catches missing/misnamed `phaseDetector` dep at compile time; in addition, the engineer runs `npm run build` locally to confirm `bin/ptah.ts` compiles cleanly after wiring, and runs a one-shot `ptah --help` (or equivalent no-side-effect invocation) to confirm no runtime TypeError at startup. CI does not cover this path; document the smoke check result in the G1 commit message.
 - [ ] Changes committed in logical units with `type(scope): description` format
 - [ ] Pushed to `feat-fix-req-overwrite-on-start` for review
+
+---
+
+## 6. Change Log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2026-04-10 | Initial draft. |
+| 1.1 | 2026-04-10 | Addressed test-engineer cross-review ([CROSS-REVIEW-test-engineer-PLAN.md](CROSS-REVIEW-test-engineer-PLAN.md)): **F-01 (Medium)** — split Phase E into E1 (new RED tests for `NodeFileSystem.exists()` ENOENT/EACCES/EIO propagation via `vi.mock("node:fs/promises")`) and E2 (implementation); added TDD ordering note to Phase E; updated §3 dependency graph, §4 integration points, and §5 DoD to reference new E1 tests. **F-02 (Low)** — D1 test #14 now explicitly asserts the Discord reply target is `message.threadId` (not parent channel); added matching DoD line. **F-03 (Low)** — A3 sequencing note committed to the "minimal stub" approach (removed "Alternatively" ambiguity); A3 task row now lists `src/orchestrator/phase-detector.ts` (stub) in Source File column; C1 task description updated to "Replace the A3 stub". **F-04 (Low)** — added §5 DoD line acknowledging composition-root wiring (G1) is verified by TypeScript strict mode + local `npm run build` + one-shot `ptah --help` smoke rather than by CI. |
