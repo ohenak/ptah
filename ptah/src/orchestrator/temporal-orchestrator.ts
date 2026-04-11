@@ -22,7 +22,7 @@ import type { WorkflowConfig } from "../config/workflow-config.js";
 import type { AgentRegistry } from "./agent-registry.js";
 import type { SkillInvoker } from "./skill-invoker.js";
 import type { TemporalClientWrapper } from "../temporal/client.js";
-import type { PhaseDetector } from "./phase-detector.js";
+import type { PhaseDetector, PhaseDetectionResult } from "./phase-detector.js";
 import type { StartWorkflowParams, UserAnswerSignal, FeatureWorkflowState, PhaseStatus } from "../temporal/types.js";
 import type { FeatureConfig } from "../types.js";
 import { parseAdHocDirective } from "./ad-hoc-parser.js";
@@ -401,6 +401,22 @@ export class TemporalOrchestrator {
   // ---------------------------------------------------------------------------
 
   private async startNewWorkflow(slug: string, message: ThreadMessage): Promise<void> {
+    // Phase detection (REQ-PD-01, REQ-PD-02, REQ-PD-03)
+    let detection: PhaseDetectionResult;
+    try {
+      detection = await this.phaseDetector.detect(slug);
+    } catch (err) {
+      // REQ-ER-03: I/O error during detection — log and surface to user
+      this.logger.error(
+        `Phase detection failed for slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.discord.postPlainMessage(
+        message.threadId,
+        `${slug}: transient error during phase detection. Please try again.`,
+      );
+      return; // do NOT start workflow
+    }
+
     const featureConfig: FeatureConfig = {
       discipline: "fullstack",
       skipFspec: false,
@@ -411,6 +427,7 @@ export class TemporalOrchestrator {
       const workflowId = await this.startWorkflowForFeature({
         featureSlug: slug,
         featureConfig,
+        startAtPhase: detection.startAtPhase,
       });
       await this.discord.postPlainMessage(
         message.threadId,
