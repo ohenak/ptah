@@ -54,9 +54,9 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| C1 | **Replace the A3 stub** in `phase-detector.ts` with the full interface and JSDoc per TSPEC §4.2 (still no implementation class); verify all existing imports still compile cleanly | — (interface only, no runtime test needed) | `src/orchestrator/phase-detector.ts` |  ⬚ Not Started |
-| C2 | Write `phase-detector.test.ts` with tests #1–11 covering all `DefaultPhaseDetector` behaviors; confirm all 11 tests FAIL (Red) because class doesn't exist | `tests/unit/orchestrator/phase-detector.test.ts` | — |  ⬚ Not Started |
-| C3 | Implement `DefaultPhaseDetector` — decision table (Cases A–H), warning logic, structured log entry; confirm tests #1–11 GREEN; refactor | `tests/unit/orchestrator/phase-detector.test.ts` | `src/orchestrator/phase-detector.ts` |  ⬚ Not Started |
+| C1 | **Replace the A3 stub** in `phase-detector.ts` with the full interface and JSDoc per TSPEC §4.2 (still no implementation class); verify all existing imports still compile cleanly | — (interface only, no runtime test needed) | `src/orchestrator/phase-detector.ts` | ✅ Done |
+| C2 | Write `phase-detector.test.ts` with tests #1–11 covering all `DefaultPhaseDetector` behaviors; confirm all 11 tests FAIL (Red) because class doesn't exist | `tests/unit/orchestrator/phase-detector.test.ts` | — | ✅ Done |
+| C3 | Implement `DefaultPhaseDetector` — decision table (Cases A–H), warning logic, structured log entry; confirm tests #1–11 GREEN; refactor | `tests/unit/orchestrator/phase-detector.test.ts` | `src/orchestrator/phase-detector.ts` | ✅ Done |
 
 ---
 
