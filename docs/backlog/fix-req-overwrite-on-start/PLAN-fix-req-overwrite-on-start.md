@@ -6,7 +6,7 @@
 | **Requirements** | [REQ-fix-req-overwrite-on-start](REQ-fix-req-overwrite-on-start.md) v3.0 |
 | **Date** | 2026-04-10 |
 | **Version** | 1.1 |
-| **Status** | In Review |
+| **Status** | Complete |
 
 ---
 
@@ -96,7 +96,7 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| G1 | Import `DefaultPhaseDetector` in `bin/ptah.ts`; instantiate `new DefaultPhaseDetector(fs, logger)` after the `featureResolver` line; add `phaseDetector` to the `TemporalOrchestrator` constructor call. Run the full test suite to confirm zero regressions. | — (composition root: tested by integration test suite) | `bin/ptah.ts` |  ⬚ Not Started |
+| G1 | Import `DefaultPhaseDetector` in `bin/ptah.ts`; instantiate `new DefaultPhaseDetector(fs, logger)` after the `featureResolver` line; add `phaseDetector` to the `TemporalOrchestrator` constructor call. Run the full test suite to confirm zero regressions. | — (composition root: tested by integration test suite) | `bin/ptah.ts` | ✅ Done |
 
 ---
 
