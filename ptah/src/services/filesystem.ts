@@ -37,8 +37,10 @@ export class NodeFileSystem implements FileSystem {
     try {
       await fs.access(path.resolve(this._cwd, filePath));
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return false; // file/dir genuinely absent
+      throw err; // propagate real I/O errors (EACCES, EIO, etc.)
     }
   }
 
