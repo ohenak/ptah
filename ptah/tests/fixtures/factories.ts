@@ -14,6 +14,7 @@ import { MergeLockTimeoutError } from "../../src/orchestrator/merge-lock.js";
 import type { ArtifactCommitter } from "../../src/orchestrator/artifact-committer.js";
 import type { AgentLogWriter } from "../../src/orchestrator/agent-log-writer.js";
 import type { MessageDeduplicator } from "../../src/orchestrator/message-deduplicator.js";
+import type { PhaseDetector, PhaseDetectionResult } from "../../src/orchestrator/phase-detector.js";
 import type {
   PtahConfig,
   ThreadMessage,
@@ -68,6 +69,9 @@ export class FakeFileSystem implements FileSystem {
    */
   existsResults: Map<string, boolean> = new Map();
 
+  /** When set, exists() throws this error on every call. */
+  existsError: Error | null = null;
+
   constructor(cwd: string = "/fake/project") {
     this._cwd = cwd;
   }
@@ -89,6 +93,7 @@ export class FakeFileSystem implements FileSystem {
   }
 
   async exists(path: string): Promise<boolean> {
+    if (this.existsError) throw this.existsError;
     if (this.existsResults.has(path)) return this.existsResults.get(path)!;
     return this.files.has(path) || this.dirs.has(path);
   }
@@ -1546,5 +1551,27 @@ export class FakeWorktreeManager implements WorktreeManager {
 
   async cleanupDangling(activeExecutions: Set<string>): Promise<void> {
     this.cleanupCalls.push(activeExecutions);
+  }
+}
+
+export class FakePhaseDetector implements PhaseDetector {
+  /** Default result returned by detect(). Override per test. */
+  result: PhaseDetectionResult = {
+    startAtPhase: "req-creation",
+    resolvedLifecycle: "in-progress",
+    reqPresent: false,
+    overviewPresent: false,
+  };
+
+  /** When set, detect() throws this error instead of returning result. */
+  detectError: Error | null = null;
+
+  /** Records all slugs passed to detect(). */
+  detectedSlugs: string[] = [];
+
+  async detect(slug: string): Promise<PhaseDetectionResult> {
+    this.detectedSlugs.push(slug);
+    if (this.detectError) throw this.detectError;
+    return this.result;
   }
 }

@@ -22,6 +22,7 @@ import type { WorkflowConfig } from "../config/workflow-config.js";
 import type { AgentRegistry } from "./agent-registry.js";
 import type { SkillInvoker } from "./skill-invoker.js";
 import type { TemporalClientWrapper } from "../temporal/client.js";
+import type { PhaseDetector } from "./phase-detector.js";
 import type { StartWorkflowParams, UserAnswerSignal, FeatureWorkflowState, PhaseStatus } from "../temporal/types.js";
 import type { FeatureConfig } from "../types.js";
 import { parseAdHocDirective } from "./ad-hoc-parser.js";
@@ -75,6 +76,7 @@ export interface TemporalOrchestratorDeps {
   workflowConfig: WorkflowConfig;
   agentRegistry: AgentRegistry;
   skillInvoker: SkillInvoker;
+  phaseDetector: PhaseDetector;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +121,7 @@ export class TemporalOrchestrator {
   private readonly workflowConfig: WorkflowConfig;
   private readonly agentRegistry: AgentRegistry;
   private readonly skillInvoker: SkillInvoker;
+  private readonly phaseDetector: PhaseDetector;
 
   private debugChannelId: string | null = null;
   private workerRunPromise: Promise<void> | null = null;
@@ -133,6 +136,7 @@ export class TemporalOrchestrator {
     this.workflowConfig = deps.workflowConfig;
     this.agentRegistry = deps.agentRegistry;
     this.skillInvoker = deps.skillInvoker;
+    this.phaseDetector = deps.phaseDetector;
   }
 
   // ---------------------------------------------------------------------------

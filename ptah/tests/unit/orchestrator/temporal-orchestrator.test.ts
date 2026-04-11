@@ -9,6 +9,7 @@ import {
   FakeSkillInvoker,
   FakeAgentRegistry,
   FakeGitClient,
+  FakePhaseDetector,
   defaultTestConfig,
   defaultTestWorkflowConfig,
   defaultFeatureWorkflowState,
@@ -29,6 +30,7 @@ function makeDeps(overrides?: Partial<TemporalOrchestratorDeps>): TemporalOrches
     agentRegistry: new FakeAgentRegistry(),
     skillInvoker: new FakeSkillInvoker(),
     gitClient: new FakeGitClient(),
+    phaseDetector: new FakePhaseDetector(),
     ...overrides,
   };
 }
