@@ -1022,6 +1022,56 @@ describe("handleMessage — fail-silent on Temporal query failure (G7)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// B1: R-01 Regression Test — phaseDetector.detect() result passed to startWorkflowForFeature
+// ---------------------------------------------------------------------------
+
+describe("handleMessage — startNewWorkflow uses phaseDetector (B1 R-01 regression)", () => {
+  let discord: FakeDiscordClient;
+  let temporalClient: FakeTemporalClient;
+  let logger: FakeLogger;
+  let agentRegistry: FakeAgentRegistry;
+  let gitClient: FakeGitClient;
+  let phaseDetector: FakePhaseDetector;
+  let orchestrator: TemporalOrchestrator;
+
+  const pmAgent = makeRegisteredAgent({ id: "pm", display_name: "PM" });
+
+  beforeEach(() => {
+    discord = new FakeDiscordClient();
+    temporalClient = new FakeTemporalClient();
+    logger = new FakeLogger();
+    gitClient = new FakeGitClient();
+    agentRegistry = new FakeAgentRegistry([pmAgent]);
+    phaseDetector = new FakePhaseDetector();
+    orchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry, gitClient, phaseDetector }),
+    );
+    // No workflow state set — triggers Branch B (no running workflow)
+  });
+
+  it("passes startAtPhase from phaseDetector.detect() to startWorkflowForFeature when phaseDetector returns req-review", async () => {
+    // Configure FakePhaseDetector to return startAtPhase: "req-review"
+    phaseDetector.result = {
+      startAtPhase: "req-review",
+      resolvedLifecycle: "in-progress",
+      reqPresent: true,
+      overviewPresent: false,
+    };
+
+    const msg = createThreadMessage({
+      content: "@pm define requirements",
+      threadName: "auth — define requirements",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    // startWorkflowForFeature should have been called with startAtPhase: "req-review"
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].startAtPhase).toBe("req-review");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PROP-DR-24: Edge-case slug handling
 // ---------------------------------------------------------------------------
 

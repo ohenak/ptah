@@ -46,7 +46,7 @@ These tasks create the test doubles required for subsequent phases. Phase A must
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| B1 | **(R-01 regression)** Write test #12: `FakePhaseDetector` returning `startAtPhase: "req-review"` → `startWorkflowForFeature` called with `startAtPhase: "req-review"`. Confirm test FAILS with current `startNewWorkflow` (which ignores phaseDetector). Record the failure output. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | — (no implementation yet) |  ⬚ Not Started |
+| B1 | **(R-01 regression)** Write test #12: `FakePhaseDetector` returning `startAtPhase: "req-review"` → `startWorkflowForFeature` called with `startAtPhase: "req-review"`. Confirm test FAILS with current `startNewWorkflow` (which ignores phaseDetector). Record the failure output. | `tests/unit/orchestrator/temporal-orchestrator.test.ts` | — (no implementation yet) | 🔴 Test Written (Red) |
 
 ---
 
