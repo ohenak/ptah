@@ -45,6 +45,7 @@ describe("PROP-SK-16: lifecycle path construction is exclusive to FeatureResolve
     "feature-resolver.ts",
     "promotion-activity.ts",
     "migrate-lifecycle.ts",
+    "phase-detector.ts", // read-only lifecycle detection; constructs paths to check REQ/overview presence
   ]);
 
   it("no source file outside the allowed set constructs docs/{lifecycle}/ paths", () => {

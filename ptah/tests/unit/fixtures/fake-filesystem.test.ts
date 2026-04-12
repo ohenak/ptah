@@ -75,6 +75,23 @@ describe("FakeFileSystem", () => {
     expect(fs.basename("/")).toBe("");
   });
 
+  describe("existsError injection", () => {
+    it("exists() throws the configured error when existsError is set", async () => {
+      const fs = new FakeFileSystem();
+      const ioError = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+      ioError.code = "EACCES";
+      fs.existsError = ioError;
+      await expect(fs.exists("some/path")).rejects.toThrow("EACCES: permission denied");
+    });
+
+    it("exists() behaves normally when existsError is null", async () => {
+      const fs = new FakeFileSystem();
+      fs.existsError = null;
+      fs.addExisting("some/path", "content");
+      await expect(fs.exists("some/path")).resolves.toBe(true);
+    });
+  });
+
   describe("readFile", () => {
     it("returns content for existing file", async () => {
       const fs = new FakeFileSystem();

@@ -32,6 +32,7 @@ import {
   FakeSkillInvoker,
   FakeAgentRegistry,
   FakeTemporalWorker,
+  FakePhaseDetector,
   defaultFeatureWorkflowState,
   defaultTestConfig,
   defaultTestWorkflowConfig,
@@ -1183,6 +1184,7 @@ describe("H3: Discord message → Temporal signal routing", () => {
       workflowConfig,
       agentRegistry,
       skillInvoker,
+      phaseDetector: new FakePhaseDetector(),
     });
 
     return { orchestrator, temporalClient, discord, gitClient, logger };

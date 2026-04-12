@@ -24,6 +24,7 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import yaml from "js-yaml";
 import type { PhaseDefinition, WorkflowConfig } from "../../../src/config/workflow-config.js";
 import type { FeatureConfig } from "../../../src/orchestrator/pdlc/phases.js";
 import type { SkillActivityInput, PhaseStatus, ReadCrossReviewInput, CrossReviewResult } from "../../../src/temporal/types.js";
@@ -1364,5 +1365,100 @@ describe("deriveDocumentType", () => {
 
   it("uppercases phase IDs without a known suffix", () => {
     expect(deriveDocumentType("impl")).toBe("IMPL");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-WS-06a: resolveNextPhase() never goes backward in a sequential config
+// (Test #16 per TSPEC §7.5)
+// ---------------------------------------------------------------------------
+
+describe("resolveNextPhase — REQ-WS-06a: sequential config never returns a phase at a lower array index", () => {
+  it("walking forward through a purely sequential config never produces a lower-indexed phase", () => {
+    // Sequential = no explicit transition fields, no skip_if conditions
+    const phases: PhaseDefinition[] = [
+      makePhase({ id: "alpha" }),
+      makePhase({ id: "beta" }),
+      makePhase({ id: "gamma" }),
+      makePhase({ id: "delta" }),
+      makePhase({ id: "epsilon" }),
+    ];
+    const config = makeConfig(phases);
+    const fc = makeFeatureConfig();
+
+    // For every phase, resolve the next phase and assert its index is strictly greater
+    for (let i = 0; i < phases.length - 1; i++) {
+      const currentId = phases[i].id;
+      const nextId = resolveNextPhase(currentId, config, fc);
+      expect(nextId).not.toBeNull();
+      const nextIndex = phases.findIndex((p) => p.id === nextId);
+      expect(nextIndex).toBeGreaterThan(i);
+    }
+
+    // The last phase should return null (no next phase)
+    const lastId = phases[phases.length - 1].id;
+    expect(resolveNextPhase(lastId, config, fc)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-WS-06b: production ptah.workflow.yaml has no backward transitions
+// from req-review onward (Test #17 per TSPEC §7.5)
+// ---------------------------------------------------------------------------
+
+describe("resolveNextPhase — REQ-WS-06b: production workflow.yaml has no transition to req-creation at or after req-review", () => {
+  it("no phase at index >= req-review has a transition pointing to req-creation", () => {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    const yamlPath = path.resolve(currentDir, "../../../ptah.workflow.yaml");
+    const raw = fs.readFileSync(yamlPath, "utf-8");
+    const config = yaml.load(raw) as WorkflowConfig;
+
+    const phases = config.phases;
+    const reqReviewIndex = phases.findIndex((p) => p.id === "req-review");
+    expect(reqReviewIndex).toBeGreaterThanOrEqual(0);
+
+    const phasesFromReqReview = phases.slice(reqReviewIndex);
+    for (const phase of phasesFromReqReview) {
+      expect(phase.transition).not.toBe("req-creation");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-WS-04: starting at req-review never revisits req-creation
+// (Test #18 per TSPEC §7.5)
+// ---------------------------------------------------------------------------
+
+describe("resolveNextPhase — REQ-WS-04: walking forward from req-review never yields req-creation", () => {
+  it("req-creation never appears in the sequence when walking from req-review in a sequential config", () => {
+    // Build a sequential config where req-creation precedes req-review
+    // (no explicit transitions — purely array-order sequential)
+    const phases: PhaseDefinition[] = [
+      makePhase({ id: "req-creation" }),
+      makePhase({ id: "req-review" }),
+      makePhase({ id: "req-approved" }),
+      makePhase({ id: "fspec-creation" }),
+      makePhase({ id: "implementation" }),
+    ];
+    const config = makeConfig(phases);
+    const fc = makeFeatureConfig();
+
+    // Walk the sequence starting from req-review
+    const sequence: string[] = ["req-review"];
+    let current: string | null = "req-review";
+    while (current !== null) {
+      current = resolveNextPhase(current, config, fc);
+      if (current !== null) sequence.push(current);
+    }
+
+    // req-creation must never appear in the forward sequence
+    expect(sequence).not.toContain("req-creation");
+
+    // The sequence from req-review onward must equal the suffix of the full
+    // phase list with req-creation removed
+    const fullWithoutReqCreation = phases
+      .map((p) => p.id)
+      .filter((id) => id !== "req-creation");
+    expect(sequence).toEqual(fullWithoutReqCreation);
   });
 });

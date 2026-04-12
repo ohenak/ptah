@@ -18,6 +18,7 @@ import { DefaultArtifactCommitter } from "../src/orchestrator/artifact-committer
 import { DefaultAgentLogWriter } from "../src/orchestrator/agent-log-writer.js";
 import { InMemoryWorktreeRegistry } from "../src/orchestrator/worktree-registry.js";
 import { DefaultFeatureResolver } from "../src/orchestrator/feature-resolver.js";
+import { DefaultPhaseDetector } from "../src/orchestrator/phase-detector.js";
 import { DefaultWorktreeManager } from "../src/orchestrator/worktree-manager.js";
 import { buildAgentRegistry } from "../src/orchestrator/agent-registry.js";
 import { MigrateCommand } from "../src/commands/migrate.js";
@@ -173,6 +174,7 @@ async function main(): Promise<void> {
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
       const worktreeRegistry = new InMemoryWorktreeRegistry();
       const featureResolver = new DefaultFeatureResolver(fs, logger);
+      const phaseDetector = new DefaultPhaseDetector(fs, logger);
       const worktreeManager = new DefaultWorktreeManager(git, worktreeRegistry, logger);
 
       // Startup sweep: prune dangling ptah worktrees from previous crashes.
@@ -265,6 +267,7 @@ async function main(): Promise<void> {
         workflowConfig,
         agentRegistry,
         skillInvoker,
+        phaseDetector,
       });
 
       const command = new StartCommand(configLoader, discord, logger, {
