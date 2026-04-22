@@ -459,9 +459,15 @@ export class TemporalOrchestrator {
         featureConfig,
         startAtPhase: detection.startAtPhase,
       });
-      await this.discord.postPlainMessage(
-        message.threadId,
-        `Started workflow ${workflowId} for ${slug}`,
+      await this.ackWithWarnOnError(() =>
+        this.discord.addReaction(message.threadId, message.id, "✅"),
+      );
+      await this.ackWithWarnOnError(() =>
+        this.discord.replyToMessage(
+          message.threadId,
+          message.id,
+          `Workflow started: ${workflowId}`,
+        ),
       );
     } catch (err) {
       if (err instanceof Error && err.name === "WorkflowExecutionAlreadyStartedError") {
@@ -470,9 +476,16 @@ export class TemporalOrchestrator {
           `Workflow already running for ${slug}`,
         );
       } else {
-        await this.discord.postPlainMessage(
-          message.threadId,
-          `Failed to start workflow for ${slug}. Please try again.`,
+        const errMsg = this.formatErrorMessage(err);
+        await this.ackWithWarnOnError(() =>
+          this.discord.addReaction(message.threadId, message.id, "❌"),
+        );
+        await this.ackWithWarnOnError(() =>
+          this.discord.replyToMessage(
+            message.threadId,
+            message.id,
+            `Failed to start workflow: ${errMsg}`,
+          ),
         );
       }
     }
@@ -499,10 +512,20 @@ export class TemporalOrchestrator {
           answeredBy: message.authorName,
           answeredAt: message.timestamp.toISOString(),
         });
+        await this.ackWithWarnOnError(() =>
+          this.discord.addReaction(message.threadId, message.id, "✅"),
+        );
       } catch (err) {
-        await this.discord.postPlainMessage(
-          message.threadId,
-          "Failed to deliver answer. Please try again.",
+        const errMsg = this.formatErrorMessage(err);
+        await this.ackWithWarnOnError(() =>
+          this.discord.addReaction(message.threadId, message.id, "❌"),
+        );
+        await this.ackWithWarnOnError(() =>
+          this.discord.replyToMessage(
+            message.threadId,
+            message.id,
+            `Failed to route answer: ${errMsg}`,
+          ),
         );
       }
       return;
@@ -575,5 +598,34 @@ export class TemporalOrchestrator {
         `Failed to send ${intent} signal. Please try again.`,
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private: acknowledgement helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Wraps an acknowledgement call (addReaction or replyToMessage) in a try/catch.
+   * If the call throws, logs a WARN and swallows the error so the orchestrator
+   * continues normally. Discord API failures must never propagate.
+   */
+  private async ackWithWarnOnError(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (ackErr) {
+      const msg = ackErr instanceof Error ? ackErr.message : String(ackErr);
+      this.logger.warn(`Acknowledgement failed: ${msg}`);
+    }
+  }
+
+  /**
+   * Extracts and truncates an error message to at most 200 characters.
+   * Uses err.message for Error instances and String(err) for all other values.
+   * The 200-character limit applies only to the extracted message — the
+   * "Failed to {op}: " prefix is concatenated after truncation.
+   */
+  private formatErrorMessage(err: unknown): string {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    return rawMsg.slice(0, 200);
   }
 }
