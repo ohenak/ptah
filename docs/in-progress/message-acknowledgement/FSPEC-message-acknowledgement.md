@@ -7,7 +7,7 @@
 | **Document ID** | FSPEC-message-acknowledgement |
 | **Linked Requirements** | REQ-MA-01, REQ-MA-02, REQ-MA-03, REQ-MA-04, REQ-MA-05, REQ-MA-06, REQ-NF-17-01, REQ-NF-17-02, REQ-NF-17-03 |
 | **Parent REQ** | [REQ-message-acknowledgement v1.1](./REQ-message-acknowledgement.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 21, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -32,18 +32,29 @@ Acknowledgement uses a two-tier mechanism:
 
 The reaction is always the first tier. A plain-text reply is added only where a reaction alone is insufficient to communicate what the user needs to know.
 
+### Implementation Note: Private Method Boundaries
+
+`handleMessage()` delegates to two private methods:
+
+- **`startNewWorkflow(slug, message)`** — handles Branch A (start a new workflow). This method calls `startWorkflowForFeature()` internally and is responsible for detecting success vs. failure. Acknowledgement for Branch A outcomes must be inserted **inside `startNewWorkflow()`**, after `startWorkflowForFeature()` resolves or throws.
+- **`handleStateDependentRouting(state, message)`** — handles Branch B (route an answer to an existing workflow). This method calls `routeUserAnswer()` internally. Acknowledgement for Branch B outcomes must be inserted **inside `handleStateDependentRouting()`**, after `routeUserAnswer()` resolves or throws.
+
+`handleMessage()` itself calls these private methods via `await` and cannot detect success vs. failure by return value (both methods return `void`). Engineers must not insert acknowledgement calls at the `handleMessage()` level — doing so would fire acknowledgement before the private method's internal result is known, producing a false ✅ when `startNewWorkflow()` encounters an internally-swallowed error.
+
+The `channelId` parameter in all acknowledgement calls is sourced from `message.threadId`. The `messageId` parameter is sourced from `message.id`. Engineers must not use `message.parentChannelId` as the `channelId`.
+
 ---
 
 ## 2. Scope
 
 ### 2.1 In Scope
 
-| Scenario | Trigger | Reaction | Reply |
-|----------|---------|----------|-------|
-| Workflow started successfully | `startFeatureWorkflow()` resolves | ✅ | `Workflow started: {workflowId}` |
-| Signal routed successfully | `routeUserAnswer()` resolves | ✅ | None |
-| `startFeatureWorkflow()` throws | Error caught in handler | ❌ | `Failed to start workflow: {error message}` |
-| `routeUserAnswer()` throws | Error caught in handler | ❌ | `Failed to route answer: {error message}` |
+| Scenario | Private method | Reaction | Reply |
+|----------|---------------|----------|-------|
+| Workflow started successfully | `startNewWorkflow()` — `startWorkflowForFeature()` resolves | ✅ | `Workflow started: {workflowId}` |
+| Signal routed successfully | `handleStateDependentRouting()` — `routeUserAnswer()` resolves | ✅ | None |
+| `startWorkflowForFeature()` throws (non-`WorkflowExecutionAlreadyStartedError`) | `startNewWorkflow()` | ❌ | `Failed to start workflow: {error message}` |
+| `routeUserAnswer()` throws | `handleStateDependentRouting()` | ❌ | `Failed to route answer: {error message}` |
 | Acknowledgement call itself fails | `addReaction()` or `replyToMessage()` throws | — | WARN log only; no retry |
 
 ### 2.2 Out of Scope
@@ -60,6 +71,10 @@ The following paths do **not** receive any acknowledgement and are explicitly ex
 8. **Per-phase status updates during workflow execution** — Separate feature.
 9. **`retry-or-cancel` and `resume-or-cancel` signals** — Out of scope for this feature.
 10. **Rate-limit retry logic** — Acknowledgement failures are swallowed; no retry.
+11. **`WorkflowExecutionAlreadyStartedError` path** — When `startNewWorkflow()` catches `WorkflowExecutionAlreadyStartedError`, it posts a bespoke message via the existing `postPlainMessage("Workflow already running for {slug}")` call. This path does not receive a new emoji reaction or a `replyToMessage` call from this feature. The existing `postPlainMessage` output is the complete user-facing feedback for this case. No changes to this path are in scope.
+12. **Phase detection failure path** — When `phaseDetector.detect()` throws inside `startNewWorkflow()`, the method logs the error and posts a plain message via the existing error handling. This is a pre-`startWorkflowForFeature()` guard inside Branch A; it is not a Temporal operation outcome. No reaction or `replyToMessage` call is added for this path. Existing behavior is unchanged.
+13. **Ad-hoc directive path** — When an ad-hoc directive is detected inside Branch A, `handleAdHocDirective()` is called. This path has its own existing acknowledgement via `postPlainMessage`. No new emoji reaction or `replyToMessage` call is added.
+14. **Workflow running but not waiting for user input (silent drop)** — When a workflow is in a `phaseStatus` state other than `waiting-for-user`, `failed`, or `revision-bound-reached`, `handleStateDependentRouting()` performs a silent drop. No acknowledgement is added for this path.
 
 ---
 
@@ -70,7 +85,7 @@ The following paths do **not** receive any acknowledgement and are explicitly ex
 **Preconditions:**
 - Message posted in a feature thread (e.g. `017-message-acknowledgement`)
 - No existing workflow found for this thread (`queryWorkflowState()` returns `null` or `WorkflowNotFoundError`)
-- `startFeatureWorkflow()` is called and resolves with a `workflowId`
+- `startNewWorkflow()` is called; inside it, `startWorkflowForFeature()` resolves with a `workflowId`
 
 ```
 handleMessage(message)
@@ -81,26 +96,33 @@ handleMessage(message)
   │   ├─ throws WorkflowNotFoundError → Branch A (start workflow)
   │   └─ returns null              → Branch A (start workflow)
   │
-  ├─ startFeatureWorkflow(...)
-  │   └─ RESOLVES with { workflowId }
-  │
-  ├─ [Temporal operation resolved — acknowledgement phase begins]
-  │
-  ├─ addReaction(channelId, messageId, "✅")
-  │   ├─ success → continue
-  │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
-  │
-  ├─ replyToMessage(channelId, messageId, "Workflow started: {workflowId}")
-  │   ├─ success → continue
-  │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
-  │
-  └─ return
+  └─ await startNewWorkflow(slug, message)
+       │
+       ├─ phaseDetector.detect(slug)
+       │   └─ RESOLVES with phase
+       │
+       ├─ startWorkflowForFeature(...)
+       │   └─ RESOLVES with { workflowId }
+       │
+       ├─ [startWorkflowForFeature() resolved — acknowledgement phase begins]
+       │
+       ├─ addReaction(message.threadId, message.id, "✅")
+       │   ├─ success → continue
+       │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
+       │
+       ├─ replyToMessage(message.threadId, message.id, "Workflow started: {workflowId}")
+       │   ├─ success → continue
+       │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
+       │
+       └─ return
 ```
 
 **Key behaviors:**
-- `addReaction` and `replyToMessage` are both called after `startFeatureWorkflow()` resolves.
+- Acknowledgement is inserted inside `startNewWorkflow()`, after `startWorkflowForFeature()` resolves.
+- `addReaction` and `replyToMessage` are both called after `startWorkflowForFeature()` resolves.
 - Both calls are issued in this invocation (neither is conditional on the other succeeding).
-- `{workflowId}` is the value returned by `startFeatureWorkflow()`, which follows the `ptah-{slug}` format.
+- `{workflowId}` is the value returned by `startWorkflowForFeature()`, which follows the `ptah-{slug}` format.
+- `channelId` is `message.threadId`; `messageId` is `message.id`.
 
 ---
 
@@ -108,8 +130,8 @@ handleMessage(message)
 
 **Preconditions:**
 - Message posted in a feature thread with an active workflow
-- `queryWorkflowState()` returns state indicating workflow is paused for user input
-- `routeUserAnswer()` is called and resolves
+- `queryWorkflowState()` returns state indicating workflow is paused for user input (`phaseStatus === "waiting-for-user"`)
+- `handleStateDependentRouting()` is called; inside it, `routeUserAnswer()` resolves
 
 ```
 handleMessage(message)
@@ -117,24 +139,28 @@ handleMessage(message)
   ├─ [guard checks pass]
   │
   ├─ queryWorkflowState(threadSlug)
-  │   └─ returns state (workflow paused) → Branch B (route answer)
+  │   └─ returns state (workflow paused) → Branch B
   │
-  ├─ routeUserAnswer(...)
-  │   └─ RESOLVES
-  │
-  ├─ [Temporal operation resolved — acknowledgement phase begins]
-  │
-  ├─ addReaction(channelId, messageId, "✅")
-  │   ├─ success → continue
-  │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
-  │
-  └─ return
+  └─ await handleStateDependentRouting(state, message)
+       │
+       ├─ routeUserAnswer(...)
+       │   └─ RESOLVES
+       │
+       ├─ [routeUserAnswer() resolved — acknowledgement phase begins]
+       │
+       ├─ addReaction(message.threadId, message.id, "✅")
+       │   ├─ success → continue
+       │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
+       │
+       └─ return
   [No replyToMessage call for this path]
 ```
 
 **Key behaviors:**
+- Acknowledgement is inserted inside `handleStateDependentRouting()`, after `routeUserAnswer()` resolves.
 - Only `addReaction` is called. `replyToMessage` is **not** called on this path.
 - Absence of a reply is intentional and required — the reaction alone is sufficient for routine answer delivery.
+- `channelId` is `message.threadId`; `messageId` is `message.id`.
 
 ---
 
@@ -142,7 +168,7 @@ handleMessage(message)
 
 **Preconditions:**
 - Message posted in a feature thread
-- Either `startFeatureWorkflow()` or `routeUserAnswer()` throws an error
+- Either `startWorkflowForFeature()` (inside `startNewWorkflow()`) or `routeUserAnswer()` (inside `handleStateDependentRouting()`) throws an error
 
 ```
 handleMessage(message)
@@ -153,31 +179,40 @@ handleMessage(message)
   │   ├─ returns null/WNF error → Branch A
   │   └─ returns state          → Branch B
   │
-  ├─ [Branch A] startFeatureWorkflow(...)
-  │   └─ THROWS error
-  │   OR
-  │   [Branch B] routeUserAnswer(...)
-  │       └─ THROWS error
+  ├─ [Branch A] await startNewWorkflow(slug, message)
+  │       │
+  │       ├─ phaseDetector.detect(slug)
+  │       │   └─ RESOLVES (phase detected)
+  │       │
+  │       ├─ startWorkflowForFeature(...)
+  │       │   └─ THROWS error (not WorkflowExecutionAlreadyStartedError)
+  │       │
+  │       ├─ [Error caught inside startNewWorkflow()]
+  │       │
+  │       ├─ operation label → "start workflow"
+  │       ├─ addReaction(message.threadId, message.id, "❌")
+  │       │   ├─ success → continue
+  │       │   └─ throws  → log WARN; continue
+  │       ├─ replyToMessage(message.threadId, message.id, "Failed to start workflow: {msg}")
+  │       │   ├─ success → continue
+  │       │   └─ throws  → log WARN; continue
+  │       └─ return
   │
-  ├─ [Error caught — acknowledgement phase begins]
-  │
-  ├─ Compute operation label:
-  │   ├─ Branch A failure → "start workflow"
-  │   └─ Branch B failure → "route answer"
-  │
-  ├─ Compute error message:
-  │   ├─ err is Error instance → err.message (truncated to 200 chars if longer)
-  │   └─ err is not Error      → String(err) (truncated to 200 chars if longer)
-  │
-  ├─ addReaction(channelId, messageId, "❌")
-  │   ├─ success → continue
-  │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
-  │
-  ├─ replyToMessage(channelId, messageId, "Failed to {operation}: {error message}")
-  │   ├─ success → continue
-  │   └─ throws  → log WARN "Acknowledgement failed: {err.message}"; continue
-  │
-  └─ return (original error is NOT re-thrown)
+  └─ [Branch B] await handleStateDependentRouting(state, message)
+          │
+          ├─ routeUserAnswer(...)
+          │   └─ THROWS error
+          │
+          ├─ [Error caught inside handleStateDependentRouting()]
+          │
+          ├─ operation label → "route answer"
+          ├─ addReaction(message.threadId, message.id, "❌")
+          │   ├─ success → continue
+          │   └─ throws  → log WARN; continue
+          ├─ replyToMessage(message.threadId, message.id, "Failed to route answer: {msg}")
+          │   ├─ success → continue
+          │   └─ throws  → log WARN; continue
+          └─ return
 ```
 
 **Key behaviors:**
@@ -185,6 +220,7 @@ handleMessage(message)
 - `{operation}` is exactly one of: `start workflow`, `route answer`. No other values are valid.
 - The original Temporal error is not re-thrown after acknowledgement.
 - Each acknowledgement call is wrapped independently — `addReaction` failing does not suppress `replyToMessage`.
+- `channelId` is `message.threadId`; `messageId` is `message.id`.
 
 ---
 
@@ -216,11 +252,12 @@ try {
 | Attribute | Value |
 |-----------|-------|
 | **Linked requirements** | REQ-MA-01 |
-| **Trigger** | `startFeatureWorkflow()` resolves successfully |
-| **Input** | `channelId` (from `message.threadId`), `messageId` (from `message.id`), emoji `"✅"` |
+| **Trigger** | `startWorkflowForFeature()` resolves successfully inside `startNewWorkflow()` |
+| **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
+| **Input** | `channelId` (= `message.threadId`), `messageId` (= `message.id`), emoji `"✅"` |
 | **Output** | `addReaction(channelId, messageId, "✅")` is called exactly once for this invocation |
 | **Side effects** | ✅ emoji appears on the triggering message in Discord |
-| **Constraints** | Called after `startFeatureWorkflow()` resolves; not before |
+| **Constraints** | Called after `startWorkflowForFeature()` resolves inside `startNewWorkflow()`; not before; not at `handleMessage()` level |
 | **At-most-once** | `addReaction` is called at most once per `(messageId, "✅")` pair per `handleMessage()` invocation |
 
 ---
@@ -230,13 +267,14 @@ try {
 | Attribute | Value |
 |-----------|-------|
 | **Linked requirements** | REQ-MA-02 |
-| **Trigger** | `startFeatureWorkflow()` resolves successfully |
-| **Input** | `channelId`, `messageId`, content string |
+| **Trigger** | `startWorkflowForFeature()` resolves successfully inside `startNewWorkflow()` |
+| **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
+| **Input** | `channelId` (= `message.threadId`), `messageId` (= `message.id`), content string |
 | **Content format** | `Workflow started: {workflowId}` |
-| **workflowId value** | The exact string returned by `startFeatureWorkflow()` — follows `ptah-{slug}` format |
+| **workflowId value** | The exact string returned by `startWorkflowForFeature()` — follows `ptah-{slug}` format |
 | **Output** | `replyToMessage(channelId, messageId, "Workflow started: {workflowId}")` called once |
 | **Side effects** | Plain-text bot reply appears on triggering message in thread |
-| **Constraints** | Called after `startFeatureWorkflow()` resolves; called regardless of whether `addReaction` succeeded |
+| **Constraints** | Called after `startWorkflowForFeature()` resolves; called regardless of whether `addReaction` succeeded |
 
 ---
 
@@ -245,8 +283,9 @@ try {
 | Attribute | Value |
 |-----------|-------|
 | **Linked requirements** | REQ-MA-03 |
-| **Trigger** | `routeUserAnswer()` resolves successfully |
-| **Input** | `channelId`, `messageId`, emoji `"✅"` |
+| **Trigger** | `routeUserAnswer()` resolves successfully inside `handleStateDependentRouting()` |
+| **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
+| **Input** | `channelId` (= `message.threadId`), `messageId` (= `message.id`), emoji `"✅"` |
 | **Output** | `addReaction(channelId, messageId, "✅")` called once |
 | **Side effects** | ✅ emoji appears on the triggering message |
 | **No-reply constraint** | `replyToMessage` is NOT called on this path. This is a required behavior, not an omission. |
@@ -259,11 +298,12 @@ try {
 | Attribute | Value |
 |-----------|-------|
 | **Linked requirements** | REQ-MA-04 |
-| **Trigger** | `startFeatureWorkflow()` throws, OR `routeUserAnswer()` throws |
-| **Input** | `channelId`, `messageId`, emoji `"❌"` |
+| **Trigger** | `startWorkflowForFeature()` throws a non-`WorkflowExecutionAlreadyStartedError`, OR `routeUserAnswer()` throws |
+| **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
+| **Input** | `channelId` (= `message.threadId`), `messageId` (= `message.id`), emoji `"❌"` |
 | **Output** | `addReaction(channelId, messageId, "❌")` called once |
 | **Side effects** | ❌ emoji appears on the triggering message |
-| **Excluded triggers** | `queryWorkflowState()` throwing a non-`WorkflowNotFoundError` does NOT trigger this behavior — that path exits silently before reaching the acknowledgement logic |
+| **Excluded triggers** | `queryWorkflowState()` throwing a non-`WorkflowNotFoundError` does NOT trigger this behavior — that path exits silently before reaching the acknowledgement logic. `WorkflowExecutionAlreadyStartedError` does NOT trigger this behavior — that path is handled by the existing `postPlainMessage` call and is out of scope. `phaseDetector.detect()` throwing does NOT trigger this behavior — that is a pre-`startWorkflowForFeature()` guard and is out of scope. |
 
 ---
 
@@ -272,12 +312,13 @@ try {
 | Attribute | Value |
 |-----------|-------|
 | **Linked requirements** | REQ-MA-05 |
-| **Trigger** | `startFeatureWorkflow()` throws, OR `routeUserAnswer()` throws |
+| **Trigger** | `startWorkflowForFeature()` throws a non-`WorkflowExecutionAlreadyStartedError`, OR `routeUserAnswer()` throws |
+| **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
 | **Content format** | `Failed to {operation}: {error message}` |
 | **Operation label** | Exactly one of: `start workflow` (Branch A), `route answer` (Branch B) |
 | **Invalid operation labels** | `query workflows` is NOT a valid operation label. The query failure path is out of scope and never reaches this code. |
 | **Error message source** | `err.message` if `err instanceof Error`; `String(err)` otherwise |
-| **Truncation** | Error message truncated to 200 characters if longer. A 200-character message is NOT truncated. A 201-character message is truncated to exactly 200 characters. |
+| **Truncation** | Error message (the `{error message}` portion, before formatting into the reply string) is truncated to 200 characters if longer. A 200-character message is NOT truncated. A 201-character message is truncated to exactly 200 characters. The `"Failed to {operation}: "` prefix is not subject to truncation and is not counted against the 200-character limit. |
 | **Truncation and multi-byte characters** | Truncation is applied to the string as a sequence of characters (not bytes). UTF-8 multi-byte sequences are not split. |
 | **Stack traces** | Must NOT appear in the reply content |
 | **Output** | `replyToMessage(channelId, messageId, "Failed to {operation}: {error message}")` called once |
@@ -304,15 +345,17 @@ try {
 
 | ID | Rule |
 |----|------|
-| BR-01 | Acknowledgement calls (both `addReaction` and `replyToMessage`) are issued only after the Temporal operation (workflow start or signal routing) has fully resolved — either successfully or with an error. |
+| BR-01 | Acknowledgement calls (both `addReaction` and `replyToMessage`) are issued only after the Temporal operation (`startWorkflowForFeature()` or `routeUserAnswer()`) has fully resolved — either successfully or with an error. They are inserted inside the private methods `startNewWorkflow()` and `handleStateDependentRouting()`, not at the `handleMessage()` level. |
 | BR-02 | `addReaction` is called at most once per `(messageId, emoji)` pair per `handleMessage()` invocation. Multiple success paths or retry logic must not produce duplicate reactions. |
 | BR-03 | A ✅ reaction and a ❌ reaction are mutually exclusive for a given invocation. Exactly one emoji value is used per call to `handleMessage()`. |
 | BR-04 | The `{operation}` placeholder in error replies accepts exactly two values: `start workflow` and `route answer`. The value `query workflows` is not used. |
 | BR-05 | Error message content in replies must not include stack traces, file paths, or raw exception class names — only the `.message` string (or `String(err)` for non-Error thrown values). |
-| BR-06 | The error message in the reply is truncated to 200 characters. The truncation boundary is a character boundary, not a byte boundary. |
+| BR-06 | The `{error message}` portion of the error reply (i.e., the value derived from `err.message` or `String(err)`, before being formatted into the reply string) is truncated to 200 characters. The truncation boundary is a character boundary, not a byte boundary. The `"Failed to {operation}: "` prefix is not counted against this limit. |
 | BR-07 | For the signal-routed success path, no `replyToMessage` call is made. Absence of a reply is a required behavior. |
 | BR-08 | Acknowledgement failures (Discord errors) do not alter the outcome of `handleMessage()` — the function returns normally regardless of whether acknowledgement succeeded. |
-| BR-09 | The workflow ID in the `Workflow started: {workflowId}` reply is the exact string returned by `startFeatureWorkflow()`. It must not be inferred, reformatted, or fabricated. |
+| BR-09 | The workflow ID in the `Workflow started: {workflowId}` reply is the exact string returned by `startWorkflowForFeature()`. It must not be inferred, reformatted, or fabricated. |
+| BR-10 | `channelId` in all acknowledgement calls is sourced from `message.threadId`. `message.parentChannelId` must not be used as the channel ID for acknowledgement. |
+| BR-11 | `WorkflowExecutionAlreadyStartedError` does not trigger any new acknowledgement. The existing `postPlainMessage` call in that catch block is the complete user-facing response for that case. |
 
 ---
 
@@ -322,9 +365,11 @@ try {
 
 | Condition | Reaction | Reply | Log |
 |-----------|----------|-------|-----|
-| `startFeatureWorkflow()` throws any error | ❌ | `Failed to start workflow: {msg}` | Pre-existing error logging (not part of this feature) |
+| `startWorkflowForFeature()` throws non-`WorkflowExecutionAlreadyStartedError` | ❌ | `Failed to start workflow: {msg}` | Pre-existing error logging (not part of this feature) |
 | `routeUserAnswer()` throws any error | ❌ | `Failed to route answer: {msg}` | Pre-existing error logging (not part of this feature) |
 | `queryWorkflowState()` throws non-`WorkflowNotFoundError` | None (out of scope) | None (out of scope) | Pre-existing WARN log at early-exit path |
+| `WorkflowExecutionAlreadyStartedError` thrown inside `startNewWorkflow()` | None (out of scope) | None (existing `postPlainMessage` only) | Pre-existing handling unchanged |
+| `phaseDetector.detect()` throws inside `startNewWorkflow()` | None (out of scope) | None (existing handling unchanged) | Pre-existing error logging |
 
 ### 6.2 Acknowledgement Errors (REQ-MA-06)
 
@@ -359,6 +404,10 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 | Retrying failed acknowledgement calls | Acknowledgement is best-effort; swallow and move on. |
 | Editing or deleting previously posted acknowledgement messages | Not supported. |
 | Rich embeds or formatted cards | Plain text only. |
+| New acknowledgement for `WorkflowExecutionAlreadyStartedError` | The existing `postPlainMessage("Workflow already running for {slug}")` call is the complete user-facing response. No emoji reaction or `replyToMessage` call is added. |
+| Acknowledgement for phase detection failure (`phaseDetector.detect()` throws) | Pre-`startWorkflowForFeature()` guard inside `startNewWorkflow()`. Existing error handling is unchanged. No reaction or `replyToMessage` added. |
+| Acknowledgement for ad-hoc directive path | `handleAdHocDirective()` has its own existing `postPlainMessage` acknowledgement. No new reaction or `replyToMessage` added. |
+| Acknowledgement for "workflow running, not waiting for user" silent drop | `handleStateDependentRouting()` drops silently when `phaseStatus` is not `waiting-for-user`, `failed`, or `revision-bound-reached`. No acknowledgement added. |
 
 ---
 
@@ -370,7 +419,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-01 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `handleMessage()` is invoked with a valid `ThreadMessage`; `FakeTemporalClient.startWorkflow` is configured to resolve with `{ workflowId: "ptah-test-feature" }` |
+| **Given** | `handleMessage()` is invoked with a valid `ThreadMessage` where `featureSlug` is `"test-feature"`; `FakeTemporalClient.startWorkflow` derives the workflow ID as `ptah-test-feature` (from `featureSlug` internally — no override needed) |
 | **When** | `handleMessage()` completes |
 | **Then** | `FakeDiscordClient.addReactionCalls` contains exactly one entry with `{ channelId: message.threadId, messageId: message.id, emoji: "✅" }` |
 
@@ -382,9 +431,9 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-02 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | Same as AT-MA-01 — `startFeatureWorkflow()` resolves with `workflowId: "ptah-test-feature"` |
+| **Given** | Same as AT-MA-01 — `featureSlug` is `"test-feature"`; `FakeTemporalClient.startWorkflow` derives `workflowId` as `"ptah-test-feature"` |
 | **When** | `handleMessage()` completes |
-| **Then** | `FakeDiscordClient.replyToMessageCalls` contains exactly one entry where `content === "Workflow started: ptah-test-feature"`, with matching `channelId` and `messageId` |
+| **Then** | `FakeDiscordClient.replyToMessageCalls` contains exactly one entry where `content === "Workflow started: ptah-test-feature"`, with matching `channelId: message.threadId` and `messageId: message.id` |
 
 ---
 
@@ -394,19 +443,19 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-03 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `handleMessage()` is invoked; `queryWorkflowState()` returns an active workflow state; `routeUserAnswer()` resolves |
+| **Given** | `handleMessage()` is invoked; `queryWorkflowState()` returns an active workflow state with `phaseStatus: "waiting-for-user"`; `routeUserAnswer()` resolves |
 | **When** | `handleMessage()` completes |
-| **Then** | `FakeDiscordClient.addReactionCalls` contains exactly one entry with emoji `"✅"` AND `FakeDiscordClient.replyToMessageCalls` is empty for this invocation |
+| **Then** | `FakeDiscordClient.addReactionCalls` contains exactly one entry with emoji `"✅"` AND both `FakeDiscordClient.replyToMessageCalls.filter(c => c.messageId === message.id)` is empty AND `FakeDiscordClient.postPlainMessageCalls.filter(c => c.channelId === message.threadId)` is empty for this invocation |
 
 ---
 
-### AT-MA-04: `startFeatureWorkflow()` throws — ❌ reaction posted
+### AT-MA-04: `startWorkflowForFeature()` throws — ❌ reaction posted
 
 | Attribute | Value |
 |-----------|-------|
 | **Requirement** | REQ-MA-04 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` is configured to throw `new Error("connection timeout")` |
+| **Given** | `startWorkflowForFeature()` is configured to throw `new Error("connection timeout")` |
 | **When** | `handleMessage()` completes |
 | **Then** | `FakeDiscordClient.addReactionCalls` contains exactly one entry with emoji `"❌"` |
 
@@ -430,7 +479,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-05 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` throws `new Error("connection timeout")` |
+| **Given** | `featureSlug` is `"test-feature"`; `startWorkflowForFeature()` throws `new Error("connection timeout")` |
 | **When** | `handleMessage()` completes |
 | **Then** | `FakeDiscordClient.replyToMessageCalls` contains exactly one entry where `content === "Failed to start workflow: connection timeout"` |
 
@@ -454,9 +503,9 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-05 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` throws an Error whose `.message` is exactly 200 characters |
+| **Given** | `startWorkflowForFeature()` throws an Error whose `.message` is exactly 200 characters |
 | **When** | `handleMessage()` completes |
-| **Then** | The `content` field in `replyToMessageCalls` ends with the full 200-character error string, not truncated |
+| **Then** | The `content` field in `replyToMessageCalls` ends with the full 200-character error string, not truncated (i.e. `content.endsWith(errorMsg)` and `content.slice("Failed to start workflow: ".length).length === 200`) |
 
 ---
 
@@ -466,9 +515,9 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-05 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` throws an Error whose `.message` is exactly 201 characters |
+| **Given** | `startWorkflowForFeature()` throws an Error whose `.message` is exactly 201 characters |
 | **When** | `handleMessage()` completes |
-| **Then** | The error string in `content` is exactly 200 characters; the 201st character is absent |
+| **Then** | The error string portion in `content` (after the `"Failed to start workflow: "` prefix) is exactly 200 characters; the 201st character is absent |
 
 ---
 
@@ -478,7 +527,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-05 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` throws the string `"temporal unreachable"` (not an Error instance) |
+| **Given** | `startWorkflowForFeature()` throws the string `"temporal unreachable"` (not an Error instance) |
 | **When** | `handleMessage()` completes |
 | **Then** | `replyToMessageCalls[0].content === "Failed to start workflow: temporal unreachable"` |
 
@@ -490,7 +539,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-06 |
 | **Who** | Orchestrator (via FakeDiscordClient with error injection) |
-| **Given** | `startFeatureWorkflow()` resolves; `FakeDiscordClient.addReactionError` is set to throw `new Error("rate limited")` |
+| **Given** | `startWorkflowForFeature()` resolves; `FakeDiscordClient.addReactionError` is set to throw `new Error("rate limited")` |
 | **When** | `handleMessage()` completes |
 | **Then** | A WARN log entry containing `"Acknowledgement failed: rate limited"` is recorded AND `handleMessage()` returned without throwing |
 
@@ -502,7 +551,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-MA-06 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` resolves; `FakeDiscordClient.addReactionError` is set to throw; `FakeDiscordClient.replyToMessageError` is not set |
+| **Given** | `startWorkflowForFeature()` resolves; `FakeDiscordClient.addReactionError` is set to throw; `FakeDiscordClient.replyToMessageError` is not set |
 | **When** | `handleMessage()` completes |
 | **Then** | `FakeDiscordClient.replyToMessageCalls` contains the `Workflow started: ...` reply (i.e. `replyToMessage` was still called despite `addReaction` failing) |
 
@@ -513,10 +562,10 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 | Attribute | Value |
 |-----------|-------|
 | **Requirement** | REQ-NF-17-01 |
-| **Who** | Orchestrator (via FakeDiscordClient with call order tracking) |
-| **Given** | Both Temporal and Discord calls are recorded with sequence numbers |
+| **Who** | Orchestrator (via FakeDiscordClient and FakeTemporalClient) |
+| **Given** | `handleMessage()` is invoked for a workflow-start scenario; `startWorkflowForFeature()` is configured to resolve only after a short controlled async delay (e.g. deferred promise in the fake) |
 | **When** | `handleMessage()` completes |
-| **Then** | All `addReaction` and `replyToMessage` call sequence numbers are greater than the sequence number of the `startFeatureWorkflow` (or `routeUserAnswer`) call — confirming neither acknowledgement call preceded the Temporal resolution |
+| **Then** | `FakeDiscordClient.addReactionCalls` and `FakeDiscordClient.replyToMessageCalls` are both empty before the deferred Temporal promise resolves, and both are populated after it resolves — verified by checking call counts at the suspension point (before resolve) vs. after. Implementation note: this can be achieved in two sequential assertions within a single test by resolving the deferred promise between the two check points, without requiring a cross-fake global sequence counter. |
 
 ---
 
@@ -526,7 +575,7 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 |-----------|-------|
 | **Requirement** | REQ-NF-17-03 |
 | **Who** | Orchestrator (via FakeDiscordClient) |
-| **Given** | `startFeatureWorkflow()` resolves normally |
+| **Given** | `startWorkflowForFeature()` resolves normally |
 | **When** | `handleMessage()` completes |
 | **Then** | `FakeDiscordClient.addReactionCalls.filter(c => c.messageId === message.id && c.emoji === "✅").length === 1` — exactly one ✅ reaction call for this message ID |
 
@@ -544,9 +593,21 @@ The following behaviors are explicitly NOT implemented by this feature. Engineer
 
 ---
 
+### AT-MA-16: Dual acknowledgement failure — both `addReaction` and `replyToMessage` throw
+
+| Attribute | Value |
+|-----------|-------|
+| **Requirement** | REQ-MA-06 |
+| **Who** | Orchestrator (via FakeDiscordClient with dual error injection) |
+| **Given** | `startWorkflowForFeature()` resolves; `FakeDiscordClient.addReactionError` is set to throw `new Error("reaction rate limited")`; `FakeDiscordClient.replyToMessageError` is set to throw `new Error("reply rate limited")` |
+| **When** | `handleMessage()` completes |
+| **Then** | Two WARN log entries are recorded — one containing `"Acknowledgement failed: reaction rate limited"` and one containing `"Acknowledgement failed: reply rate limited"` — AND `handleMessage()` returned without throwing AND the orchestrator remains unaffected |
+
+---
+
 ## 9. Open Questions
 
-None. All ambiguities from the SE and TE cross-reviews have been resolved in REQ v1.1 and incorporated into this FSPEC.
+None. All ambiguities from the SE and TE cross-reviews have been resolved and incorporated into this FSPEC v1.1.
 
 ---
 
@@ -555,6 +616,7 @@ None. All ambiguities from the SE and TE cross-reviews have been resolved in REQ
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-21 | Product Manager | Initial FSPEC. Incorporates all SE and TE cross-review findings: `query workflows` operation label excluded from error replies (SE-F2, TE-F1); REQ-NF-17-01 allows concurrent acknowledgement calls (SE-F3); `replyToMessage` named throughout; WARN log uses `err.message` with `String(err)` fallback; independent per-call error wrapping (TE-F4); negative no-reply constraint anchored in AT-MA-03 (TE-F2); truncation boundary cases addressed in AT-MA-08/AT-MA-09 (TE-F3); partial success ordering addressed in FSPEC-MA-06 and AT-MA-12 (TE-F4). |
+| 1.1 | 2026-04-21 | Product Manager | Address SE and TE cross-review findings (iteration 2). SE-F01: updated all behavioral flow diagrams to reflect private method boundaries (`startNewWorkflow()`, `handleStateDependentRouting()`); added Implementation Note in Section 1 warning against `handleMessage()`-level acknowledgement. SE-F02: `WorkflowExecutionAlreadyStartedError` classified as out of scope (Section 2.2 item 11, Section 7, FSPEC-MA-04 exclusions, Section 6.1 table); existing `postPlainMessage` handling unchanged. SE-F03: phase detection failure (`phaseDetector.detect()` throws) classified as out of scope (Section 2.2 item 12, Section 7, Section 6.1 table). SE-F04: ad-hoc directive path and "workflow running but not waiting for user" silent drop added explicitly to out-of-scope (Section 2.2 items 13–14, Section 7). TE-F01: AT-MA-01/02/06 Given clauses corrected to describe slug-based workflow ID derivation (`featureSlug: "test-feature"` → `ptah-test-feature`); removed incorrect "configured return value" framing. TE-F02: added AT-MA-16 covering dual-failure scenario (both `addReaction` and `replyToMessage` throw). TE-F03: AT-MA-13 replaced cross-fake sequence-counter approach with deferred-promise ordering verification (no new fake infrastructure required). TE-F04: AT-MA-03 Then clause extended to assert both `replyToMessageCalls` and `postPlainMessageCalls` empty (per-message filtered). TE-F05: added explicit `channelId = message.threadId` mapping in FSPEC-MA-01 through FSPEC-MA-05 Input rows and Section 1 Implementation Note; added BR-10. Also clarified BR-06 and FSPEC-MA-05 truncation scope (applies to `{error message}` portion only, not full reply string). |
 
 ---
 
