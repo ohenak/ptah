@@ -5,11 +5,11 @@
 | Field | Detail |
 |-------|--------|
 | **Document ID** | PROPERTIES-message-acknowledgement |
-| **Linked REQ** | [REQ-message-acknowledgement v1.1](./REQ-message-acknowledgement.md) |
+| **Linked REQ** | [REQ-message-acknowledgement v1.2](./REQ-message-acknowledgement.md) |
 | **Linked FSPEC** | [FSPEC-message-acknowledgement v1.1](./FSPEC-message-acknowledgement.md) |
 | **Linked TSPEC** | [TSPEC-message-acknowledgement v1.0](./TSPEC-message-acknowledgement.md) |
 | **Linked PLAN** | [PLAN-message-acknowledgement v1.1](./PLAN-message-acknowledgement.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 21, 2026 |
 | **Author** | Senior Test Engineer |
 | **Status** | Draft |
@@ -23,11 +23,11 @@
 | # | Fake | Field to Add | Type | Required by | Covered by PLAN |
 |---|------|-------------|------|-------------|-----------------|
 | P-01 | `FakeTemporalClient` | `startWorkflowErrorValue?: unknown` | `unknown \| undefined` | PROP-MA-11, PROP-MA-12 | PLAN TASK-01 |
-| P-02 | `FakeDiscordClient` | `addReactionErrorValue?: unknown` | `unknown \| undefined` | PROP-MA-18 | Not yet in PLAN — must be added |
+| P-02 | `FakeDiscordClient` | `addReactionErrorValue?: unknown` | `unknown \| undefined` | PROP-MA-18 | PLAN TASK-05 (added during PROPERTIES review to address this gap) |
 
 **P-01 detail:** `FakeTemporalClient.startFeatureWorkflow()` currently only checks `this.startWorkflowError: Error | null`. To test non-Error thrown values (PROP-MA-11: string, PROP-MA-12: plain object), `startWorkflowErrorValue?: unknown` must be added and checked first in `startFeatureWorkflow()` — if set, throw the value directly. PLAN TASK-01 specifies this change; it must complete before TASK-02 (test writing) begins.
 
-**P-02 detail:** `FakeDiscordClient.addReactionError` is typed `Error | null` and cannot inject a non-Error thrown value. PROP-MA-18 tests the `ackWithWarnOnError` handler when `addReaction` throws a non-Error value. This requires adding `addReactionErrorValue?: unknown` to `FakeDiscordClient`, checked in `addReaction()` before `addReactionError` (if set, throw the value directly). This fake change is NOT covered by the current PLAN and must be added as a prerequisite task.
+**P-02 detail:** `FakeDiscordClient.addReactionError` is typed `Error | null` and cannot inject a non-Error thrown value. PROP-MA-18 tests the `ackWithWarnOnError` handler when `addReaction` throws a non-Error value. This requires adding `addReactionErrorValue?: unknown` to `FakeDiscordClient`, checked in `addReaction()` before `addReactionError` (if set, throw the value directly). P-02 is covered by PLAN TASK-05 (added during PROPERTIES review to address this gap).
 
 ---
 
@@ -347,8 +347,22 @@ temporalClient.workflowStates.set(
 | **Description** | The WARN log message for acknowledgement failures must use `String(err)` when the thrown value is not an Error instance, rather than accessing `.message` (which would be `undefined`). |
 | **Source** | REQ-MA-06, FSPEC-MA-06, FSPEC Section 3.4 |
 | **Testable assertion** | Set `FakeDiscordClient.addReactionErrorValue = "rate limit exceeded"` (a string, not an Error instance). After `handleMessage(message)` completes (workflow-start success path), the WARN entry's message must be `"Acknowledgement failed: rate limit exceeded"`, not `"Acknowledgement failed: undefined"`. |
-| **Pass condition** | WARN entry message equals `"Acknowledgement failed: rate limit exceeded"`. |
+| **Pass condition** | Promise resolves (does not reject) AND WARN entry message equals `"Acknowledgement failed: rate limit exceeded"`. |
 | **Infrastructure prerequisite** | Requires prerequisite P-02: `addReactionErrorValue?: unknown` must be added to `FakeDiscordClient`. See PREREQUISITES section. |
+
+---
+
+#### PROP-MA-33
+
+| Field | Value |
+|-------|-------|
+| **Property ID** | PROP-MA-33 |
+| **Category** | Error Handling |
+| **Test level** | Unit |
+| **Description** | On the failure path (❌ reaction path), when `addReaction("❌")` throws, `replyToMessage` (error reply) must still be called independently. The failure of `addReaction` must not suppress the subsequent `replyToMessage` call. This tests REQ-MA-06's call-independence requirement on the failure path, extending PROP-MA-15 which only covers the success path. |
+| **Source** | REQ-MA-06, FSPEC-MA-06, FSPEC Section 6.2 |
+| **Testable assertion** | Given `startWorkflowError = new Error("connection timeout")` (triggering the ❌ failure path) AND `addReactionError = new Error("rate limited")` AND `replyToMessageError = null`: after `handleMessage(message)` completes, `FakeDiscordClient.replyToMessageCalls` contains exactly one entry with `content === "Failed to start workflow: connection timeout"`. |
+| **Pass condition** | `replyToMessageCalls.length === 1` AND `replyToMessageCalls[0].content === "Failed to start workflow: connection timeout"`. |
 
 ---
 
@@ -365,7 +379,7 @@ temporalClient.workflowStates.set(
 | **Test level** | Unit |
 | **Description** | Both `addReaction` and `replyToMessage` calls must be issued only after the Temporal operation (`startWorkflowForFeature()` or `routeUserAnswer()`) has fully resolved. Neither acknowledgement call may precede the Temporal operation's resolution. |
 | **Source** | REQ-NF-17-01, FSPEC Section 3.1, AT-MA-13 |
-| **Testable assertion** | Using a deferred promise that controls when `startFeatureWorkflow` resolves: (1) before the deferred promise is resolved, `addReactionCalls.length === 0` and `replyToMessageCalls.length === 0`; (2) after the deferred promise resolves and `handleMessage` completes, `addReactionCalls.length === 1` and `replyToMessageCalls.length === 1`. |
+| **Testable assertion** | Using a deferred promise that controls when `startFeatureWorkflow` resolves: flush at least 3 `await Promise.resolve()` calls after invoking `handleMessage` (one per awaited call in the chain: `queryWorkflowState` → `phaseDetector.detect` → `startFeatureWorkflow`); (1) before the deferred promise is resolved, `addReactionCalls.length === 0` and `replyToMessageCalls.length === 0`; (2) after the deferred promise resolves and `handleMessage` completes, `addReactionCalls.length === 1` and `replyToMessageCalls.length === 1`. |
 | **Pass condition** | Both counts are 0 at checkpoint 1 and both are 1 at checkpoint 2. |
 
 ---
@@ -533,6 +547,7 @@ temporalClient.workflowStates.set(
 | **Source** | FSPEC Section 2.2 item 12, FSPEC Section 7 Exclusions, TSPEC Section 9 |
 | **Testable assertion** | Configure `FakePhaseDetector.detectError = new Error("phase detection failed")`. After `handleMessage(message)` completes: `FakeDiscordClient.addReactionCalls.length === 0` AND `FakeDiscordClient.replyToMessageCalls.length === 0`. |
 | **Pass condition** | Both arrays are empty. |
+| **Note** | FSPEC Section 2.2 item 12 incorrectly labels this path as Branch A; TSPEC and PROPERTIES are authoritative — the phase-detection path is inside `startNewWorkflow()` (Branch B). FSPEC is being updated separately. |
 
 ---
 
@@ -565,20 +580,6 @@ temporalClient.workflowStates.set(
 | **Source** | REQ-MA-06, FSPEC-MA-06 |
 | **Testable assertion** | Given `addReactionError = new Error("rate limited")` and/or `replyToMessageError = new Error("reply failed")`: `logger.entriesAt("ERROR")` must not contain any entry related to acknowledgement. |
 | **Pass condition** | `logger.entriesAt("ERROR").every(e => !e.message.includes("Acknowledgement failed"))`. |
-
----
-
-#### PROP-MA-33
-
-| Field | Value |
-|-------|-------|
-| **Property ID** | PROP-MA-33 |
-| **Category** | Error Handling |
-| **Test level** | Unit |
-| **Description** | On the failure path (❌ reaction path), when `addReaction("❌")` throws, `replyToMessage` (error reply) must still be called independently. The failure of `addReaction` must not suppress the subsequent `replyToMessage` call. This tests REQ-MA-06's call-independence requirement on the failure path, extending PROP-MA-15 which only covers the success path. |
-| **Source** | REQ-MA-06, FSPEC-MA-06, FSPEC Section 6.2 |
-| **Testable assertion** | Given `startWorkflowError = new Error("connection timeout")` (triggering the ❌ failure path) AND `addReactionError = new Error("rate limited")` AND `replyToMessageError = null`: after `handleMessage(message)` completes, `FakeDiscordClient.replyToMessageCalls` contains exactly one entry with `content === "Failed to start workflow: connection timeout"`. |
-| **Pass condition** | `replyToMessageCalls.length === 1` AND `replyToMessageCalls[0].content === "Failed to start workflow: connection timeout"`. |
 
 ---
 
@@ -616,7 +617,7 @@ temporalClient.workflowStates.set(
 | G-03 | AT-MA-10 / PROP-MA-11 requires `FakeTemporalClient.startWorkflowErrorValue?: unknown`. TSPEC Section 7.2 incorrectly states no fake changes are needed. PLAN TASK-01 is the authoritative source: `startWorkflowErrorValue` must be added before PROP-MA-11 and PROP-MA-12 can be exercised. | Elevated to PREREQUISITES (P-01). The PROPERTIES document depends on TASK-01 being completed as specified. Implementation of PROP-MA-11 and PROP-MA-12 is blocked on this factory change. |
 | G-04 | REQ-NF-17-02 (latency < 5 seconds) has no automated coverage path. | Accepted. Manual verification per PLAN TASK-04 step 6. Not a gap in the automated test suite design. |
 | G-05 | No property explicitly guarded the `replyToMessage` call independence on the failure path (i.e., `replyToMessage` still called when `addReaction` fails during the ❌ path). PROP-MA-15 covered this only for the success path. | Resolved. PROP-MA-33 has been added as a named property asserting that on the failure path, when `addReaction("❌")` throws, `replyToMessage` (error reply) is still called independently. This closes the untested gap in the P0 REQ-MA-06 contract. |
-| G-06 | PROP-MA-18 requires injecting a non-Error value through `addReaction()`, but `FakeDiscordClient.addReactionError` is typed `Error \| null` and cannot accept non-Error values. | Elevated to PREREQUISITES (P-02). PROP-MA-18 has been updated to use `addReactionErrorValue?: unknown`, which must be added to `FakeDiscordClient` as a prerequisite task (not yet in PLAN). The injection mechanism is analogous to `startWorkflowErrorValue` on `FakeTemporalClient`. |
+| G-06 | PROP-MA-18 requires injecting a non-Error value through `addReaction()`, but `FakeDiscordClient.addReactionError` is typed `Error \| null` and cannot accept non-Error values. | Elevated to PREREQUISITES (P-02). PROP-MA-18 has been updated to use `addReactionErrorValue?: unknown`, which must be added to `FakeDiscordClient` as a prerequisite task. P-02 is now tracked by PLAN TASK-05 (added during PROPERTIES review). The injection mechanism is analogous to `startWorkflowErrorValue` on `FakeTemporalClient`. |
 
 ---
 
@@ -626,6 +627,7 @@ temporalClient.workflowStates.set(
 |---------|------|--------|---------|
 | 1.0 | 2026-04-21 | Senior Test Engineer | Initial PROPERTIES document. 32 properties across 10 categories derived from REQ v1.1, FSPEC v1.1, TSPEC v1.0, PLAN v1.1, and both TE cross-review documents. |
 | 1.1 | 2026-04-21 | Senior Test Engineer | Address SE and PM cross-review findings. SE-F01 (High): add PREREQUISITES block before Section 1 listing required fake extensions (P-01: `startWorkflowErrorValue` on `FakeTemporalClient`, P-02: `addReactionErrorValue` on `FakeDiscordClient`). SE-F02 (High): redesign PROP-MA-18 to use `addReactionErrorValue?: unknown` injection mechanism; add P-02 to prerequisites; update Section 2 infrastructure table to document this field. SE-F03 (Medium): redesign PROP-MA-20 to be testable using existing per-method call arrays — both arrays having exactly one entry is sufficient evidence of sequential ordering without requiring a global cross-method sequence. SE-F04 (Medium): correct "Branch A" to "Branch B" in PROP-MA-30 description. PM-F02 (Medium): add PROP-MA-33 asserting that on the failure path (❌), when `addReaction` throws, `replyToMessage` is still independently called. PM-F03 (Low): expand Section 2 infrastructure table to list all `FakeDiscordClient` fields individually including `postPlainMessageCalls`. PM-F04 (Low): add PROP-MA-12 with prerequisite note to REQ-MA-05 row in coverage matrix. Update gaps section: G-02 resolved (PROP-MA-20 redesigned), G-05 resolved (PROP-MA-33 added), G-03 and G-06 elevated to PREREQUISITES. |
+| 1.2 | 2026-04-21 | Senior Test Engineer | Address SE v2 and PM v2 cross-review findings. SE2-F01 (Medium): update PREREQUISITES P-02 to reference PLAN TASK-05 — "P-02 is covered by PLAN TASK-05 (added during PROPERTIES review to address this gap)." SE2-F02 (Medium): add Note to PROP-MA-30 clarifying that FSPEC Section 2.2 item 12 incorrectly labels this path as Branch A; TSPEC and PROPERTIES are authoritative. SE2-F03 (Low): add "Promise resolves (does not reject)" clause to PROP-MA-18 pass condition, matching the pattern used in PROP-MA-14. SE2-F05 (Low): update PROP-MA-19 deferred-promise flush count from 2 to 3 (one per awaited call in the chain: `queryWorkflowState` → `phaseDetector.detect` → `startFeatureWorkflow`). PM2-F01 (Low): update PROPERTIES header Linked REQ from v1.1 to v1.2. PM2-F02 (Low): move PROP-MA-33 from Category J to Category E (Error Handling) to match its metadata label and proximity to PROP-MA-14 through PROP-MA-18. |
 
 ---
 
