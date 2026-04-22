@@ -1423,6 +1423,7 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   connectionError: Error | null = null;
   disconnectError: Error | null = null;
   startWorkflowError: Error | null = null;
+  startWorkflowErrorValue?: unknown; // for throwing non-Error values (AT-MA-10)
   signalError: Error | null = null;
   connected = false;
   connectCalls = 0;
@@ -1449,6 +1450,7 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   }
 
   async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
+    if (this.startWorkflowErrorValue !== undefined) throw this.startWorkflowErrorValue;
     if (this.startWorkflowError) throw this.startWorkflowError;
     this.startedWorkflows.push(params);
     return `ptah-${params.featureSlug}`;
