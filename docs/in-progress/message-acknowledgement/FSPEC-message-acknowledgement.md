@@ -7,7 +7,7 @@
 | **Document ID** | FSPEC-message-acknowledgement |
 | **Linked Requirements** | REQ-MA-01, REQ-MA-02, REQ-MA-03, REQ-MA-04, REQ-MA-05, REQ-MA-06, REQ-NF-17-01, REQ-NF-17-02, REQ-NF-17-03 |
 | **Parent REQ** | [REQ-message-acknowledgement v1.1](./REQ-message-acknowledgement.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 21, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -36,8 +36,8 @@ The reaction is always the first tier. A plain-text reply is added only where a 
 
 `handleMessage()` delegates to two private methods:
 
-- **`startNewWorkflow(slug, message)`** — handles Branch A (start a new workflow). This method calls `startWorkflowForFeature()` internally and is responsible for detecting success vs. failure. Acknowledgement for Branch A outcomes must be inserted **inside `startNewWorkflow()`**, after `startWorkflowForFeature()` resolves or throws.
-- **`handleStateDependentRouting(state, message)`** — handles Branch B (route an answer to an existing workflow). This method calls `routeUserAnswer()` internally. Acknowledgement for Branch B outcomes must be inserted **inside `handleStateDependentRouting()`**, after `routeUserAnswer()` resolves or throws.
+- **`startNewWorkflow(slug, message)`** — handles Branch B (start a new workflow). This method calls `startWorkflowForFeature()` internally and is responsible for detecting success vs. failure. Acknowledgement for Branch B outcomes must be inserted **inside `startNewWorkflow()`**, after `startWorkflowForFeature()` resolves or throws.
+- **`handleStateDependentRouting(state, message)`** — handles Branch A (route an answer to an existing workflow). This method calls `routeUserAnswer()` internally. Acknowledgement for Branch A outcomes must be inserted **inside `handleStateDependentRouting()`**, after `routeUserAnswer()` resolves or throws.
 
 `handleMessage()` itself calls these private methods via `await` and cannot detect success vs. failure by return value (both methods return `void`). Engineers must not insert acknowledgement calls at the `handleMessage()` level — doing so would fire acknowledgement before the private method's internal result is known, producing a false ✅ when `startNewWorkflow()` encounters an internally-swallowed error.
 
@@ -72,8 +72,8 @@ The following paths do **not** receive any acknowledgement and are explicitly ex
 9. **`retry-or-cancel` and `resume-or-cancel` signals** — Out of scope for this feature.
 10. **Rate-limit retry logic** — Acknowledgement failures are swallowed; no retry.
 11. **`WorkflowExecutionAlreadyStartedError` path** — When `startNewWorkflow()` catches `WorkflowExecutionAlreadyStartedError`, it posts a bespoke message via the existing `postPlainMessage("Workflow already running for {slug}")` call. This path does not receive a new emoji reaction or a `replyToMessage` call from this feature. The existing `postPlainMessage` output is the complete user-facing feedback for this case. No changes to this path are in scope.
-12. **Phase detection failure path** — When `phaseDetector.detect()` throws inside `startNewWorkflow()`, the method logs the error and posts a plain message via the existing error handling. This is a pre-`startWorkflowForFeature()` guard inside Branch A; it is not a Temporal operation outcome. No reaction or `replyToMessage` call is added for this path. Existing behavior is unchanged.
-13. **Ad-hoc directive path** — When an ad-hoc directive is detected inside Branch A, `handleAdHocDirective()` is called. This path has its own existing acknowledgement via `postPlainMessage`. No new emoji reaction or `replyToMessage` call is added.
+12. **Phase detection failure path** — When `phaseDetector.detect()` throws inside `startNewWorkflow()`, the method logs the error and posts a plain message via the existing error handling. This is a pre-`startWorkflowForFeature()` guard inside Branch B; it is not a Temporal operation outcome. No reaction or `replyToMessage` call is added for this path. Existing behavior is unchanged.
+13. **Ad-hoc directive path** — When an ad-hoc directive is detected inside Branch B, `handleAdHocDirective()` is called. This path has its own existing acknowledgement via `postPlainMessage`. No new emoji reaction or `replyToMessage` call is added.
 14. **Workflow running but not waiting for user input (silent drop)** — When a workflow is in a `phaseStatus` state other than `waiting-for-user`, `failed`, or `revision-bound-reached`, `handleStateDependentRouting()` performs a silent drop. No acknowledgement is added for this path.
 
 ---
@@ -93,8 +93,8 @@ handleMessage(message)
   ├─ [guard checks pass — slug non-empty, agent mentioned]
   │
   ├─ queryWorkflowState(threadSlug)
-  │   ├─ throws WorkflowNotFoundError → Branch A (start workflow)
-  │   └─ returns null              → Branch A (start workflow)
+  │   ├─ throws WorkflowNotFoundError → Branch B (start workflow)
+  │   └─ returns null              → Branch B (start workflow)
   │
   └─ await startNewWorkflow(slug, message)
        │
@@ -139,7 +139,7 @@ handleMessage(message)
   ├─ [guard checks pass]
   │
   ├─ queryWorkflowState(threadSlug)
-  │   └─ returns state (workflow paused) → Branch B
+  │   └─ returns state (workflow paused) → Branch A
   │
   └─ await handleStateDependentRouting(state, message)
        │
@@ -176,10 +176,10 @@ handleMessage(message)
   ├─ [guard checks pass]
   │
   ├─ queryWorkflowState(threadSlug)
-  │   ├─ returns null/WNF error → Branch A
-  │   └─ returns state          → Branch B
+  │   ├─ returns null/WNF error → Branch B
+  │   └─ returns state          → Branch A
   │
-  ├─ [Branch A] await startNewWorkflow(slug, message)
+  ├─ [Branch B] await startNewWorkflow(slug, message)
   │       │
   │       ├─ phaseDetector.detect(slug)
   │       │   └─ RESOLVES (phase detected)
@@ -198,7 +198,7 @@ handleMessage(message)
   │       │   └─ throws  → log WARN; continue
   │       └─ return
   │
-  └─ [Branch B] await handleStateDependentRouting(state, message)
+  └─ [Branch A] await handleStateDependentRouting(state, message)
           │
           ├─ routeUserAnswer(...)
           │   └─ THROWS error
@@ -315,7 +315,7 @@ try {
 | **Trigger** | `startWorkflowForFeature()` throws a non-`WorkflowExecutionAlreadyStartedError`, OR `routeUserAnswer()` throws |
 | **channelId source** | `message.threadId` (NOT `message.parentChannelId`) |
 | **Content format** | `Failed to {operation}: {error message}` |
-| **Operation label** | Exactly one of: `start workflow` (Branch A), `route answer` (Branch B) |
+| **Operation label** | Exactly one of: `start workflow` (Branch B), `route answer` (Branch A) |
 | **Invalid operation labels** | `query workflows` is NOT a valid operation label. The query failure path is out of scope and never reaches this code. |
 | **Error message source** | `err.message` if `err instanceof Error`; `String(err)` otherwise |
 | **Truncation** | Error message (the `{error message}` portion, before formatting into the reply string) is truncated to 200 characters if longer. A 200-character message is NOT truncated. A 201-character message is truncated to exactly 200 characters. The `"Failed to {operation}: "` prefix is not subject to truncation and is not counted against the 200-character limit. |
@@ -617,6 +617,7 @@ None. All ambiguities from the SE and TE cross-reviews have been resolved and in
 |---------|------|--------|---------|
 | 1.0 | 2026-04-21 | Product Manager | Initial FSPEC. Incorporates all SE and TE cross-review findings: `query workflows` operation label excluded from error replies (SE-F2, TE-F1); REQ-NF-17-01 allows concurrent acknowledgement calls (SE-F3); `replyToMessage` named throughout; WARN log uses `err.message` with `String(err)` fallback; independent per-call error wrapping (TE-F4); negative no-reply constraint anchored in AT-MA-03 (TE-F2); truncation boundary cases addressed in AT-MA-08/AT-MA-09 (TE-F3); partial success ordering addressed in FSPEC-MA-06 and AT-MA-12 (TE-F4). |
 | 1.1 | 2026-04-21 | Product Manager | Address SE and TE cross-review findings (iteration 2). SE-F01: updated all behavioral flow diagrams to reflect private method boundaries (`startNewWorkflow()`, `handleStateDependentRouting()`); added Implementation Note in Section 1 warning against `handleMessage()`-level acknowledgement. SE-F02: `WorkflowExecutionAlreadyStartedError` classified as out of scope (Section 2.2 item 11, Section 7, FSPEC-MA-04 exclusions, Section 6.1 table); existing `postPlainMessage` handling unchanged. SE-F03: phase detection failure (`phaseDetector.detect()` throws) classified as out of scope (Section 2.2 item 12, Section 7, Section 6.1 table). SE-F04: ad-hoc directive path and "workflow running but not waiting for user" silent drop added explicitly to out-of-scope (Section 2.2 items 13–14, Section 7). TE-F01: AT-MA-01/02/06 Given clauses corrected to describe slug-based workflow ID derivation (`featureSlug: "test-feature"` → `ptah-test-feature`); removed incorrect "configured return value" framing. TE-F02: added AT-MA-16 covering dual-failure scenario (both `addReaction` and `replyToMessage` throw). TE-F03: AT-MA-13 replaced cross-fake sequence-counter approach with deferred-promise ordering verification (no new fake infrastructure required). TE-F04: AT-MA-03 Then clause extended to assert both `replyToMessageCalls` and `postPlainMessageCalls` empty (per-message filtered). TE-F05: added explicit `channelId = message.threadId` mapping in FSPEC-MA-01 through FSPEC-MA-05 Input rows and Section 1 Implementation Note; added BR-10. Also clarified BR-06 and FSPEC-MA-05 truncation scope (applies to `{error message}` portion only, not full reply string). |
+| 1.2 | 2026-04-21 | Product Manager | Fix branch label error found in cross-review. Section 2.2 item 12 incorrectly labelled the `phaseDetector.detect()` error path inside `startNewWorkflow()` as "Branch A"; corrected to "Branch B" per TSPEC (authoritative). Applied consistent correction throughout: Section 1 Implementation Note (swapped Branch A/B labels for `startNewWorkflow()` and `handleStateDependentRouting()`), Section 2.2 item 13 (ad-hoc directive path inside `startNewWorkflow()` corrected to Branch B), Section 3.1/3.2/3.3 behavioral flow diagrams, and FSPEC-MA-05 operation label table. |
 
 ---
 
