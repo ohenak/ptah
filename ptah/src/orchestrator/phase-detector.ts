@@ -15,7 +15,7 @@ export interface PhaseDetectionResult {
    * Which lifecycle folder was selected as the resolved folder
    * per the REQ-PD-03 decision table.
    */
-  resolvedLifecycle: "in-progress" | "backlog";
+  resolvedLifecycle: "in-progress" | "backlog" | "completed";
 
   /**
    * True if a REQ file exists in any checked active lifecycle folder.
@@ -32,9 +32,10 @@ export interface PhaseDetector {
   /**
    * Detect the appropriate starting phase for a new feature workflow.
    *
-   * Checks the following paths via FileSystem.exists() (in-progress first):
+   * Checks the following paths (in-progress first, then backlog, then completed):
    *   docs/in-progress/<slug>/REQ-<slug>.md
    *   docs/backlog/<slug>/REQ-<slug>.md
+   *   docs/completed/<NNN-slug>/*REQ-<slug>.md  (NNN prefix stripped for matching)
    *   docs/in-progress/<slug>/overview.md
    *   docs/backlog/<slug>/overview.md
    *
@@ -48,7 +49,8 @@ export interface PhaseDetector {
    *
    * Is purely read-only: never creates, writes, renames, or deletes files.
    *
-   * Completed lifecycle folders (docs/completed/) are not checked.
+   * Completed lifecycle folders (docs/completed/) are checked last via listDirs +
+   * readDirMatching; those methods swallow I/O errors and return [] rather than throwing.
    *
    * @throws propagates any error thrown by FileSystem.exists()
    */
@@ -56,16 +58,23 @@ export interface PhaseDetector {
 }
 
 export class DefaultPhaseDetector implements PhaseDetector {
+  private readonly docsRoot: string;
+
   constructor(
     private readonly fs: FileSystem,
     private readonly logger: Logger,
-  ) {}
+    docsRoot: string = "docs",
+  ) {
+    // Strip trailing slashes so joined paths stay clean.
+    this.docsRoot = docsRoot.replace(/\/+$/, "");
+  }
 
   async detect(slug: string): Promise<PhaseDetectionResult> {
-    const inProgressReqPath = `docs/in-progress/${slug}/REQ-${slug}.md`;
-    const backlogReqPath = `docs/backlog/${slug}/REQ-${slug}.md`;
-    const inProgressOverviewPath = `docs/in-progress/${slug}/overview.md`;
-    const backlogOverviewPath = `docs/backlog/${slug}/overview.md`;
+    const docsRoot = this.docsRoot;
+    const inProgressReqPath = `${docsRoot}/in-progress/${slug}/REQ-${slug}.md`;
+    const backlogReqPath = `${docsRoot}/backlog/${slug}/REQ-${slug}.md`;
+    const inProgressOverviewPath = `${docsRoot}/in-progress/${slug}/overview.md`;
+    const backlogOverviewPath = `${docsRoot}/backlog/${slug}/overview.md`;
 
     // NOTE: errors propagate — not caught here (caller handles REQ-ER-03)
     const inProgressReq = await this.fs.exists(inProgressReqPath);
@@ -73,8 +82,28 @@ export class DefaultPhaseDetector implements PhaseDetector {
     const inProgressOverview = await this.fs.exists(inProgressOverviewPath);
     const backlogOverview = await this.fs.exists(backlogOverviewPath);
 
-    const ipPath = `docs/in-progress/${slug}/`;
-    const blPath = `docs/backlog/${slug}/`;
+    // Check docs/completed/<NNN-slug>/ for a REQ file matching *REQ-<slug>.md.
+    // listDirs and readDirMatching swallow I/O errors internally (return []).
+    let completedReq = false;
+    let completedFolderEntry: string | null = null;
+    const completedEntryPattern = new RegExp(`^\\d{3}-${slug}$`);
+    const completedDirs = await this.fs.listDirs(`${docsRoot}/completed`);
+    for (const entry of completedDirs) {
+      if (completedEntryPattern.test(entry)) {
+        const reqFiles = await this.fs.readDirMatching(
+          `${docsRoot}/completed/${entry}`,
+          new RegExp(`REQ-${slug}\\.md$`),
+        );
+        if (reqFiles.length > 0) {
+          completedReq = true;
+          completedFolderEntry = entry;
+          break;
+        }
+      }
+    }
+
+    const ipPath = `${docsRoot}/in-progress/${slug}/`;
+    const blPath = `${docsRoot}/backlog/${slug}/`;
 
     // REQ-PD-03 warning conditions (Cases A, B, C, H)
     if (inProgressReq && backlogReq) {
@@ -100,7 +129,7 @@ export class DefaultPhaseDetector implements PhaseDetector {
     }
 
     // General resolution rule (REQ-PD-03)
-    let resolvedLifecycle: "in-progress" | "backlog";
+    let resolvedLifecycle: "in-progress" | "backlog" | "completed";
     let startAtPhase: "req-review" | "req-creation";
 
     if (inProgressReq) {
@@ -109,6 +138,12 @@ export class DefaultPhaseDetector implements PhaseDetector {
     } else if (backlogReq) {
       resolvedLifecycle = "backlog";
       startAtPhase = "req-review";
+    } else if (completedReq) {
+      resolvedLifecycle = "completed";
+      startAtPhase = "req-review";
+      this.logger.info(
+        `Phase detection: slug=${slug} REQ found in completed folder ${docsRoot}/completed/${completedFolderEntry}/ — skipping req-creation`,
+      );
     } else if (inProgressOverview) {
       resolvedLifecycle = "in-progress";
       startAtPhase = "req-creation";
@@ -116,12 +151,12 @@ export class DefaultPhaseDetector implements PhaseDetector {
       resolvedLifecycle = "backlog";
       startAtPhase = "req-creation";
     } else {
-      // Nothing found in any active folder (PM Phase 0 handles folder creation)
+      // Nothing found in any lifecycle folder (PM Phase 0 handles folder creation)
       resolvedLifecycle = "in-progress";
       startAtPhase = "req-creation";
     }
 
-    const reqPresent = inProgressReq || backlogReq;
+    const reqPresent = inProgressReq || backlogReq || completedReq;
     const overviewPresent = inProgressOverview || backlogOverview;
 
     // REQ-ER-02: structured log entry

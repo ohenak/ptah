@@ -239,7 +239,11 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
   }
 
   async commitAndPush(params: CommitAndPushParams): Promise<CommitAndPushResult> {
-    const { worktreePath, featureBranch, artifactChanges, agentId, threadName } = params;
+    const { worktreePath, featureBranch, worktreeBranch, artifactChanges, agentId, threadName } = params;
+
+    // Whether the worktree is on a short-lived per-agent review branch that must
+    // be pushed to `featureBranch` on the remote via a HEAD refspec.
+    const useReviewBranch = !!(worktreeBranch && worktreeBranch !== featureBranch);
 
     // 1. VALIDATE — return no-changes if empty
     if (artifactChanges.length === 0) {
@@ -286,15 +290,49 @@ export class DefaultArtifactCommitter implements ArtifactCommitter {
     }
 
     // 5. PUSH to origin
-    try {
-      await this.gitClient.pushInWorktree(worktreePath, "origin", featureBranch);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
+    //
+    // When using a per-agent review branch (useReviewBranch=true) we push
+    // HEAD to origin/<featureBranch> using an explicit refspec.  Concurrent
+    // parallel agents may push between our commit and our push, making it a
+    // non-fast-forward — we retry up to 3 times with a fetch+rebase cycle.
+    const pushRefspec = useReviewBranch
+      ? `HEAD:refs/heads/${featureBranch}`
+      : featureBranch;
+    const maxPushAttempts = useReviewBranch ? 3 : 1;
+
+    let lastPushError: string | undefined;
+    for (let attempt = 0; attempt < maxPushAttempts; attempt++) {
+      if (attempt > 0) {
+        // Fetch latest featureBranch and rebase our reviewBranch onto it.
+        // CROSS-REVIEW files are agent-unique so there should be no conflict.
+        try {
+          await this.gitClient.fetchBranchInWorktree(worktreePath, "origin", featureBranch);
+          await this.gitClient.rebaseOntoInWorktree(worktreePath, `origin/${featureBranch}`);
+        } catch (rebaseErr: unknown) {
+          return {
+            commitSha,
+            pushStatus: "push-error",
+            featureBranch,
+            errorMessage: `Rebase onto origin/${featureBranch} failed: ${rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr)}`,
+          };
+        }
+      }
+
+      try {
+        await this.gitClient.pushInWorktree(worktreePath, "origin", pushRefspec);
+        lastPushError = undefined;
+        break;
+      } catch (error: unknown) {
+        lastPushError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    if (lastPushError !== undefined) {
       return {
         commitSha,
         pushStatus: "push-error",
         featureBranch,
-        errorMessage: message,
+        errorMessage: lastPushError,
       };
     }
 

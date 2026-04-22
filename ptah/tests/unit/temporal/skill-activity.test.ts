@@ -246,8 +246,9 @@ describe("invokeSkill — worktree creation, context assembly, skill invocation 
     await invokeSkill(makeDefaultInput());
 
     // WorktreeManager is now responsible for worktree creation (F1)
+    // For forkJoin=false (default), a per-agent review branch is used
     expect(worktreeManager.createCalls).toHaveLength(1);
-    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature");
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature-review-eng");
   });
 
   it("assembles context with contextDocumentRefs", async () => {
@@ -804,9 +805,9 @@ describe("invokeSkill — WorktreeManager delegation (F1)", () => {
     const { invokeSkill } = createActivities(deps);
     await invokeSkill(makeDefaultInput());
 
-    // WorktreeManager.create() should have been called
+    // WorktreeManager.create() should have been called with per-agent review branch
     expect(worktreeManager.createCalls).toHaveLength(1);
-    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature");
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature-review-eng");
   });
 
   it("uses WorktreeHandle.path as the worktree path for context assembly and invocation", async () => {
@@ -1061,6 +1062,7 @@ describe("invokeSkill — commitAndPush for non-fork-join (Task 28)", () => {
     expect(artifactCommitter.commitAndPushCalls).toHaveLength(1);
     expect(artifactCommitter.commitAndMergeCalls).toHaveLength(0);
     expect(artifactCommitter.commitAndPushCalls[0]!.featureBranch).toBe("feat-my-feature");
+    expect(artifactCommitter.commitAndPushCalls[0]!.worktreeBranch).toBe("feat-my-feature-review-eng");
     expect(artifactCommitter.commitAndPushCalls[0]!.agentId).toBe("eng");
   });
 
@@ -1097,6 +1099,130 @@ describe("invokeSkill — commitAndPush for non-fork-join (Task 28)", () => {
 
     // WorktreeManager.destroy should be called after successful push
     expect(worktreeManager.destroyCalls).toHaveLength(1);
+  });
+});
+
+// ===========================================================================
+// Per-agent review branch isolation (parallel reviewer fix)
+// ===========================================================================
+
+describe("invokeSkill — per-agent review branch isolation", () => {
+  it("creates review branch from featureBranch before worktree creation (forkJoin=false)", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const worktreeManager = deps.worktreeManager as FakeWorktreeManager;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    // createOrResetBranch should be called with the review branch derived from featureBranch
+    expect(gitClient.createOrResetBranchCalls).toHaveLength(1);
+    expect(gitClient.createOrResetBranchCalls[0]).toEqual({
+      branch: "feat-my-feature-review-eng",
+      fromRef: "feat-my-feature",
+    });
+
+    // worktreeManager.create should use the review branch, not featureBranch
+    expect(worktreeManager.createCalls).toHaveLength(1);
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature-review-eng");
+  });
+
+  it("does NOT create review branch for forkJoin=true", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const worktreeManager = deps.worktreeManager as FakeWorktreeManager;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: true }));
+
+    // No review branch — forkJoin worktrees use featureBranch directly
+    expect(gitClient.createOrResetBranchCalls).toHaveLength(0);
+    expect(worktreeManager.createCalls[0]!.featureBranch).toBe("feat-my-feature");
+  });
+
+  it("passes worktreeBranch to commitAndPush when review branch is used", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+    const artifactCommitter = deps.artifactCommitter as FakeArtifactCommitter;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/my-feature/TSPEC.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    expect(artifactCommitter.commitAndPushCalls).toHaveLength(1);
+    expect(artifactCommitter.commitAndPushCalls[0]!.featureBranch).toBe("feat-my-feature");
+    expect(artifactCommitter.commitAndPushCalls[0]!.worktreeBranch).toBe("feat-my-feature-review-eng");
+  });
+
+  it("deletes review branch after successful commitAndPush", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const routingEngine = deps.routingEngine as FakeRoutingEngine;
+
+    routingEngine.parseResult = { type: "LGTM" };
+    gitClient.diffWorktreeIncludingUntrackedResult = ["docs/my-feature/TSPEC.md"];
+
+    const { invokeSkill } = createActivities(deps);
+    await invokeSkill(makeDefaultInput({ forkJoin: false }));
+
+    // Review branch should be deleted after the push succeeds
+    expect(gitClient.deletedBranches).toContain("feat-my-feature-review-eng");
+  });
+
+  it("does NOT delete review branch on skill invocation failure", async () => {
+    const deps = makeDeps();
+    const gitClient = deps.gitClient as FakeGitClient;
+    const skillInvoker = deps.skillInvoker as FakeSkillInvoker;
+
+    skillInvoker.invokeError = new Error("Skill crashed");
+
+    const { invokeSkill } = createActivities(deps);
+
+    try {
+      await invokeSkill(makeDefaultInput({ forkJoin: false }));
+    } catch {
+      // expected
+    }
+
+    // Review branch should NOT be deleted — left for debugging
+    expect(gitClient.deletedBranches).not.toContain("feat-my-feature-review-eng");
+  });
+
+  it("two parallel reviewers (eng, qa) create separate review branches", async () => {
+    // Simulate eng invocation
+    const depsEng = makeDeps();
+    const gitClientEng = depsEng.gitClient as FakeGitClient;
+    const routingEng = depsEng.routingEngine as FakeRoutingEngine;
+    routingEng.parseResult = { type: "LGTM" };
+    gitClientEng.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill: invokeEng } = createActivities(depsEng);
+    await invokeEng(makeDefaultInput({ agentId: "eng", forkJoin: false }));
+
+    expect(gitClientEng.createOrResetBranchCalls[0]!.branch).toBe("feat-my-feature-review-eng");
+
+    // Simulate qa invocation (separate deps / gitClient instance)
+    const depsQa = makeDeps();
+    const gitClientQa = depsQa.gitClient as FakeGitClient;
+    const routingQa = depsQa.routingEngine as FakeRoutingEngine;
+    routingQa.parseResult = { type: "LGTM" };
+    gitClientQa.diffWorktreeIncludingUntrackedResult = [];
+
+    const { invokeSkill: invokeQa } = createActivities(depsQa);
+    await invokeQa(makeDefaultInput({ agentId: "qa", forkJoin: false }));
+
+    expect(gitClientQa.createOrResetBranchCalls[0]!.branch).toBe("feat-my-feature-review-qa");
   });
 });
 

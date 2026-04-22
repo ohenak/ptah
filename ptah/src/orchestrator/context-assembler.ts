@@ -267,13 +267,52 @@ export class DefaultContextAssembler implements ContextAssembler {
   }
 
   private async readOverviewFromBase(featureName: string, docsRoot: string): Promise<string | null> {
-    const overviewPath = this.fs.joinPath(docsRoot, featureName, "overview.md");
+    const featureDir = await this.resolveFeatureDir(featureName, docsRoot);
+    const overviewPath = this.fs.joinPath(featureDir, "overview.md");
     try {
       const content = await this.fs.readFile(overviewPath);
       return content;
     } catch {
       this.logger.warn(`overview.md not found for feature: ${featureName}`);
       return null;
+    }
+  }
+
+  /**
+   * Locate the feature folder within docsRoot. Feature Lifecycle Folders
+   * (FLF) places features under docs/in-progress/, docs/backlog/, or
+   * docs/completed/<NNN-slug>/. Probes each in order and returns the first
+   * match. Falls back to docs/<featureName> for legacy layouts / tests.
+   */
+  private async resolveFeatureDir(featureName: string, docsRoot: string): Promise<string> {
+    const inProgress = this.fs.joinPath(docsRoot, "in-progress", featureName);
+    if (await this.safeExists(inProgress)) return inProgress;
+
+    const backlog = this.fs.joinPath(docsRoot, "backlog", featureName);
+    if (await this.safeExists(backlog)) return backlog;
+
+    // Completed folders are prefixed with NNN- (e.g. 017-my-feature).
+    const completedRoot = this.fs.joinPath(docsRoot, "completed");
+    try {
+      const entries = await this.fs.listDirs(completedRoot);
+      const match = entries.find((e) => new RegExp(`^\\d{3}-${featureName}$`).test(e));
+      if (match) {
+        return this.fs.joinPath(completedRoot, match);
+      }
+    } catch {
+      // listDirs swallows errors and returns [] — ignore
+    }
+
+    // Legacy fallback: pre-FLF layout where the feature folder sits directly
+    // under docsRoot. Callers already handle the missing-folder case.
+    return this.fs.joinPath(docsRoot, featureName);
+  }
+
+  private async safeExists(path: string): Promise<boolean> {
+    try {
+      return await this.fs.exists(path);
+    } catch {
+      return false;
     }
   }
 
@@ -372,7 +411,7 @@ export class DefaultContextAssembler implements ContextAssembler {
     featureName: string,
     docsRoot: string,
   ): Promise<Array<{ name: string; content: string }>> {
-    const featureDir = this.fs.joinPath(docsRoot, featureName);
+    const featureDir = await this.resolveFeatureDir(featureName, docsRoot);
 
     try {
       const dirExists = await this.fs.exists(featureDir);

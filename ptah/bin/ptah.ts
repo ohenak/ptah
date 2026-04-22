@@ -174,7 +174,7 @@ async function main(): Promise<void> {
       const skillInvoker = new DefaultSkillInvoker(skillClient, git, logger);
       const worktreeRegistry = new InMemoryWorktreeRegistry();
       const featureResolver = new DefaultFeatureResolver(fs, logger);
-      const phaseDetector = new DefaultPhaseDetector(fs, logger);
+      const phaseDetector = new DefaultPhaseDetector(fs, logger, config.docs.root);
       const worktreeManager = new DefaultWorktreeManager(git, worktreeRegistry, logger);
 
       // Startup sweep: prune dangling ptah worktrees from previous crashes.
