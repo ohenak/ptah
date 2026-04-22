@@ -465,6 +465,13 @@ export type TaskType = "Create" | "Review" | "Revise" | "Resubmit" | "Implement"
 export interface CommitAndPushParams {
   worktreePath: string;
   featureBranch: string;
+  /**
+   * When set to a branch name different from `featureBranch`, the worktree is
+   * checked out on this branch instead of `featureBranch`.  commitAndPush will
+   * push HEAD to `featureBranch` on the remote using a refspec, with a
+   * fetch+rebase retry loop to handle concurrent parallel-agent pushes.
+   */
+  worktreeBranch?: string;
   artifactChanges: string[];
   agentId: string;
   threadName: string;

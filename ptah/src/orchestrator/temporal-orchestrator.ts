@@ -267,13 +267,21 @@ export class TemporalOrchestrator {
   // ---------------------------------------------------------------------------
 
   async handleMessage(message: ThreadMessage): Promise<void> {
+    this.logger.debug(
+      `handleMessage: threadName=${JSON.stringify(message.threadName)} threadId=${message.threadId} authorName=${JSON.stringify(message.authorName)} isBot=${message.isBot} contentSnippet=${JSON.stringify(message.content.slice(0, 80))}`,
+    );
+
     // Step 1: Bot filter
-    if (message.isBot) return;
+    if (message.isBot) {
+      this.logger.debug("handleMessage: dropping — isBot=true");
+      return;
+    }
 
     // Step 2: Extract feature slug
     const featureName = extractFeatureName(message.threadName);
     const slug = featureNameToSlug(featureName);
     const workflowId = `ptah-${slug}`;
+    this.logger.debug(`handleMessage: featureName=${JSON.stringify(featureName)} slug=${JSON.stringify(slug)} workflowId=${workflowId}`);
 
     // Step 3: Check workflow existence FIRST (FSPEC-DR-01 BR-DR-01)
     let workflowRunning = false;
@@ -281,44 +289,60 @@ export class TemporalOrchestrator {
     try {
       workflowState = await this.temporalClient.queryWorkflowState(workflowId);
       workflowRunning = true;
+      this.logger.debug(`handleMessage: workflow found — state.phaseStatus=${workflowState?.phaseStatus}`);
     } catch (err) {
       if (err instanceof Error && err.name === "WorkflowNotFoundError") {
         // No workflow exists — Branch B (may start new workflow)
         workflowRunning = false;
+        this.logger.debug("handleMessage: WorkflowNotFoundError — taking Branch B");
       } else {
         // Temporal query failure (server unreachable, timeout) — fail-silent (FSPEC-DR-01)
         this.logger.warn(`Temporal query failed for ${workflowId}: ${err}`);
+        this.logger.debug(`handleMessage: dropping — Temporal query error: ${err instanceof Error ? err.name : String(err)}`);
         return;
       }
     }
 
     if (workflowRunning && workflowState) {
       // --- Branch A: Workflow IS running ---
+      this.logger.debug(`handleMessage: Branch A — phaseStatus=${workflowState.phaseStatus}`);
 
       // Step 4a: Try ad-hoc directive
       const directive = parseAdHocDirective(message.content);
       if (directive) {
+        this.logger.debug(`handleMessage: ad-hoc directive detected — agentIdentifier=${directive.agentIdentifier}`);
         await this.handleAdHocDirective(directive, message, workflowId, slug);
         return;
       }
 
       // Step 5: State-dependent routing
+      this.logger.debug("handleMessage: no ad-hoc directive — delegating to handleStateDependentRouting");
       await this.handleStateDependentRouting(message, workflowId, workflowState);
       return;
     }
 
     // --- Branch B: No running workflow ---
+    this.logger.debug("handleMessage: Branch B — checking for agent mention");
 
     // Step 4b: Check for agent mention anywhere in message
-    if (!this.containsAgentMention(message.content)) return;
+    const allAgents = this.agentRegistry.getAllAgents();
+    const agentIds = allAgents.map((a) => a.id);
+    const hasMention = this.containsAgentMention(message.content);
+    this.logger.debug(`handleMessage: knownAgents=[${agentIds.join(", ")}] containsAgentMention=${hasMention}`);
+    if (!hasMention) {
+      this.logger.debug("handleMessage: dropping — no agent mention found");
+      return;
+    }
 
     // Guard: empty slug
     if (!slug) {
       this.logger.warn("Empty slug derived from thread name; skipping workflow start");
+      this.logger.debug(`handleMessage: dropping — empty slug from threadName=${JSON.stringify(message.threadName)}`);
       return;
     }
 
     // Step 5b: Start new workflow
+    this.logger.debug(`handleMessage: starting new workflow for slug=${slug}`);
     await this.startNewWorkflow(slug, message);
   }
 
@@ -389,6 +413,12 @@ export class TemporalOrchestrator {
   // ---------------------------------------------------------------------------
 
   private containsAgentMention(content: string): boolean {
+    const roleMentionPattern = /<@&(\d+)>/g;
+    for (const match of content.matchAll(roleMentionPattern)) {
+      if (this.agentRegistry.getAgentByMentionId(match[1])) {
+        return true;
+      }
+    }
     const allAgents = this.agentRegistry.getAllAgents();
     return allAgents.some((agent) => {
       const pattern = new RegExp(`@${agent.id}\\b`, "i");
@@ -458,6 +488,7 @@ export class TemporalOrchestrator {
     state: FeatureWorkflowState,
   ): Promise<void> {
     const phaseStatus = state.phaseStatus;
+    this.logger.debug(`handleStateDependentRouting: workflowId=${workflowId} phaseStatus=${phaseStatus}`);
 
     if (phaseStatus === "waiting-for-user") {
       // FSPEC-DR-02: Route as user answer
@@ -487,6 +518,7 @@ export class TemporalOrchestrator {
     }
 
     // Any other state: silently ignore
+    this.logger.debug(`handleStateDependentRouting: dropping — phaseStatus=${phaseStatus} is not actionable`);
   }
 
   // ---------------------------------------------------------------------------

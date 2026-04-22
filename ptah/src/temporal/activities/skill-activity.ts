@@ -114,6 +114,11 @@ export function createActivities(deps: SkillActivityDeps) {
     const worktreeBranch = `ptah/${featureSlug}/${agentId}/${phaseId}`;
     const worktreeBasePath = `/tmp/ptah-worktrees/${agentId}/${featureSlug}/${phaseId}`;
 
+    // reviewBranch tracks the branch the worktree is actually checked out on.
+    // For forkJoin=false with worktreeManager it becomes a per-agent branch;
+    // otherwise it stays equal to featureBranch (no review-branch isolation).
+    let reviewBranch = featureBranch;
+
     // ------------------------------------------------------------------
     // Step 1: Idempotency check (FSPEC-TF-01 step 2)
     // ------------------------------------------------------------------
@@ -159,8 +164,18 @@ export function createActivities(deps: SkillActivityDeps) {
         // Context.current() may not be available in tests
       }
 
+      // For non-forkJoin invocations, isolate each agent on its own short-lived
+      // review branch so parallel reviewers (eng + qa) never compete for the same
+      // branch checkout.  forkJoin worktrees are merged later by a dedicated
+      // mergeWorktree activity that already tracks its own branch, so they keep
+      // featureBranch directly (existing behaviour).
+      if (!forkJoin) {
+        reviewBranch = `${featureBranch}-review-${agentId}`;
+        await gitClient.createOrResetBranch(reviewBranch, featureBranch);
+      }
+
       const handle = await deps.worktreeManager.create(
-        featureBranch,
+        reviewBranch,
         workflowId,
         runId,
         activityId,
@@ -319,6 +334,7 @@ export function createActivities(deps: SkillActivityDeps) {
       const pushResult = await artifactCommitter.commitAndPush({
         worktreePath,
         featureBranch,
+        worktreeBranch: reviewBranch !== featureBranch ? reviewBranch : undefined,
         artifactChanges,
         agentId,
         threadName: `${featureSlug} — ${phaseId}`,
@@ -339,6 +355,15 @@ export function createActivities(deps: SkillActivityDeps) {
           await gitClient.removeWorktree(worktreePath);
         } catch {
           // Best-effort cleanup
+        }
+      }
+
+      // Delete the per-agent review branch after the worktree is gone (best-effort).
+      if (reviewBranch !== featureBranch) {
+        try {
+          await gitClient.deleteBranch(reviewBranch);
+        } catch {
+          // Best-effort — leftover branches are harmless and will be pruned eventually
         }
       }
 

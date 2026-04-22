@@ -481,6 +481,47 @@ export class FakeGitClient implements GitClient {
     if (this.ensureBranchExistsError) throw this.ensureBranchExistsError;
     this.ensuredBranches.push(branch);
   }
+
+  // --- Cross-review file reading ---
+  showFileFromBranchFiles: Map<string, string> = new Map();
+  showFileFromBranchError: Error | null = null;
+  showFileFromBranchCalls: Array<{ branch: string; filePath: string }> = [];
+
+  async showFileFromBranch(branch: string, filePath: string): Promise<string> {
+    this.showFileFromBranchCalls.push({ branch, filePath });
+    if (this.showFileFromBranchError) throw this.showFileFromBranchError;
+    const key = `${branch}:${filePath}`;
+    const content = this.showFileFromBranchFiles.get(key);
+    if (content === undefined) {
+      throw new Error(`git show: ${branch}:${filePath} does not exist`);
+    }
+    return content;
+  }
+
+  // --- Review-branch helpers ---
+  createOrResetBranchCalls: Array<{ branch: string; fromRef: string }> = [];
+  createOrResetBranchError: Error | null = null;
+
+  async createOrResetBranch(branch: string, fromRef: string): Promise<void> {
+    this.createOrResetBranchCalls.push({ branch, fromRef });
+    if (this.createOrResetBranchError) throw this.createOrResetBranchError;
+  }
+
+  fetchBranchInWorktreeCalls: Array<{ worktreePath: string; remote: string; branch: string }> = [];
+  fetchBranchInWorktreeError: Error | null = null;
+
+  async fetchBranchInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    this.fetchBranchInWorktreeCalls.push({ worktreePath, remote, branch });
+    if (this.fetchBranchInWorktreeError) throw this.fetchBranchInWorktreeError;
+  }
+
+  rebaseOntoInWorktreeCalls: Array<{ worktreePath: string; onto: string }> = [];
+  rebaseOntoInWorktreeError: Error | null = null;
+
+  async rebaseOntoInWorktree(worktreePath: string, onto: string): Promise<void> {
+    this.rebaseOntoInWorktreeCalls.push({ worktreePath, onto });
+    if (this.rebaseOntoInWorktreeError) throw this.rebaseOntoInWorktreeError;
+  }
 }
 
 export class FakeDiscordClient implements DiscordClient {

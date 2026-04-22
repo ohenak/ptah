@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import * as path from "node:path";
 
 const execFileAsync = promisify(execFile);
@@ -54,6 +54,18 @@ export interface GitClient {
   abortMergeInWorktree(worktreePath: string): Promise<void>;
   getConflictedFiles(worktreePath: string): Promise<string[]>;
   pushInWorktree(worktreePath: string, remote: string, branch: string): Promise<void>;
+
+  // --- Cross-review file reading ---
+  /** Read file content from a specific branch via `git show`. */
+  showFileFromBranch(branch: string, filePath: string): Promise<string>;
+
+  // --- Review-branch helpers ---
+  /** Force-create or reset `branch` to point at `fromRef` (git branch -f). */
+  createOrResetBranch(branch: string, fromRef: string): Promise<void>;
+  /** Fetch a single remote branch into the worktree (updates remote-tracking ref). */
+  fetchBranchInWorktree(worktreePath: string, remote: string, branch: string): Promise<void>;
+  /** Rebase the worktree's HEAD onto `onto` (e.g. "origin/feat-x"). */
+  rebaseOntoInWorktree(worktreePath: string, onto: string): Promise<void>;
 }
 
 export class NodeGitClient implements GitClient {
@@ -124,14 +136,29 @@ export class NodeGitClient implements GitClient {
     }
   }
 
-  async removeWorktree(path: string): Promise<void> {
+  async removeWorktree(worktreePath: string): Promise<void> {
     try {
-      await execFileAsync("git", ["worktree", "remove", "--force", path], {
+      await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], {
         cwd: this.cwd,
       });
+      return;
+    } catch {
+      // Fall through to filesystem fallback (common on Windows when a subprocess
+      // still holds file locks on the worktree directory).
+    }
+
+    // Fallback: forcibly delete the directory then prune git's admin records.
+    try {
+      await rm(worktreePath, { force: true, recursive: true });
+    } catch {
+      // If rm also fails, swallow — git worktree prune below will still tidy refs.
+    }
+
+    try {
+      await execFileAsync("git", ["worktree", "prune"], { cwd: this.cwd });
     } catch (error: unknown) {
       throw new Error(
-        `git worktree remove failed: ${error instanceof Error ? error.message : String(error)}`
+        `git worktree remove failed (fallback also failed): ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -486,6 +513,51 @@ export class NodeGitClient implements GitClient {
     } catch (error: unknown) {
       throw new Error(
         `git push in worktree failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async showFileFromBranch(branch: string, filePath: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["show", `${branch}:${filePath}`],
+        { cwd: this.cwd },
+      );
+      return stdout;
+    } catch (error: unknown) {
+      throw new Error(
+        `git show failed for ${branch}:${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async createOrResetBranch(branch: string, fromRef: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["branch", "-f", branch, fromRef], { cwd: this.cwd });
+    } catch (error: unknown) {
+      throw new Error(
+        `git branch -f failed for ${branch}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async fetchBranchInWorktree(worktreePath: string, remote: string, branch: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "fetch", remote, branch], {});
+    } catch (error: unknown) {
+      throw new Error(
+        `git fetch in worktree failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  async rebaseOntoInWorktree(worktreePath: string, onto: string): Promise<void> {
+    try {
+      await execFileAsync("git", ["-C", worktreePath, "rebase", onto], {});
+    } catch (error: unknown) {
+      throw new Error(
+        `git rebase onto ${onto} failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

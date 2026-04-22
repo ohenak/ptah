@@ -451,6 +451,39 @@ describe("handleMessage — containsAgentMention (G2)", () => {
 
     expect(temporalClient.startedWorkflows).toHaveLength(1);
   });
+
+  it("starts workflow when message contains a Discord role mention matching a registered agent", async () => {
+    const engWithRole = makeRegisteredAgent({
+      id: "eng",
+      display_name: "Engineer",
+      mention_id: "1481763904982876260",
+    });
+    agentRegistry = new FakeAgentRegistry([pmAgent, engWithRole]);
+    orchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry, gitClient }),
+    );
+
+    const msg = createThreadMessage({
+      content: "<@&1481763904982876260> review REQ",
+      threadName: "auth — define requirements",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    expect(temporalClient.startedWorkflows).toHaveLength(1);
+    expect(temporalClient.startedWorkflows[0].featureSlug).toBe("auth");
+  });
+
+  it("ignores Discord role mention that does not match any registered agent", async () => {
+    const msg = createThreadMessage({
+      content: "<@&9999999999999999999> hello",
+      threadName: "auth — define requirements",
+      threadId: "thread-1",
+    });
+    await orchestrator.handleMessage(msg);
+
+    expect(temporalClient.startedWorkflows).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
