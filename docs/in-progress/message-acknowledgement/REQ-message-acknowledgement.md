@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-message-acknowledgement |
 | **Parent Document** | [REQ-017 — Temporal Integration Completion](../../completed/017-temporal-integration-completion/017-REQ-temporal-integration-completion.md) |
-| **Version** | 1.0 |
+| **Version** | 1.2 |
 | **Date** | April 3, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -126,7 +126,7 @@ Reactions are preferred over replies for success cases because they attach to th
 | REQ-MA-02 | Reply with workflow ID on workflow started | When `handleMessage()` successfully creates a new Temporal workflow, it must post a plain-text reply in the thread containing the workflow ID. The reply format is: `Workflow started: {workflowId}`. | WHO: Developer GIVEN: A new workflow has been created WHEN: The ✅ reaction has been added THEN: A plain-text bot message appears in the thread reading `Workflow started: ptah-feature-{slug}-{n}`. The workflow ID matches what was returned by `startFeatureWorkflow()`. | P0 | 1 | US-33 | REQ-MA-01 |
 | REQ-MA-03 | React with ✅ on signal routed | When `handleMessage()` successfully routes a `user-answer` signal to an existing workflow, it must add a ✅ emoji reaction to the triggering message. No plain-text reply is posted — the reaction alone is sufficient. | WHO: Developer GIVEN: A workflow is paused waiting for a `user-answer` signal AND the developer posts their answer in the thread WHEN: `routeUserAnswer()` returns successfully THEN: The ✅ emoji appears on the developer's answer message. No additional bot reply is posted in the thread. | P0 | 1 | US-34 | — |
 | REQ-MA-04 | React with ❌ on Temporal operation failure | When `handleMessage()` encounters a Temporal failure (workflow query fails, workflow creation fails, or signal routing fails), it must add a ❌ emoji reaction to the triggering message. | WHO: Developer GIVEN: Ptah receives a message in a feature thread but the Temporal operation fails WHEN: The caught error is handled inside `handleMessage()` THEN: The ❌ emoji appears on the developer's message in Discord. | P0 | 1 | US-35 | — |
-| REQ-MA-05 | Reply with error description on failure | When `handleMessage()` encounters a Temporal failure, it must post a plain-text reply in the thread containing a brief, human-readable description of the error. The reply format is: `Failed to {operation}: {error message}`. The `{operation}` is one of: `query workflows`, `start workflow`, or `route answer`. The `{error message}` is the `.message` property of the caught error, truncated to 200 characters if longer. Raw stack traces must not be included. | WHO: Developer GIVEN: A ❌ reaction has been added to their message WHEN: The error reply is posted THEN: A plain-text bot message appears in the thread reading `Failed to {operation}: {truncated error message}`. The message is human-readable and does not contain a stack trace. | P0 | 1 | US-35 | REQ-MA-04 |
+| REQ-MA-05 | Reply with error description on failure | When `handleMessage()` encounters a Temporal failure, it must post a plain-text reply in the thread containing a brief, human-readable description of the error. The reply format is: `Failed to {operation}: {error message}`. The `{operation}` is one of: `start workflow` or `route answer`. The `{error message}` is the `.message` property of the caught error, truncated to 200 characters if longer. Raw stack traces must not be included. | WHO: Developer GIVEN: A ❌ reaction has been added to their message WHEN: The error reply is posted THEN: A plain-text bot message appears in the thread reading `Failed to {operation}: {truncated error message}`. The message is human-readable and does not contain a stack trace. | P0 | 1 | US-35 | REQ-MA-04 |
 | REQ-MA-06 | Swallow acknowledgement failures | If `addReaction()` or `postPlainMessage()` throws (e.g. Discord rate limit, network error, missing permissions), the error must be caught, logged at WARN level, and discarded. It must not propagate as an unhandled exception, must not crash the orchestrator, and must not be retried. | WHO: Orchestrator GIVEN: A Temporal operation succeeded or failed AND the acknowledgement call to Discord throws an error WHEN: `addReaction()` or `postPlainMessage()` rejects THEN: The error is logged at WARN level with the message "Acknowledgement failed: {error message}". `handleMessage()` returns normally. The orchestrator and Discord bot connection are unaffected. | P0 | 1 | US-35 | REQ-MA-01, REQ-MA-02, REQ-MA-03, REQ-MA-04, REQ-MA-05 |
 
 ---
@@ -182,6 +182,7 @@ Reactions are preferred over replies for success cases because they attach to th
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | 2026-04-21 | Product Manager | REQ-MA-05: removed `query workflows` from operation label enumeration; valid labels are now `start workflow` and `route answer` only, consistent with Section 3.2 out-of-scope statement, FSPEC, and PROP-MA-29 |
 | 1.0 | 2026-04-03 | Product Manager | Initial requirements document |
 
 ---
