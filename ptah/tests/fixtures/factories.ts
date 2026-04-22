@@ -623,6 +623,7 @@ export class FakeDiscordClient implements DiscordClient {
   postChannelMessageError: Error | null = null;
   addReactionCalls: { channelId: string; messageId: string; emoji: string }[] = [];
   addReactionError: Error | null = null;
+  addReactionErrorValue?: unknown; // for throwing non-Error values (PROP-MA-18)
   replyToMessageCalls: { channelId: string; messageId: string; content: string }[] = [];
   replyToMessageError: Error | null = null;
   private channelMessageHandlers = new Map<string, (msg: ChannelMessage) => Promise<void>>();
@@ -653,6 +654,7 @@ export class FakeDiscordClient implements DiscordClient {
 
   async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
     this.addReactionCalls.push({ channelId, messageId, emoji });
+    if (this.addReactionErrorValue !== undefined) throw this.addReactionErrorValue;
     if (this.addReactionError) throw this.addReactionError;
   }
 
