@@ -8,7 +8,7 @@
 | **Linked TSPEC** | [TSPEC-message-acknowledgement v1.0](./TSPEC-message-acknowledgement.md) |
 | **Linked FSPEC** | [FSPEC-message-acknowledgement v1.1](./FSPEC-message-acknowledgement.md) |
 | **Linked REQ** | [REQ-message-acknowledgement v1.0](./REQ-message-acknowledgement.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | 2026-04-21 |
 | **Author** | Senior Software Engineer |
 | **Status** | Draft |
@@ -23,22 +23,23 @@ This plan implements per-message acknowledgement in `TemporalOrchestrator`. When
 - A plain-text reply for workflow-started (`Workflow started: {workflowId}`) and all failure cases (`Failed to {operation}: {error message}`)
 - No reply for the signal-routed success case (reaction only)
 
-All changes are confined to a single source file (`ptah/src/orchestrator/temporal-orchestrator.ts`) and a single test file (`ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts`). No new files, interfaces, or fakes are required.
+All changes are confined to a single source file (`ptah/src/orchestrator/temporal-orchestrator.ts`) and a single test file (`ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts`). No new files or interfaces are required. One existing fake (`FakeTemporalClient` in `ptah/tests/fixtures/factories.ts`) is extended with a new property.
 
-The implementation also requires adding `startWorkflowErrorValue?: unknown` to `FakeTemporalClient` to enable AT-MA-10 (non-Error thrown value test).
+The implementation requires adding `startWorkflowErrorValue?: unknown` to `FakeTemporalClient` to enable AT-MA-10 (non-Error thrown value test). Note: TSPEC Section 7.2 states "No changes to `FakeDiscordClient`, `FakeTemporalClient`, or any factory are required by this feature." That statement is superseded by TASK-01, which adds `startWorkflowErrorValue` to `FakeTemporalClient`. The TSPEC is incorrect on this point; the PLAN is authoritative.
 
 ---
 
 ## 2. Dependency Graph
 
 ```
-BATCH 1 (parallel)
-  ├── TASK-01: Add startWorkflowErrorValue to FakeTemporalClient  [factories.ts only]
-  └── TASK-02: Write failing tests — Group MA (AT-MA-01 through AT-MA-16) + regression updates
-              [temporal-orchestrator.test.ts only]
-              depends on: none (write tests first; TASK-01 is needed for AT-MA-10 but
-              the test file can be written and run Red before TASK-01 merges — or TASK-01
-              can be completed first within the same agent)
+BATCH 1 (sequential — TASK-01 must complete before TASK-02 begins)
+  TASK-01: Add startWorkflowErrorValue to FakeTemporalClient  [factories.ts only]
+           depends on: none
+  TASK-02: Write failing tests — Group MA (AT-MA-01 through AT-MA-16) + regression updates
+           [temporal-orchestrator.test.ts only]
+           depends on: TASK-01 (FakeTemporalClient must have startWorkflowErrorValue
+           before the test file compiles — AT-MA-10 and the Additional test reference
+           temporalClient.startWorkflowErrorValue, which TypeScript enforces at compile time)
 
 BATCH 2 (single task — depends on BATCH 1 being Red)
   └── TASK-03: Implement helpers and modify startNewWorkflow + handleStateDependentRouting
@@ -51,7 +52,7 @@ BATCH 3 (single task — depends on TASK-03 turning tests Green)
               depends on: TASK-03 (Green)
 ```
 
-**Parallelization note:** TASK-01 and TASK-02 touch different files (`factories.ts` vs. `temporal-orchestrator.test.ts`) and can be dispatched to two agents simultaneously. TASK-03 and TASK-04 are sequential and single-agent.
+**Sequencing note:** TASK-01 is a hard prerequisite for TASK-02. TASK-02 references `temporalClient.startWorkflowErrorValue` (added by TASK-01), so the test file will not compile until TASK-01 is complete. TASK-01 and TASK-02 must run sequentially within BATCH 1. TASK-03 and TASK-04 are sequential and single-agent.
 
 ---
 
@@ -60,7 +61,7 @@ BATCH 3 (single task — depends on TASK-03 turning tests Green)
 | Task ID | Description | Test File | Source File | Dependencies | Status |
 |---------|-------------|-----------|-------------|--------------|--------|
 | TASK-01 | Extend `FakeTemporalClient` with `startWorkflowErrorValue?: unknown` override to enable throwing non-Error values in AT-MA-10 and the `{ code: 503 }` Additional test | `ptah/tests/fixtures/factories.ts` | `ptah/tests/fixtures/factories.ts` | none | ⬜ |
-| TASK-02 | Write failing tests: new `describe("handleMessage — message acknowledgement (MA)")` block (AT-MA-01 through AT-MA-16 + Additional non-Error object test) and update five existing regression tests in G3 and G4 | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | — | none | ⬜ |
+| TASK-02 | Write failing tests: new `describe("handleMessage — message acknowledgement (MA)")` block (AT-MA-01 through AT-MA-16 + Additional non-Error object test) and update five existing regression tests in G3 and G4 | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | — | TASK-01 | ⬜ |
 | TASK-03 | Implement `ackWithWarnOnError`, `formatErrorMessage`, and modify `startNewWorkflow` (success + error paths) and `handleStateDependentRouting` (`waiting-for-user` branch only) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | TASK-01, TASK-02 | ⬜ |
 | TASK-04 | Refactor: verify no dead code, no lint errors, no TypeScript errors; confirm full test suite passes (`npm test` from `ptah/`) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | TASK-03 | ⬜ |
 
@@ -393,6 +394,7 @@ await this.ackWithWarnOnError(() =>
 3. Run `npm run build` from `ptah/` — zero TypeScript errors.
 4. Run `npm test` from `ptah/` — full suite passes (zero failures, zero skips introduced by this feature).
 5. Confirm test count delta: +16 new MA tests + "Additional" test = +17 new `it()` blocks; 5 updated regression tests are modified in-place (count unchanged for those).
+6. **Manual verification (REQ-NF-17-02):** Post a message in an active feature thread in the connected Discord server. Confirm that the ✅ reaction appears on the message within 5 seconds under normal network conditions. This step validates the P1 latency requirement that cannot be covered by unit tests.
 
 ---
 
@@ -448,6 +450,23 @@ The following are explicitly unchanged by this feature. Agents must not modify t
 - [ ] `npm run build` passes with zero TypeScript errors (TASK-04)
 - [ ] `npm test` passes with full suite (TASK-04)
 - [ ] No dead code or lint errors introduced (TASK-04)
+- [ ] Manual verification: post a message in a live Discord feature thread and confirm the ✅ reaction appears within 5 seconds (TASK-04 — validates REQ-NF-17-02)
+
+---
+
+## 8. Requirements Coverage
+
+| Requirement | Task | Coverage Type |
+|-------------|------|---------------|
+| REQ-MA-01 | TASK-02 (AT-MA-01), TASK-03 | Automated unit test |
+| REQ-MA-02 | TASK-02 (AT-MA-02), TASK-03 | Automated unit test |
+| REQ-MA-03 | TASK-02 (AT-MA-03), TASK-03 | Automated unit test |
+| REQ-MA-04 | TASK-02 (AT-MA-04, AT-MA-05), TASK-03 | Automated unit test |
+| REQ-MA-05 | TASK-02 (AT-MA-06 through AT-MA-10), TASK-03 | Automated unit test |
+| REQ-MA-06 | TASK-02 (AT-MA-11, AT-MA-12, AT-MA-16), TASK-03 | Automated unit test |
+| REQ-NF-17-01 | TASK-02 (AT-MA-13), TASK-03 | Automated unit test |
+| REQ-NF-17-02 | TASK-04 | Manual verification (reaction visible within 5 seconds under normal network conditions) |
+| REQ-NF-17-03 | TASK-02 (AT-MA-14), TASK-03 | Automated unit test |
 
 ---
 
@@ -456,6 +475,7 @@ The following are explicitly unchanged by this feature. Agents must not modify t
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-21 | Senior Software Engineer | Initial PLAN. Incorporates TSPEC v1.0, FSPEC v1.1, and both cross-review findings. Key decisions from TSPEC: `ackWithWarnOnError` + `formatErrorMessage` helpers; insertion in private methods not `handleMessage()`; `startWorkflowErrorValue` override for AT-MA-10; deferred-promise pattern for AT-MA-13; `postPlainMessageCalls` filter uses `c.threadId`; `WorkflowExecutionAlreadyStartedError` path unchanged. |
+| 1.1 | 2026-04-21 | Senior Software Engineer | Address PM and TE cross-review findings. TE F-01: make TASK-01 a hard prerequisite of TASK-02 — BATCH 1 is now sequential (TASK-01 then TASK-02); updated dependency graph, task table, and sequencing note. PM F-01: add REQ-NF-17-02 manual verification step to TASK-04 and Definition of Done; add Requirements Coverage table (Section 8). PM F-02: add note in Section 1 that TSPEC Section 7.2 "no factory changes" claim is superseded by TASK-01. PM F-03: correct Section 1 summary to reflect FakeTemporalClient property addition. |
 
 ---
 
