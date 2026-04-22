@@ -1519,4 +1519,230 @@ describe("handleMessage — message acknowledgement (MA)", () => {
       warnings.some((w) => w.message.includes("Acknowledgement failed: reply rate limited")),
     ).toBe(true);
   });
+
+  // PROP-MA-13 — Prefix not counted against 200-char truncation limit
+  it("PROP-MA-13: the 'Failed to start workflow: ' prefix is not counted against the 200-char limit (total length = 226)", async () => {
+    temporalClient.startWorkflowError = new Error("x".repeat(200));
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const content = discord.replyToMessageCalls[0].content;
+    expect(content.length).toBe(226);
+    expect(content.startsWith("Failed to start workflow: ")).toBe(true);
+  });
+
+  // PROP-MA-16 — replyToMessage throws: WARN logged, handleMessage resolves normally
+  it("PROP-MA-16: WARN is logged and handleMessage resolves normally when replyToMessage throws", async () => {
+    discord.replyToMessageError = new Error("reply failed");
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message.includes("Acknowledgement failed: reply failed")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-18 — Non-Error addReaction throw uses String(err) in WARN message
+  it("PROP-MA-18: non-Error thrown value from addReaction uses String(err) in WARN log (not undefined)", async () => {
+    discord.addReactionErrorValue = "rate limit exceeded";
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message === "Acknowledgement failed: rate limit exceeded"),
+    ).toBe(true);
+    expect(
+      warnings.some((w) => w.message === "Acknowledgement failed: undefined"),
+    ).toBe(false);
+  });
+
+  // PROP-MA-20 — Both addReaction and replyToMessage called exactly once per invocation
+  it("PROP-MA-20: exactly one addReaction call and one replyToMessage call per successful handleMessage invocation", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+  });
+
+  // PROP-MA-22 — ✅ and ❌ reactions are mutually exclusive for a single invocation
+  it("PROP-MA-22 (success path): a single handleMessage invocation does not produce both ✅ and ❌ reactions", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const distinctEmoji = new Set(discord.addReactionCalls.map((c) => c.emoji));
+    expect(distinctEmoji.size).toBeLessThanOrEqual(1);
+  });
+
+  it("PROP-MA-22 (failure path): a single handleMessage invocation does not produce both ✅ and ❌ reactions", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const distinctEmoji = new Set(discord.addReactionCalls.map((c) => c.emoji));
+    expect(distinctEmoji.size).toBeLessThanOrEqual(1);
+  });
+
+  // PROP-MA-23 — channelId sourced from message.threadId, not message.parentChannelId
+  it("PROP-MA-23: channelId in addReaction and replyToMessage calls equals message.threadId, not message.parentChannelId", async () => {
+    const message = createThreadMessage({
+      id: "msg-test",
+      threadId: "thread-test",
+      parentChannelId: "parent-channel-different",
+      threadName: "test-feature — define requirements",
+      content: "@pm define requirements",
+    });
+    await orchestrator.handleMessage(message);
+
+    for (const call of discord.addReactionCalls) {
+      expect(call.channelId).toBe("thread-test");
+      expect(call.channelId).not.toBe("parent-channel-different");
+    }
+    for (const call of discord.replyToMessageCalls) {
+      expect(call.channelId).toBe("thread-test");
+      expect(call.channelId).not.toBe("parent-channel-different");
+    }
+  });
+
+  // PROP-MA-24 — messageId sourced from message.id
+  it("PROP-MA-24: messageId in addReaction and replyToMessage calls equals message.id", async () => {
+    const message = makeWorkflowStartMessage(); // id = "msg-test"
+    await orchestrator.handleMessage(message);
+
+    for (const call of discord.addReactionCalls) {
+      expect(call.messageId).toBe("msg-test");
+    }
+    for (const call of discord.replyToMessageCalls) {
+      expect(call.messageId).toBe("msg-test");
+    }
+  });
+
+  // PROP-MA-25 — workflowId in reply matches actual returned workflowId
+  it("PROP-MA-25: workflowId in 'Workflow started:' reply is the exact string returned by startWorkflowForFeature()", async () => {
+    const message = makeWorkflowStartMessage(); // featureSlug = "test-feature" → "ptah-test-feature"
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe("Workflow started: ptah-test-feature");
+  });
+
+  // PROP-MA-26 — No stack traces in error replies
+  it("PROP-MA-26: error reply does not contain stack traces or 'Error:' prefix", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const content = discord.replyToMessageCalls[0].content;
+    expect(content).toBe("Failed to start workflow: connection timeout");
+    expect(content).not.toContain("at ");
+    expect(content).not.toMatch(/^Error:/);
+  });
+
+  // PROP-MA-28 — WorkflowExecutionAlreadyStartedError → zero reactions, zero replies
+  it("PROP-MA-28: WorkflowExecutionAlreadyStartedError produces no emoji reaction and no replyToMessage call", async () => {
+    const err = new Error("already started");
+    err.name = "WorkflowExecutionAlreadyStartedError";
+    temporalClient.startWorkflowError = err;
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+    expect(
+      discord.postPlainMessageCalls.some((c) => c.content.includes("already running")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-29 — "Failed to query workflows:" never appears in any reply
+  it("PROP-MA-29: no replyToMessage call ever uses the 'Failed to query workflows:' prefix", async () => {
+    // Test across multiple scenarios to guard against rogue labels
+    const scenarios: Array<() => Promise<void>> = [
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        temporalClient.startWorkflowError = new Error("connection timeout");
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        temporalClient.queryWorkflowStateError = new Error("Temporal server unreachable");
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      await scenario();
+      expect(
+        discord.replyToMessageCalls.every((c) => !c.content.startsWith("Failed to query workflows:")),
+      ).toBe(true);
+    }
+  });
+
+  // PROP-MA-30 — Phase detection failure → zero reactions, zero replies
+  it("PROP-MA-30: phase detection failure produces no emoji reaction and no replyToMessage call", async () => {
+    const phaseDetector = new FakePhaseDetector();
+    phaseDetector.detectError = new Error("phase detection failed");
+    const localOrchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry, phaseDetector }),
+    );
+    const message = makeWorkflowStartMessage();
+    await localOrchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+  });
+
+  // PROP-MA-31 — WARN log exact format for acknowledgement failures
+  it("PROP-MA-31: WARN log message for addReaction failure is exactly 'Acknowledgement failed: rate limited'", async () => {
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const warnings = logger.entriesAt("WARN");
+    const ackWarnings = warnings.filter((w) => w.message.includes("Acknowledgement failed"));
+    expect(ackWarnings).toHaveLength(1);
+    expect(ackWarnings[0].message).toBe("Acknowledgement failed: rate limited");
+  });
+
+  // PROP-MA-32 — No ERROR-level log for acknowledgement failures
+  it("PROP-MA-32: acknowledgement failures do not produce any ERROR-level log entries", async () => {
+    discord.addReactionError = new Error("rate limited");
+    discord.replyToMessageError = new Error("reply failed");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const errorEntries = logger.entriesAt("ERROR");
+    expect(
+      errorEntries.every((e) => !e.message.includes("Acknowledgement failed")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-33 — Failure path: addReaction("❌") fails → replyToMessage still called
+  it("PROP-MA-33: on the failure path, addReaction throwing does not suppress the replyToMessage error reply", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0].content).toBe("Failed to start workflow: connection timeout");
+  });
 });
