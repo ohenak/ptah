@@ -8,7 +8,7 @@
 | **Linked TSPEC** | [TSPEC-message-acknowledgement v1.0](./TSPEC-message-acknowledgement.md) |
 | **Linked FSPEC** | [FSPEC-message-acknowledgement v1.1](./FSPEC-message-acknowledgement.md) |
 | **Linked REQ** | [REQ-message-acknowledgement v1.0](./REQ-message-acknowledgement.md) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | 2026-04-21 |
 | **Author** | Senior Software Engineer |
 | **Status** | Draft |
@@ -23,28 +23,34 @@ This plan implements per-message acknowledgement in `TemporalOrchestrator`. When
 - A plain-text reply for workflow-started (`Workflow started: {workflowId}`) and all failure cases (`Failed to {operation}: {error message}`)
 - No reply for the signal-routed success case (reaction only)
 
-All changes are confined to a single source file (`ptah/src/orchestrator/temporal-orchestrator.ts`) and a single test file (`ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts`). No new files or interfaces are required. One existing fake (`FakeTemporalClient` in `ptah/tests/fixtures/factories.ts`) is extended with a new property.
+All changes are confined to a single source file (`ptah/src/orchestrator/temporal-orchestrator.ts`) and a single test file (`ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts`). No new files or interfaces are required. Two existing fakes in `ptah/tests/fixtures/factories.ts` are extended with new properties.
 
-The implementation requires adding `startWorkflowErrorValue?: unknown` to `FakeTemporalClient` to enable AT-MA-10 (non-Error thrown value test). Note: TSPEC Section 7.2 states "No changes to `FakeDiscordClient`, `FakeTemporalClient`, or any factory are required by this feature." That statement is superseded by TASK-01, which adds `startWorkflowErrorValue` to `FakeTemporalClient`. The TSPEC is incorrect on this point; the PLAN is authoritative.
+The implementation requires adding `startWorkflowErrorValue?: unknown` to `FakeTemporalClient` to enable AT-MA-10 (non-Error thrown value test), and adding `addReactionErrorValue?: unknown` to `FakeDiscordClient` to enable PROP-MA-18 (non-Error thrown value from the `addReaction()` ack call). Note: TSPEC Section 7.2 states "No changes to `FakeDiscordClient`, `FakeTemporalClient`, or any factory are required by this feature." That statement is superseded by TASK-01 (adds `startWorkflowErrorValue` to `FakeTemporalClient`) and TASK-05 (adds `addReactionErrorValue` to `FakeDiscordClient`). The TSPEC is incorrect on this point; the PLAN is authoritative.
 
 ---
 
 ## 2. Dependency Graph
 
 ```
-BATCH 1 (sequential — TASK-01 must complete before TASK-02 begins)
+BATCH 1 (TASK-01 and TASK-05 are independent and can run in parallel;
+         TASK-02 depends on both and must follow them)
   TASK-01: Add startWorkflowErrorValue to FakeTemporalClient  [factories.ts only]
+           depends on: none
+  TASK-05: Add addReactionErrorValue to FakeDiscordClient  [factories.ts only]
            depends on: none
   TASK-02: Write failing tests — Group MA (AT-MA-01 through AT-MA-16) + regression updates
            [temporal-orchestrator.test.ts only]
            depends on: TASK-01 (FakeTemporalClient must have startWorkflowErrorValue
            before the test file compiles — AT-MA-10 and the Additional test reference
-           temporalClient.startWorkflowErrorValue, which TypeScript enforces at compile time)
+           temporalClient.startWorkflowErrorValue, which TypeScript enforces at compile time),
+           TASK-05 (FakeDiscordClient must have addReactionErrorValue before any test that
+           sets discordClient.addReactionErrorValue compiles)
 
 BATCH 2 (single task — depends on BATCH 1 being Red)
   └── TASK-03: Implement helpers and modify startNewWorkflow + handleStateDependentRouting
               [temporal-orchestrator.ts only]
-              depends on: TASK-01 (FakeTemporalClient extended), TASK-02 (tests Red)
+              depends on: TASK-01 (FakeTemporalClient extended), TASK-05 (FakeDiscordClient
+              extended), TASK-02 (tests Red)
 
 BATCH 3 (single task — depends on TASK-03 turning tests Green)
   └── TASK-04: Refactor — extract, tidy, verify no lint/type errors, confirm all tests pass
@@ -52,7 +58,7 @@ BATCH 3 (single task — depends on TASK-03 turning tests Green)
               depends on: TASK-03 (Green)
 ```
 
-**Sequencing note:** TASK-01 is a hard prerequisite for TASK-02. TASK-02 references `temporalClient.startWorkflowErrorValue` (added by TASK-01), so the test file will not compile until TASK-01 is complete. TASK-01 and TASK-02 must run sequentially within BATCH 1. TASK-03 and TASK-04 are sequential and single-agent.
+**Sequencing note:** TASK-01 and TASK-05 are both hard prerequisites for TASK-02 and can run in parallel with each other within BATCH 1. TASK-02 references `temporalClient.startWorkflowErrorValue` (added by TASK-01) and `discordClient.addReactionErrorValue` (added by TASK-05), so the test file will not compile until both are complete. TASK-03 and TASK-04 are sequential and single-agent.
 
 ---
 
@@ -61,8 +67,9 @@ BATCH 3 (single task — depends on TASK-03 turning tests Green)
 | Task ID | Description | Test File | Source File | Dependencies | Status |
 |---------|-------------|-----------|-------------|--------------|--------|
 | TASK-01 | Extend `FakeTemporalClient` with `startWorkflowErrorValue?: unknown` override to enable throwing non-Error values in AT-MA-10 and the `{ code: 503 }` Additional test | `ptah/tests/fixtures/factories.ts` | `ptah/tests/fixtures/factories.ts` | none | ⬜ |
-| TASK-02 | Write failing tests: new `describe("handleMessage — message acknowledgement (MA)")` block (AT-MA-01 through AT-MA-16 + Additional non-Error object test) and update five existing regression tests in G3 and G4 | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | — | TASK-01 | ⬜ |
-| TASK-03 | Implement `ackWithWarnOnError`, `formatErrorMessage`, and modify `startNewWorkflow` (success + error paths) and `handleStateDependentRouting` (`waiting-for-user` branch only) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | TASK-01, TASK-02 | ⬜ |
+| TASK-05 | Extend `FakeDiscordClient` with `addReactionErrorValue?: unknown` override to enable throwing non-Error values from `addReaction()` (PROP-MA-18) | `ptah/tests/fixtures/factories.ts` | `ptah/tests/fixtures/factories.ts` | none | ⬜ |
+| TASK-02 | Write failing tests: new `describe("handleMessage — message acknowledgement (MA)")` block (AT-MA-01 through AT-MA-16 + Additional non-Error object test) and update five existing regression tests in G3 and G4 | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | — | TASK-01, TASK-05 | ⬜ |
+| TASK-03 | Implement `ackWithWarnOnError`, `formatErrorMessage`, and modify `startNewWorkflow` (success + error paths) and `handleStateDependentRouting` (`waiting-for-user` branch only) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | TASK-01, TASK-05, TASK-02 | ⬜ |
 | TASK-04 | Refactor: verify no dead code, no lint errors, no TypeScript errors; confirm full test suite passes (`npm test` from `ptah/`) | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | `ptah/src/orchestrator/temporal-orchestrator.ts` | TASK-03 | ⬜ |
 
 **Status key:** ⬜ Not Started | 🔴 Red | 🟢 Green | 🔵 Refactored | ✅ Done
@@ -102,6 +109,42 @@ async startFeatureWorkflow(params: StartWorkflowParams): Promise<string> {
 ```
 
 **Why this approach (not method override):** Using a property on the fake is consistent with the existing `startWorkflowError`, `signalError`, and `queryWorkflowStateError` patterns in `FakeTemporalClient`. It keeps test setup uniform and avoids per-test method reassignment, which can leak state between tests if not carefully cleaned up.
+
+**Verification:** `npm test` from `ptah/` — existing tests must still pass.
+
+---
+
+### TASK-05 — Extend FakeDiscordClient
+
+**File:** `ptah/tests/fixtures/factories.ts`
+
+**Change:** Add `addReactionErrorValue?: unknown` property to `FakeDiscordClient`. In `addReaction()`, check this property first (before `addReactionError`) and throw the value directly if set. This enables PROP-MA-18: a non-Error thrown value from the `addReaction()` ack call.
+
+**Before:**
+```typescript
+addReactionCalls: { channelId: string; messageId: string; emoji: string }[] = [];
+addReactionError: Error | null = null;
+
+async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+  this.addReactionCalls.push({ channelId, messageId, emoji });
+  if (this.addReactionError) throw this.addReactionError;
+}
+```
+
+**After:**
+```typescript
+addReactionCalls: { channelId: string; messageId: string; emoji: string }[] = [];
+addReactionError: Error | null = null;
+addReactionErrorValue?: unknown; // for throwing non-Error values (PROP-MA-18)
+
+async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+  this.addReactionCalls.push({ channelId, messageId, emoji });
+  if (this.addReactionErrorValue !== undefined) throw this.addReactionErrorValue;
+  if (this.addReactionError) throw this.addReactionError;
+}
+```
+
+**Why this approach (not method override):** Using a property on the fake is consistent with the existing `addReactionError`, `replyToMessageError`, and `postPlainMessageError` patterns in `FakeDiscordClient`, and mirrors the `startWorkflowErrorValue` extension applied to `FakeTemporalClient` in TASK-01. The new field takes priority when set, allowing tests to inject any throwable value.
 
 **Verification:** `npm test` from `ptah/` — existing tests must still pass.
 
@@ -407,6 +450,7 @@ await this.ackWithWarnOnError(() =>
 | `TemporalOrchestrator.ackWithWarnOnError()` | `ptah/src/orchestrator/temporal-orchestrator.ts` | New private method |
 | `TemporalOrchestrator.formatErrorMessage()` | `ptah/src/orchestrator/temporal-orchestrator.ts` | New private method |
 | `FakeTemporalClient.startFeatureWorkflow()` | `ptah/tests/fixtures/factories.ts` | Extended with `startWorkflowErrorValue?: unknown` |
+| `FakeDiscordClient.addReaction()` | `ptah/tests/fixtures/factories.ts` | Extended with `addReactionErrorValue?: unknown` |
 | `temporal-orchestrator.test.ts` — G3 group | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | 2 tests updated, 1 test gets negative guard |
 | `temporal-orchestrator.test.ts` — G4 group | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | 2 tests updated |
 | `temporal-orchestrator.test.ts` — new MA group | `ptah/tests/unit/orchestrator/temporal-orchestrator.test.ts` | 17 new tests added |
@@ -435,6 +479,7 @@ The following are explicitly unchanged by this feature. Agents must not modify t
 ## 7. Definition of Done
 
 - [ ] `FakeTemporalClient.startWorkflowErrorValue` property added and `startFeatureWorkflow` updated to use it (TASK-01)
+- [ ] `FakeDiscordClient.addReactionErrorValue` property added and `addReaction` updated to use it (TASK-05)
 - [ ] All 17 new tests in the MA describe group are written and Red before implementation (TASK-02)
 - [ ] All 5 regression tests in G3/G4 are updated and Red before implementation (TASK-02)
 - [ ] `ackWithWarnOnError` private helper implemented (TASK-03)
@@ -464,6 +509,7 @@ The following are explicitly unchanged by this feature. Agents must not modify t
 | REQ-MA-04 | TASK-02 (AT-MA-04, AT-MA-05), TASK-03 | Automated unit test |
 | REQ-MA-05 | TASK-02 (AT-MA-06 through AT-MA-10), TASK-03 | Automated unit test |
 | REQ-MA-06 | TASK-02 (AT-MA-11, AT-MA-12, AT-MA-16), TASK-03 | Automated unit test |
+| PROP-MA-18 | TASK-05 (fake extension), TASK-02 (test using `addReactionErrorValue`), TASK-03 | Automated unit test — non-Error thrown value from `addReaction()` ack call |
 | REQ-NF-17-01 | TASK-02 (AT-MA-13), TASK-03 | Automated unit test |
 | REQ-NF-17-02 | TASK-04 | Manual verification (reaction visible within 5 seconds under normal network conditions) |
 | REQ-NF-17-03 | TASK-02 (AT-MA-14), TASK-03 | Automated unit test |
@@ -476,6 +522,7 @@ The following are explicitly unchanged by this feature. Agents must not modify t
 |---------|------|--------|---------|
 | 1.0 | 2026-04-21 | Senior Software Engineer | Initial PLAN. Incorporates TSPEC v1.0, FSPEC v1.1, and both cross-review findings. Key decisions from TSPEC: `ackWithWarnOnError` + `formatErrorMessage` helpers; insertion in private methods not `handleMessage()`; `startWorkflowErrorValue` override for AT-MA-10; deferred-promise pattern for AT-MA-13; `postPlainMessageCalls` filter uses `c.threadId`; `WorkflowExecutionAlreadyStartedError` path unchanged. |
 | 1.1 | 2026-04-21 | Senior Software Engineer | Address PM and TE cross-review findings. TE F-01: make TASK-01 a hard prerequisite of TASK-02 — BATCH 1 is now sequential (TASK-01 then TASK-02); updated dependency graph, task table, and sequencing note. PM F-01: add REQ-NF-17-02 manual verification step to TASK-04 and Definition of Done; add Requirements Coverage table (Section 8). PM F-02: add note in Section 1 that TSPEC Section 7.2 "no factory changes" claim is superseded by TASK-01. PM F-03: correct Section 1 summary to reflect FakeTemporalClient property addition. |
+| 1.2 | 2026-04-21 | Senior Software Engineer | Address CROSS-REVIEW-software-engineer-PROPERTIES-v2 finding: add TASK-05 to cover `addReactionErrorValue?: unknown` on `FakeDiscordClient` (PROP-MA-18 — non-Error thrown value from ack call). Updated dependency graph (TASK-05 runs in BATCH 1 alongside TASK-01; both are prerequisites of TASK-02), task table, sequencing note, detailed task spec, integration points table, Definition of Done, Requirements Coverage table, and Section 1 summary. |
 
 ---
 
