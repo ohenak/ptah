@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | REQ-021 |
 | **Parent Document** | [orchestrate-dev SKILL.md](../../../.claude/skills/orchestrate-dev/SKILL.md) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 22, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -86,6 +86,15 @@ Today, Ptah implements the right structural primitives (Temporal-backed workflow
 | **Pain points** | Current Ptah only sends notifications via Discord; there is no stdout progress stream for headless operation. |
 | **Key needs** | Progress event emitter in the orchestrator that writes orchestrate-dev-formatted lines to stdout during `ptah run`. |
 
+### US-07: Engineer Resumes a Workflow After Temporal Data Loss or Accidental Deletion
+
+| Attribute | Detail |
+|-----------|--------|
+| **Description** | A Temporal workflow for a feature is deleted — either accidentally via the Temporal UI/`tctl`, due to Temporal database data loss, or because the engineer needs to re-run a specific phase that produced bad output. Some artifacts (REQ, FSPEC, TSPEC, ...) already exist on disk. The engineer wants to restart the pipeline from the last meaningful point without losing the work already committed to the feature branch. |
+| **Goals** | Resume a PDLC pipeline mid-flight after losing Temporal state, without restarting from Phase R. |
+| **Pain points** | A Temporal worker crash is auto-recovered via event replay — but if the workflow itself is gone from Temporal, there is no recovery path: `ptah run` would restart from Phase R, re-running creation phases whose artifacts already exist. |
+| **Key needs** | `--from-phase <phase-id>` flag on `ptah run` for explicit resume; artifact-based auto-detection of the furthest completed phase when the flag is absent. |
+
 ---
 
 ## 3. Scope Boundaries
@@ -93,6 +102,8 @@ Today, Ptah implements the right structural primitives (Temporal-backed workflow
 ### 3.1 In Scope
 
 - New `ptah run <req-path>` CLI subcommand
+- `ptah run --from-phase <phase-id>` flag for explicit mid-pipeline resume
+- Artifact-based auto-detection of the furthest completed phase when `--from-phase` is absent
 - Updated `ptah init` scaffold: 8 skill files, updated `ptah.config.json`, updated `ptah.workflow.yaml`
 - New default `ptah.workflow.yaml`: 8-role agents, Phase PT, `revision_bound: 5`, Phase R start
 - Extended `AGENT_TO_SKILL` mapping in `cross-review-parser.ts` for new role agent IDs
@@ -158,6 +169,28 @@ Today, Ptah implements the right structural primitives (Temporal-backed workflow
 | **Phase** | 1 |
 | **Source Stories** | US-06 |
 | **Dependencies** | REQ-CLI-01 |
+
+#### REQ-CLI-04: `ptah run` Accepts `--from-phase` Flag for Explicit Resume
+
+| Attribute | Detail |
+|-----------|--------|
+| **Description** | `ptah run <req-path> --from-phase <phase-id>` starts the Temporal workflow with `startAtPhase` set to the given phase ID, bypassing both auto-detection and the default Phase R start. If the phase ID does not exist in the loaded workflow config, `ptah run` prints an error listing valid phase IDs and exits with code 1. This flag takes precedence over artifact-based auto-detection. |
+| **Acceptance Criteria** | **Who:** Engineer **Given:** A feature whose TSPEC already exists but whose Temporal workflow was deleted **When:** They run `ptah run docs/in-progress/my-feature/REQ-my-feature.md --from-phase plan-creation` **Then:** A new Temporal workflow starts at `plan-creation`, skipping all earlier phases. Given an invalid phase ID (e.g., `--from-phase nonexistent`), the command prints `Error: phase "nonexistent" not found. Valid phases: [req-creation, req-review, ...]` and exits with code 1. |
+| **Priority** | P0 |
+| **Phase** | 1 |
+| **Source Stories** | US-07 |
+| **Dependencies** | REQ-CLI-01 |
+
+#### REQ-CLI-05: `ptah run` Auto-Detects Resume Phase from Existing Artifacts
+
+| Attribute | Detail |
+|-----------|--------|
+| **Description** | When `--from-phase` is not provided, `ptah run` inspects the feature folder for existing document artifacts (REQ, FSPEC, TSPEC, PLAN, PROPERTIES) and sets `startAtPhase` to the creation phase immediately following the last artifact found. The detection order follows the canonical PDLC sequence. If no artifacts beyond the REQ exist, the default start is `req-review` (Phase R). Auto-detection is logged to stdout so the engineer can confirm or override with `--from-phase`. |
+| **Acceptance Criteria** | **Who:** Engineer **Given:** A feature folder containing `TSPEC-my-feature.md` but no `PLAN-my-feature.md` **When:** They run `ptah run docs/in-progress/my-feature/REQ-my-feature.md` **Then:** stdout prints `Auto-detected resume phase: plan-creation (TSPEC found, PLAN missing)` and the workflow starts at `plan-creation`. Given a folder with no artifacts beyond the REQ, the workflow starts at `req-review`. |
+| **Priority** | P1 |
+| **Phase** | 1 |
+| **Source Stories** | US-07 |
+| **Dependencies** | REQ-CLI-01, REQ-WF-05 |
 
 ---
 
@@ -381,22 +414,22 @@ Today, Ptah implements the right structural primitives (Temporal-backed workflow
 
 | Priority | Count | IDs |
 |----------|-------|-----|
-| P0 | 13 | REQ-CLI-01, REQ-CLI-02, REQ-WF-01, REQ-WF-02, REQ-WF-03, REQ-WF-05, REQ-AG-01, REQ-AG-02, REQ-CR-01, REQ-CR-02, REQ-CR-03, REQ-CR-04, REQ-CR-05, REQ-CR-06, REQ-NF-01, REQ-NF-03 |
-| P1 | 4 | REQ-CLI-03, REQ-WF-04, REQ-CR-07, REQ-NF-02 |
+| P0 | 15 | REQ-CLI-01, REQ-CLI-02, REQ-CLI-04, REQ-WF-01, REQ-WF-02, REQ-WF-03, REQ-WF-05, REQ-AG-01, REQ-AG-02, REQ-CR-01, REQ-CR-02, REQ-CR-03, REQ-CR-04, REQ-CR-05, REQ-CR-06, REQ-NF-01, REQ-NF-03 |
+| P1 | 5 | REQ-CLI-03, REQ-CLI-05, REQ-WF-04, REQ-CR-07, REQ-NF-02 |
 
-> Note: P0 count listed as 13; the full set is 16 entries (some IDs span both groups above).
+> Note: P0 count listed as 15; the full set is 17 entries (some IDs span both groups above).
 
 ### By Domain
 
 | Domain | Count | IDs |
 |--------|-------|-----|
-| CLI — Command-Line Interface | 3 | REQ-CLI-01 through REQ-CLI-03 |
+| CLI — Command-Line Interface | 5 | REQ-CLI-01 through REQ-CLI-05 |
 | WF — Workflow Configuration | 5 | REQ-WF-01 through REQ-WF-05 |
 | AG — Agent Configuration | 2 | REQ-AG-01 through REQ-AG-02 |
 | CR — Cross-Review Mechanics | 7 | REQ-CR-01 through REQ-CR-07 |
 | NF — Non-Functional | 3 | REQ-NF-01 through REQ-NF-03 |
 
-**Total: 20 requirements**
+**Total: 22 requirements**
 
 ---
 
@@ -413,6 +446,7 @@ Today, Ptah implements the right structural primitives (Temporal-backed workflow
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Product Manager | Initial requirements document. 20 requirements across 5 domains. |
+| 1.1 | April 22, 2026 | Product Manager | Added US-07 (workflow resume after Temporal data loss). Added REQ-CLI-04 (`--from-phase` flag, P0) and REQ-CLI-05 (artifact-based auto-detection, P1). Updated in-scope list, requirements summary. Total: 22 requirements. |
 
 ---
 

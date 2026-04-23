@@ -196,6 +196,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-01] | [REQ-CLI-01] | Pending FSPEC | P0 | 21 | Pending Spec |
 | [US-01] | [REQ-CLI-02] | Pending FSPEC | P0 | 21 | Pending Spec |
 | [US-06] | [REQ-CLI-03] | Pending FSPEC | P1 | 21 | Pending Spec |
+| [US-07] | [REQ-CLI-04] | Pending FSPEC | P0 | 21 | Pending Spec |
+| [US-07] | [REQ-CLI-05] | Pending FSPEC | P1 | 21 | Pending Spec |
 | [US-01] | [REQ-WF-01] | Pending FSPEC | P0 | 21 | Pending Spec |
 | [US-02] | [REQ-WF-02] | Pending FSPEC | P0 | 21 | Pending Spec |
 | [US-04] | [REQ-WF-03] | Pending FSPEC | P0 | 21 | Pending Spec |
@@ -568,6 +570,8 @@ This matrix provides full traceability from user scenarios through requirements 
 | [REQ-CLI-01] | Pending FSPEC | P0 | [US-01], [US-06] |
 | [REQ-CLI-02] | Pending FSPEC | P0 | [US-01] |
 | [REQ-CLI-03] | Pending FSPEC | P1 | [US-06] |
+| [REQ-CLI-04] | Pending FSPEC | P0 | [US-07] |
+| [REQ-CLI-05] | Pending FSPEC | P1 | [US-07] |
 | [REQ-WF-01] | Pending FSPEC | P0 | [US-01] |
 | [REQ-WF-02] | Pending FSPEC | P0 | [US-02] |
 | [REQ-WF-03] | Pending FSPEC | P0 | [US-04] |
@@ -644,6 +648,7 @@ This matrix provides full traceability from user scenarios through requirements 
 | 3.2 | April 7, 2026 | Product Manager | Added feature temporal-integration-completion (Temporal Integration Completion). 7 new user stories (US-01 through US-07, feature-scoped). 11 requirements added across 5 domains: RC (Review Cycle, 2 reqs), CD (Context Documents, 2 reqs), DR (Discord Routing, 3 reqs), SC (Skip Condition, 1 req), FJ (Fork/Join, 1 req), plus 2 non-functional (NF-01, NF-02). All pending FSPEC/TSPEC. REQ at docs/backlog/temporal-integration-completion/REQ-temporal-integration-completion.md. Total requirements: 183. |
 | 3.3 | April 7, 2026 | Product Manager | FSPEC for temporal-integration-completion. 4 FSPECs created: FSPEC-RC-01 (review cycle parsing flow, covers REQ-RC-01 + RC-02), FSPEC-DR-01 (workflow start trigger, covers REQ-DR-01), FSPEC-DR-02 (user answer routing, covers REQ-DR-02), FSPEC-DR-03 (retry/cancel routing, covers REQ-DR-03). 5 requirements need no FSPEC (CD-01, CD-02, SC-01, FJ-01 are straightforward wiring; NF-01, NF-02 are test requirements). FSPEC at docs/backlog/temporal-integration-completion/FSPEC-temporal-integration-completion.md. Total requirements: 183. |
 | 3.4 | April 22, 2026 | Product Manager | Added Phase 21 (Orchestrate-Dev Workflow Alignment). 6 new user stories (US-01 through US-06, feature-scoped). 20 requirements added across 5 domains: CLI (3 reqs), WF (5 reqs), AG (2 reqs), CR (7 reqs), NF (3 reqs). All pending FSPEC. REQ at docs/in-progress/orchestrate-dev-workflow/REQ-orchestrate-dev-workflow.md. Total requirements: 203. |
+| 3.5 | April 22, 2026 | Product Manager | Phase 21 REQ v1.1: added US-07 (workflow resume after Temporal data loss) and REQ-CLI-04 (`--from-phase` flag, P0), REQ-CLI-05 (artifact-based auto-detection, P1). Total requirements: 205. |
 | 3.4 | April 10, 2026 | Product Manager | Added feature fix-req-overwrite-on-start (Fix REQ Overwrite On Workflow Start). Urgent bug fix for REQ-017. 3 new user stories (US-01, US-02, US-03, feature-scoped). 15 requirements added across 3 domains: PD (Phase Detection, 4 reqs: REQ-PD-01 through REQ-PD-04), WS (Workflow Start, 5 reqs: REQ-WS-01 through REQ-WS-05), ER (Error Reporting, 3 reqs: REQ-ER-01 through REQ-ER-03), plus 4 non-functional (REQ-NF-01 through REQ-NF-04). Parent: REQ-017. REQ at docs/backlog/fix-req-overwrite-on-start/REQ-fix-req-overwrite-on-start.md. Total requirements: 198. |
 | 3.5 | April 10, 2026 | Product Manager | REQ v2.0 for fix-req-overwrite-on-start: addressed engineer cross-review + TE hook enrichment. US-03 dropped (deferred to orchestrator-discord-commands). REQ-ER-01 deprecated. REQ-NF-01 deprecated (flaky latency NFR). REQ-WS-06 added (workflow state machine invariant). Active requirements: 15 (12 P0 + 3 P1). REQ-PD-03 expanded with exhaustive decision table (Cases A–H). C-05 added (FeatureResolver reuse). Phase detection scope clarified (active lifecycle folders only; completed features excluded). |
 | 3.6 | April 21, 2026 | Product Manager | FSPEC for message-acknowledgement complete. 1 FSPEC created: FSPEC-MA-01 (covers REQ-MA-01 through REQ-MA-06 and REQ-NF-17-01 through REQ-NF-17-03). All 9 active requirements now FSPEC'd. Feature traceability view added. FSPEC at docs/in-progress/message-acknowledgement/FSPEC-message-acknowledgement.md. |
