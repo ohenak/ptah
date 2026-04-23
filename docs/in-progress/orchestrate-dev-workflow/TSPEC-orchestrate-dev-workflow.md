@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | TSPEC-021 |
 | **Parent Documents** | REQ-021 (v1.3), FSPEC-021 (v1.2) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 22, 2026 |
 | **Author** | Senior Software Engineer |
 | **Status** | Draft |
@@ -95,17 +95,30 @@ All existing `ReviewState` construction sites must initialize `writtenVersions: 
 
 ### 4.3 `FeatureWorkflowState` — `ptah/src/temporal/types.ts`
 
-Add `artifactExists` field:
+Add `artifactExists` and `activeAgentIds` fields:
 
 ```typescript
 export interface FeatureWorkflowState {
   // ... existing fields ...
   /** Pre-fetched artifact existence map. Keyed by docType (e.g. "REQ", "FSPEC"). */
   artifactExists: Record<string, boolean>;
+  /**
+   * Agent IDs currently running (dispatched but not yet returned).
+   * Set by the workflow when an agent is invoked; cleared when it completes.
+   * Used by pollUntilTerminal() to detect "addressing feedback" optimizer dispatch.
+   */
+  activeAgentIds: string[];
 }
 ```
 
-Initialize to `{}` in `buildInitialWorkflowState()`.
+Initialize `artifactExists` to `{}` and `activeAgentIds` to `[]` in `buildInitialWorkflowState()`.
+
+**`activeAgentIds` lifecycle:**
+- When `invokeSkill` is dispatched for the optimizer (author) agent in `runReviewCycle()`, add the agentId to `state.activeAgentIds`.
+- When the optimizer completes (or fails), remove the agentId from `state.activeAgentIds`.
+- Reviewer agents are also tracked in `activeAgentIds` while they are running (added on dispatch, removed on completion). This enables `pollUntilTerminal()` to detect whether the author agent is active.
+
+**`queryWorkflowState()` return value:** The `FeatureWorkflowState` returned by `queryWorkflowState()` includes `activeAgentIds`. The `pollUntilTerminal()` algorithm uses `state.activeAgentIds` directly — it does NOT access `state.workflowConfig`. The `PHASE_LABELS` static map in `run.ts` provides phase label lookup by phase ID; `workflowConfig` is not needed at poll time.
 
 ### 4.4 `ReadCrossReviewInput` — `ptah/src/temporal/types.ts`
 
@@ -194,10 +207,12 @@ evaluateSkipCondition(condition, featureConfig, artifactExists)
 
 ```typescript
 export function isCompletionReady(
-  signOffs: Record<string, string>,
+  signOffs: Record<string, boolean>,
   workflowConfig: WorkflowConfig,
 ): boolean
 ```
+
+**Sign-off value type:** Per REQ-WF-06 and FSPEC-WF-02 BR-WF-09, sign-offs are stored as **boolean** values in `signOffs`. Both `"approved"` and `"approved_with_minor_issues"` recommendations map through `parseRecommendation()` → `{ status: "approved" }` → stored as `true` in `signOffs`. A `"revision_requested"` or absent entry maps to `false`. The sign-off map type is therefore `Record<string, boolean>`, not `Record<string, string>`.
 
 **Algorithm:**
 
@@ -207,22 +222,22 @@ isCompletionReady(signOffs, workflowConfig)
   ├── Find phase with id === "implementation-review" in workflowConfig.phases
   │
   ├── Phase NOT found →
-  │     LEGACY FALLBACK: return signOffs.qa !== undefined && signOffs.pm !== undefined
+  │     LEGACY FALLBACK: return signOffs["qa"] === true && signOffs["pm"] === true
   │
   └── Phase found →
-        requiredAgents = computeReviewerList(phase, { discipline: "default" } as FeatureConfig)
-        // Note: computeReviewerList needs only the phase, not featureConfig for this use case.
-        // Use a stub FeatureConfig with discipline: "default" to force the "default" fallback path.
+        requiredAgents = computeReviewerList(phase.reviewers, { discipline: "default" } as FeatureConfig)
+        // computeReviewerList reads phase.reviewers; the FeatureConfig stub with
+        // discipline: "default" forces the "default" reviewer-manifest fallback path.
         for each agentId in requiredAgents:
-          if signOffs[agentId] === undefined → return false
+          if signOffs[agentId] !== true → return false
         return true
 ```
 
 **Edge cases:**
-- Empty reviewers list (`requiredAgents = []`) → returns `true` (vacuous truth)
-- `approved_with_minor_issues` collapses to `"approved"` in `reviewerStatuses` before sign-off is recorded, so `signOffs[agentId]` is a timestamp string (truthy) — the function only checks for presence/absence
+- Empty reviewers list (`requiredAgents = []`) → returns `true` (vacuous truth — per FSPEC-WF-02 BR-WF-10)
+- Sign-off values are boolean: `true` = approved, `false` = revision requested or absent. The check `signOffs[agentId] !== true` correctly handles both `false` entries and missing keys.
 
-**Call site updates** — both `isCompletionReady(state.signOffs)` calls in `feature-lifecycle.ts` become `isCompletionReady(state.signOffs, workflowConfig)`.
+**Call site updates** — both `isCompletionReady(state.signOffs)` calls in `feature-lifecycle.ts` become `isCompletionReady(state.signOffs, workflowConfig)`. The `state.signOffs` type is updated from `Record<string, string>` to `Record<string, boolean>` wherever it is declared.
 
 ### 5.3 `crossReviewPath()` — `cross-review-parser.ts`
 
@@ -779,6 +794,8 @@ async function resolveStartPhase(
 
 **Algorithm:**
 
+This is the single authoritative algorithm for `resolveStartPhase()`. It handles all cases defined in FSPEC-CLI-02 and REQ-CLI-05.
+
 ```
 resolveStartPhase({ reqPath, slug, fromPhase, workflowConfig, fs })
   │
@@ -799,15 +816,18 @@ resolveStartPhase({ reqPath, slug, fromPhase, workflowConfig, fs })
           { docType: "PLAN",       nextPhase: "plan-creation",       found: false },
           { docType: "PROPERTIES", nextPhase: "properties-creation", found: false },
         ]
+        // Note: DETECTION_SEQUENCE[0] is REQ (the file that was validated in Step 1).
+        // Step 1 guarantees the REQ file exists and is non-empty, so
+        // lastContiguousIndex will be >= 0 after the scan below.
 
         for each entry in DETECTION_SEQUENCE:
-          filePath = path.join(featureFolder, "{docType}-{slug}.md")
+          filePath = path.join(featureFolder, "{entry.docType}-{slug}.md")
           exists = await fs.exists(filePath)
           if exists:
             content = await fs.readFile(filePath)
             entry.found = content.trim().length > 0  // non-empty = present
 
-        // Find last contiguous present artifact
+        // Find the length of the contiguous present prefix starting at index 0
         lastContiguousIndex = -1
         for i = 0 to DETECTION_SEQUENCE.length - 1:
           if DETECTION_SEQUENCE[i].found:
@@ -815,34 +835,42 @@ resolveStartPhase({ reqPath, slug, fromPhase, workflowConfig, fs })
           else:
             break  // gap breaks contiguity
 
-        // Determine derivedPhase
+        // Determine derivedPhase and logMessage
+
         if lastContiguousIndex === -1:
-          // No artifacts found (REQ itself is absent — treat same as "REQ only" default)
+          // No artifacts present at all (REQ itself absent/empty).
+          // Step 1 prevents this in practice; treat as default start.
           derivedPhase = "req-review"
           logMessage = undefined
+
         elif lastContiguousIndex === DETECTION_SEQUENCE.length - 1:
-          // All 5 present — start at implementation
+          // All 5 artifacts present — start at implementation
           derivedPhase = "implementation"
           logMessage = "Auto-detected resume phase: implementation (PROPERTIES found, implementation artifact missing)"
-        else:
-          nextEntry = DETECTION_SEQUENCE[lastContiguousIndex + 1]
-          // Check for gap: is there a present artifact beyond the gap?
-          hasGapArtifact = DETECTION_SEQUENCE.slice(lastContiguousIndex + 2)
-                           .some(e => e.found)
-          // Gap OR no-gap: both derive the same phase (the first missing artifact's phase)
-          derivedPhase = nextEntry.nextPhase
-          if lastContiguousIndex === 0 && !hasGapArtifact:
-            // "REQ only, nothing else" → no log message
-            logMessage = undefined
-          else:
-            present = DETECTION_SEQUENCE[lastContiguousIndex].docType
-            missing = nextEntry.docType
-            logMessage = "Auto-detected resume phase: {derivedPhase} ({present} found, {missing} missing)"
 
-        // Special case: REQ only with a gap (FSPEC absent, TSPEC present)
-        if lastContiguousIndex === 0 && hasGapArtifact:
-          derivedPhase = "fspec-creation"
-          logMessage = "Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"
+        elif lastContiguousIndex === 0:
+          // Only REQ is contiguously present.
+          // Check whether any artifact beyond the first gap (FSPEC) exists.
+          hasGapArtifactBeyondFSPEC = DETECTION_SEQUENCE.slice(2).some(e => e.found)
+          // DETECTION_SEQUENCE.slice(2) = [TSPEC, PLAN, PROPERTIES]
+
+          if hasGapArtifactBeyondFSPEC:
+            // Gap: FSPEC absent but TSPEC (or later) present.
+            // Per FSPEC-CLI-02 BR-CLI-08, derived phase is the first missing artifact's creation phase.
+            derivedPhase = "fspec-creation"
+            logMessage = "Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"
+          else:
+            // Pure default: only REQ exists, nothing beyond.
+            derivedPhase = "req-review"
+            logMessage = undefined
+
+        else:  // lastContiguousIndex > 0 and < length-1
+          // At least REQ and one more artifact present; next artifact is the gap.
+          nextEntry = DETECTION_SEQUENCE[lastContiguousIndex + 1]
+          present = DETECTION_SEQUENCE[lastContiguousIndex].docType
+          missing = nextEntry.docType
+          derivedPhase = nextEntry.nextPhase
+          logMessage = "Auto-detected resume phase: {derivedPhase} ({present} found, {missing} missing)"
 
         // Validate derived phase exists in config
         phaseIds = workflowConfig.phases.map(p => p.id)
@@ -854,38 +882,19 @@ resolveStartPhase({ reqPath, slug, fromPhase, workflowConfig, fs })
         return { phase: derivedPhase, logMessage }
 ```
 
-**Note on REQ-only default:** When only REQ is found (no gap, `lastContiguousIndex === 0` and `!hasGapArtifact`), the derivedPhase is `"req-review"` with no log message. This is identical to the "no artifacts at all" case. The contiguous-prefix algorithm handles this naturally: FSPEC is absent, so `lastContiguousIndex` stays at 0 (REQ found), `nextEntry` = FSPEC entry with `nextPhase = "fspec-creation"`. But we check: `lastContiguousIndex === 0` (only REQ found) AND no gap artifacts beyond FSPEC → this is the default case → use `"req-review"`.
+**Note on `lastContiguousIndex === -1` (empty folder):** Step 1 of `RunCommand.execute()` validates that the REQ file exists and is non-empty before calling `resolveStartPhase()`. Therefore `lastContiguousIndex === -1` is an impossible state at runtime when called from `execute()`. The branch is included for defensive completeness and to make the function safe when called in isolation (e.g., in tests with a fake filesystem that has no files).
 
-Wait — this logic needs a correction. Let me re-state precisely:
+**FSPEC-CLI-02 phase map, fully realized:**
 
-The `DETECTION_SEQUENCE[0]` entry is REQ itself. When REQ exists and FSPEC is absent, `lastContiguousIndex = 0` (REQ is the last contiguous artifact). The `nextEntry` for REQ's position is FSPEC (`nextPhase: "fspec-creation"`).
-
-But the spec says: "REQ only (no gap, nothing else exists)" → `req-review` with no message. "REQ only (gap: FSPEC absent, TSPEC present)" → `fspec-creation` with a message.
-
-The distinction is: does anything exist beyond the first gap? If only REQ exists (FSPEC absent, TSPEC also absent), that's the default start. If FSPEC is absent but TSPEC is present (a gap), we start at `fspec-creation` with a message.
-
-Corrected algorithm for the final step:
-
-```
-if lastContiguousIndex === 0:
-  // Only REQ is present (or possibly nothing)
-  hasGapArtifactBeyondFSPEC = DETECTION_SEQUENCE.slice(2).some(e => e.found)
-  // (entries at index 2+ are TSPEC, PLAN, PROPERTIES)
-  if hasGapArtifactBeyondFSPEC:
-    // Gap detected — FSPEC absent but something beyond exists
-    derivedPhase = "fspec-creation"
-    logMessage = "Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"
-  else:
-    // Pure default: nothing beyond REQ
-    derivedPhase = "req-review"
-    logMessage = undefined
-elif lastContiguousIndex > 0:
-  nextEntry = DETECTION_SEQUENCE[lastContiguousIndex + 1]
-  present = DETECTION_SEQUENCE[lastContiguousIndex].docType
-  missing = nextEntry.docType
-  derivedPhase = nextEntry.nextPhase
-  logMessage = "Auto-detected resume phase: {derivedPhase} ({present} found, {missing} missing)"
-```
+| Scenario | `lastContiguousIndex` | `derivedPhase` | `logMessage` |
+|----------|----------------------|----------------|-------------|
+| Empty folder (no REQ) | -1 | `req-review` | none |
+| REQ only, no gap | 0, `!hasGapBeyondFSPEC` | `req-review` | none |
+| REQ only, gap (FSPEC absent, TSPEC present) | 0, `hasGapBeyondFSPEC` | `fspec-creation` | `"Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"` |
+| REQ + FSPEC | 1 | `tspec-creation` | `"Auto-detected resume phase: tspec-creation (FSPEC found, TSPEC missing)"` |
+| REQ + FSPEC + TSPEC | 2 | `plan-creation` | `"Auto-detected resume phase: plan-creation (TSPEC found, PLAN missing)"` |
+| REQ + FSPEC + TSPEC + PLAN | 3 | `properties-creation` | `"Auto-detected resume phase: properties-creation (PLAN found, PROPERTIES missing)"` |
+| All 5 present | 4 (= length-1) | `implementation` | `"Auto-detected resume phase: implementation (PROPERTIES found, implementation artifact missing)"` |
 
 ### 6.5 `pollUntilTerminal()` — Progress Polling
 
@@ -909,7 +918,12 @@ async function pollUntilTerminal(params: PollParams): Promise<number>
 ```
 pollUntilTerminal(params)
   │
-  ├── lastEmittedState: { phaseId: string; iteration: number; reviewerStatuses: Record<string, string> } | null = null
+  ├── lastEmittedState: {
+  │     phaseId: string;
+  │     iteration: number;
+  │     reviewerStatuses: Record<string, string>;
+  │     activeAgentIds: string[];
+  │   } | null = null
   │
   └── LOOP every 2 seconds:
         try:
@@ -931,29 +945,35 @@ pollUntilTerminal(params)
           stdout.write("Workflow cancelled\n")
           return 1
 
-        // Handle ROUTE_TO_USER (→ Section 6.6)
+        // Handle ROUTE_TO_USER (→ Section 6.7)
         if state.phaseStatus === "waiting-for-user" && state.pendingQuestion:
           await handleQuestion(state.pendingQuestion, workflowId, params)
           continue
 
         // Progress emission (deduplication)
-        currentPhase = state.workflowConfig.phases.find(p => p.id === state.currentPhaseId)
-        if currentPhase?.type === "review":
-          reviewState = state.reviewStates[state.currentPhaseId]
+        // Phase lookup uses PHASE_LABELS static map — workflowConfig is NOT accessed.
+        // state.currentPhaseId identifies the phase; type is determined by checking
+        // whether the phase ID exists in PHASE_LABELS (review phases) or not.
+        // For simplicity: only emit progress lines for phases that are in PHASE_LABELS.
+        if PHASE_LABELS[state.currentPhaseId] !== undefined:
+          reviewState = state.reviewStates?.[state.currentPhaseId]
           currentIteration = reviewState?.revisionCount ?? 0
+          currentActiveAgentIds = state.activeAgentIds ?? []
 
           hasChanged = (
             lastEmittedState?.phaseId !== state.currentPhaseId ||
             lastEmittedState?.iteration !== currentIteration ||
-            !deepEqual(lastEmittedState?.reviewerStatuses, reviewState?.reviewerStatuses)
+            !deepEqual(lastEmittedState?.reviewerStatuses, reviewState?.reviewerStatuses) ||
+            !arrayEqual(lastEmittedState?.activeAgentIds, currentActiveAgentIds)
           )
 
           if hasChanged:
-            emitProgressLines(state, currentPhase, reviewState, featureFolder, slug, stdout)
+            emitProgressLines(state, state.currentPhaseId, reviewState, featureFolder, slug, stdout)
             lastEmittedState = {
               phaseId: state.currentPhaseId,
               iteration: currentIteration,
-              reviewerStatuses: { ...reviewState?.reviewerStatuses },
+              reviewerStatuses: { ...(reviewState?.reviewerStatuses ?? {}) },
+              activeAgentIds: [...currentActiveAgentIds],
             }
 
         await sleep(2000)
@@ -964,7 +984,7 @@ pollUntilTerminal(params)
 ```typescript
 function emitProgressLines(
   state: FeatureWorkflowState,
-  phase: PhaseDefinition,
+  phaseId: string,
   reviewState: ReviewState | undefined,
   featureFolder: string,
   slug: string,
@@ -989,10 +1009,11 @@ const PHASE_LABELS: Record<string, { label: string; title: string }> = {
 **Emission logic:**
 
 ```
-emitProgressLines(state, phase, reviewState, featureFolder, slug, stdout)
+emitProgressLines(state, phaseId, reviewState, featureFolder, slug, stdout)
   │
-  ├── label = PHASE_LABELS[phase.id]?.label ?? phase.id
-  ├── title = PHASE_LABELS[phase.id]?.title ?? phase.name
+  ├── phaseInfo = PHASE_LABELS[phaseId]
+  ├── label = phaseInfo?.label ?? phaseId    // fallback for unknown/custom phase IDs
+  ├── title = phaseInfo?.title ?? phaseId    // fallback for unknown/custom phase IDs
   ├── iteration = (reviewState?.revisionCount ?? 0) + 1
   │
   ├── emit: "[Phase {label} — {title}] Iteration {iteration}\n"
@@ -1001,15 +1022,75 @@ emitProgressLines(state, phase, reviewState, featureFolder, slug, stdout)
   │     if status === "approved":
   │       emit: "  {agentId}:  Approved ✅\n"
   │     elif status === "revision_requested":
-  │       N = countFindingsInCrossReviewFile(featureFolder, agentId, phase, reviewState, slug)
+  │       N = countFindingsInCrossReviewFile(featureFolder, agentId, phaseId, reviewState, slug)
   │       emit: "  {agentId}:  Need Attention ({N} findings)\n"
   │
-  └── if state.phaseStatus === "running" && state.activeAgentIds includes authorAgentId:
-        // Author is addressing feedback
+  └── // Optimizer (author) dispatch detection:
+      // The phase's author agent ID is stored in the phase config, but for progress
+      // reporting we detect it via state.activeAgentIds.
+      // After reviewer results are emitted, if the phase is still running AND an agent
+      // in state.activeAgentIds is the known author for this phase:
+      //   - For review phases, the author is the phase's "agent" field.
+      //   - We look up the phase author by checking the phase config's agent property.
+      //   - For simplicity in progress reporting, if state.activeAgentIds is non-empty
+      //     and no reviewer result lines were emitted in this tick (all reviewers are
+      //     complete), the active agent is the optimizer (author addressing feedback).
+      //
+      // Practical detection rule:
+      allReviewersDone = (Object.keys(reviewState?.reviewerStatuses ?? {}).length > 0 &&
+                          Object.values(reviewState?.reviewerStatuses ?? {})
+                            .every(s => s !== "pending" && s !== "running"))
+      if allReviewersDone && (state.activeAgentIds ?? []).length > 0:
+        authorAgentId = (state.activeAgentIds ?? [])[0]
         emit: "[Phase {label} — {title}] {authorAgentId} addressing feedback...\n"
 ```
 
-**`countFindingsInCrossReviewFile()`:** Read the cross-review file at `{featureFolder}/CROSS-REVIEW-{skillName}-{docType}.md` (current revision, unversioned path for display). Count data rows in the `## Findings` table: scan for a line matching `/^\|---/` (separator row) and count subsequent lines starting with `|` before the next blank line or end of table. If the file cannot be read, return `"?"`.
+**"Addressing feedback" line precondition:** This line is emitted only after all reviewer results have been populated in `reviewState.reviewerStatuses` for the current iteration AND at least one entry in `state.activeAgentIds` exists. This matches the workflow state when `runReviewCycle()` has dispatched all reviewers, collected their results, and then dispatched the optimizer (author) for the revision pass. The optimizer's agentId is in `state.activeAgentIds` while it is running.
+
+**`countFindingsInCrossReviewFile()`:**
+
+```typescript
+function countFindingsInCrossReviewFile(
+  featureFolder: string,
+  agentId: string,
+  phase: PhaseDefinition,
+  reviewState: ReviewState | undefined,
+  slug: string,
+): number | "?"
+```
+
+Resolves the cross-review file path using the versioned path for the current iteration, consistent with REQ-CLI-03 and FSPEC-CLI-03:
+
+```
+countFindingsInCrossReviewFile(featureFolder, agentId, phase, reviewState, slug)
+  │
+  ├── docType = deriveDocumentType(phase.id)
+  │   // e.g. "req-review" → "REQ", "tspec-review" → "TSPEC"
+  │
+  ├── skillName = agentIdToSkillName(agentId) ?? agentId
+  │
+  ├── currentRevision = reviewState?.writtenVersions[agentId] ?? 1
+  │   // Use the version that was actually written by this reviewer in this iteration.
+  │   // writtenVersions[agentId] is set by runReviewCycle() after each reviewer dispatch.
+  │   // Falls back to 1 if writtenVersions is absent (first iteration or legacy state).
+  │
+  ├── filePath = crossReviewPath(featureFolder + "/", skillName, docType, currentRevision)
+  │   // e.g. round 1: "...CROSS-REVIEW-product-manager-REQ.md"
+  │   //      round 2: "...CROSS-REVIEW-product-manager-REQ-v2.md"
+  │
+  ├── try:
+  │     content = fs.readFileSync(filePath, "utf-8")
+  │   catch:
+  │     return "?"  // file not found or unreadable
+  │
+  └── Count data rows in ## Findings table:
+        scan for the separator line matching /^\|[-|:\s]+\|/ (the header separator row)
+        count subsequent lines starting with "|" before the next blank line or end-of-file
+        // separator row itself is NOT counted (only data rows below it)
+        return count  // 0 if table is empty or not found
+```
+
+The finding count uses `reviewState.writtenVersions[agentId]` to locate the versioned file written in the most recent review round for that agent. This ensures round-2+ progress output shows findings from the current iteration's cross-review file, not the stale round-1 file.
 
 **Phase completed/revision-bound-reached signals:** These are detected from `phaseStatus` transitions in the poll loop and emitted as:
 - `[Phase {label} — {title}] Passed ✅\n`
@@ -1063,80 +1144,60 @@ handleQuestion(question, workflowId, params)
 
 ## 7. AGENT_TO_SKILL Mapping — `cross-review-parser.ts`
 
-### 7.1 Updated `SKILL_TO_AGENT`
+### 7.1 Constraint Analysis
+
+REQ-CR-01 states two requirements that are in tension:
+
+1. "`AGENT_TO_SKILL` is derived by reversing `SKILL_TO_AGENT` and must not be maintained independently."
+2. "The existing entries for old agent IDs (`pm`, `eng`, `qa`, `fe`) must be preserved so that `agentIdToSkillName("eng")` still returns `"engineer"`."
+3. (From REQ-CR-01 AC) `agentIdToSkillName("pm-review")` returns `"product-manager"` AND `agentIdToSkillName("pm")` returns `"product-manager"` (the existing mapped value).
+
+**The conflict:** A pure reversal of `SKILL_TO_AGENT` produces a one-to-one map (`skillName → agentId`). If `"product-manager" → "pm-review"` is the sole entry for that skill name, then reversing gives `"pm-review" → "product-manager"` — but `"pm" → "product-manager"` is lost. Two different agent IDs (`pm` and `pm-review`) both require `agentIdToSkillName()` to return `"product-manager"`, which is a many-to-one relationship that a pure reversal of `SKILL_TO_AGENT` cannot represent.
+
+**Resolution chosen:** Implement `SKILL_TO_AGENT` with new entries for `pm-review` and `te-review` using their canonical skill names, and build `AGENT_TO_SKILL` as a reversal of `SKILL_TO_AGENT` merged with an explicit backward-compat supplement `LEGACY_AGENT_TO_SKILL`. This deviates from the "derived exclusively by reversal" wording of REQ-CR-01 only in that it adds a supplemental merge; the reversal is still computed and serves as the primary source. A **REQ amendment** to REQ-CR-01 is recommended to acknowledge this implementation: change "must not be maintained independently" to "is primarily derived from reversing `SKILL_TO_AGENT`; backward-compat entries for old agent IDs that cannot be expressed via reversal alone are maintained in a supplemental `LEGACY_AGENT_TO_SKILL` table."
+
+### 7.2 Implementation
 
 ```typescript
 const SKILL_TO_AGENT: Record<string, string> = {
-  // Existing entries — preserved for backward compatibility
+  // Existing entries — preserved for backward compatibility (REQ-NF-01)
   "engineer":           "eng",
   "frontend-engineer":  "fe",
-  "product-manager":    "pm",
-  "test-engineer":      "qa",
-  // New entries for orchestrate-dev 8-role agents
-  "product-manager":    "pm-review",  // NOTE: "product-manager" maps to "pm-review" for new agents
-  "software-engineer":  "se-review",
-  "test-engineer":      "te-review",  // NOTE: "test-engineer" maps to "te-review" for new agents
-};
-```
-
-**Problem:** `"product-manager"` and `"test-engineer"` already exist in the map with old values. Using a single `Record<string, string>` means the old values would be overwritten.
-
-**Resolution:** Split into separate forward-lookup entries. The `SKILL_TO_AGENT` map is the source of truth for `skillName → agentId`. For the new roles, the skill names are distinct:
-
-```typescript
-const SKILL_TO_AGENT: Record<string, string> = {
-  // Old agent IDs (preserved — REQ-NF-01)
-  "engineer":           "eng",
-  "frontend-engineer":  "fe",
-  "product-manager":    "pm",
-  "test-engineer":      "qa",
-  // New 8-role agent IDs (REQ-CR-01)
-  // New skill names that map to the new role agents:
+  // Updated: "product-manager" and "test-engineer" now point to new role agent IDs.
+  // Reversing these gives AGENT_TO_SKILL["pm-review"] = "product-manager"
+  // and AGENT_TO_SKILL["te-review"] = "test-engineer".
+  "product-manager":    "pm-review",
+  "test-engineer":      "te-review",
+  // New entry for software-engineer role (REQ-CR-01)
   "software-engineer":  "se-review",
 };
-```
 
-But `"product-manager"` → `"pm-review"` and `"test-engineer"` → `"te-review"` conflict with existing entries. The solution from the REQ (REQ-CR-01) is:
-
-> New forward entries must be added to `SKILL_TO_AGENT`: `"product-manager"` → `"pm-review"`, `"software-engineer"` → `"se-review"`, `"test-engineer"` → `"te-review"`. The existing entries for old agent IDs (`pm`, `eng`, `qa`, `fe`) must be preserved so that `agentIdToSkillName("eng")` still returns `"engineer"`.
-
-Since `AGENT_TO_SKILL` is derived by reversing `SKILL_TO_AGENT`, reversing a map with duplicate values would lose entries. The resolution: new role agents map to **different** skill name values from the old agents. Looking at `orchestrate-dev/SKILL.md` naming: `se-review` uses skill name `"software-engineer"` (new entry). For `pm-review` and `te-review`, the skill names would need to be distinct from `"product-manager"` and `"test-engineer"`.
-
-**Practical approach:** Per REQ-CR-01 AC, what matters is the forward mapping works: `agentIdToSkillName("se-review")` returns `"software-engineer"`, `agentIdToSkillName("pm-review")` returns `"product-manager"`, `agentIdToSkillName("te-review")` returns `"test-engineer"`. The old agents `pm` → `"product-manager"` and `qa` → `"test-engineer"` can also remain. The `AGENT_TO_SKILL` reverse map will have `"product-manager"` → one value only (last write wins in `Object.fromEntries`).
-
-**Correct implementation:** Build `AGENT_TO_SKILL` manually rather than deriving it, to handle the many-to-one and one-to-many cases. Or add new `SKILL_TO_AGENT` entries with the understanding that the reverse will preferentially map skill names to new agents:
-
-```typescript
-const SKILL_TO_AGENT: Record<string, string> = {
-  "engineer":           "eng",
-  "frontend-engineer":  "fe",
-  "product-manager":    "pm-review",  // NEW: overrides old "pm" for reverse lookup
-  "test-engineer":      "te-review",  // NEW: overrides old "qa" for reverse lookup
-  "software-engineer":  "se-review",  // NEW
-};
-
-// Explicit backward-compat entries for old agent IDs
-// (these are extra entries in AGENT_TO_SKILL that bypass the reverse derivation)
+// Backward-compat supplement: old agent IDs whose skillName cannot be recovered
+// from pure SKILL_TO_AGENT reversal because the skill name key has been reassigned
+// to the new role agent. Merged AFTER the reversal so reversal entries take precedence.
 const LEGACY_AGENT_TO_SKILL: Record<string, string> = {
-  "pm": "product-manager",
-  "qa": "test-engineer",
-  "eng": "engineer",
-  "fe": "frontend-engineer",
+  "pm":  "product-manager",  // old pm agent — skill name unchanged
+  "qa":  "test-engineer",    // old qa agent — skill name unchanged
+  "eng": "engineer",         // old eng agent
+  "fe":  "frontend-engineer", // old fe agent
 };
 
 const AGENT_TO_SKILL: Record<string, string> = {
   ...Object.fromEntries(Object.entries(SKILL_TO_AGENT).map(([k, v]) => [v, k])),
-  ...LEGACY_AGENT_TO_SKILL,
+  ...LEGACY_AGENT_TO_SKILL,  // supplement — does not overwrite reversal entries
 };
 ```
 
-This approach satisfies all acceptance criteria:
-- `agentIdToSkillName("se-review")` → `"software-engineer"` ✓
-- `agentIdToSkillName("pm-review")` → `"product-manager"` ✓
-- `agentIdToSkillName("te-review")` → `"test-engineer"` ✓
-- `agentIdToSkillName("eng")` → `"engineer"` ✓ (from LEGACY)
-- `agentIdToSkillName("qa")` → `"test-engineer"` ✓ (from LEGACY)
-- `agentIdToSkillName("pm")` → `"product-manager"` ✓ (from LEGACY)
+**Verification of all acceptance criteria:**
+- `agentIdToSkillName("se-review")` → `"software-engineer"` ✓ (from reversal)
+- `agentIdToSkillName("pm-review")` → `"product-manager"` ✓ (from reversal)
+- `agentIdToSkillName("te-review")` → `"test-engineer"` ✓ (from reversal)
+- `agentIdToSkillName("eng")` → `"engineer"` ✓ (from LEGACY supplement)
+- `agentIdToSkillName("qa")` → `"test-engineer"` ✓ (from LEGACY supplement)
+- `agentIdToSkillName("pm")` → `"product-manager"` ✓ (from LEGACY supplement)
+- `agentIdToSkillName("fe")` → `"frontend-engineer"` ✓ (from LEGACY supplement)
+
+**Note on `skillNameToAgentId("product-manager")`:** The reversal maps `"product-manager" → "pm-review"` (new role). Old projects using the old `pm` agent ID must continue to work via `agentIdToSkillName("pm")`, which they do through `LEGACY_AGENT_TO_SKILL`. The forward direction `skillNameToAgentId("product-manager")` now returns `"pm-review"` — this is the intended behavior for new workflows.
 
 ---
 
@@ -1395,6 +1456,7 @@ phases:
 
 **Notes:**
 - `req-creation` includes `skip_if: { field: artifact.exists, artifact: REQ }` — the workflow engine skips creation when the REQ already exists (REQ-WF-01).
+- **FSPEC, TSPEC, PLAN, and PROPERTIES creation phases intentionally have no `skip_if` conditions.** REQ-WF-01 and REQ-WF-05 specify the `artifact.exists` skip condition for `req-creation` only. Mid-pipeline resume for all other creation phases is handled by the CLI-side auto-detection algorithm (`resolveStartPhase()`) which derives the correct `startAtPhase` and passes it to `featureLifecycleWorkflow`. The workflow-engine-level `skip_if` mechanism is a safety net for the REQ case; it is not required for FSPEC through PROPERTIES phases. Adding `skip_if` conditions to those phases is out of scope for this feature per REQ §3.1 (scope is limited to the `SkipCondition` discriminated union enabling `artifact.exists` checks, applied only to `req-creation`).
 - All review phases have `revision_bound: 5` (REQ-WF-04).
 - Reviewer assignments match the matrix in REQ-WF-02 exactly.
 - Phase PT (`properties-tests`) is positioned between `implementation` and `implementation-review` (REQ-WF-03).
@@ -1673,9 +1735,12 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `ptah.workflow.yaml` missing | Returns exit 1, reformatted error |
 | `--from-phase` valid | Workflow starts at given phase |
 | `--from-phase` invalid | Returns exit 1, full phase list in error |
-| Auto-detection — full prefix | Derives `plan-creation`, prints log message |
-| Auto-detection — gap | Derives `fspec-creation`, correct message |
+| Auto-detection — full prefix (REQ+FSPEC+TSPEC present, PLAN absent) | Derives `plan-creation`, prints log message |
+| Auto-detection — gap (FSPEC absent, TSPEC present) | Derives `fspec-creation`, correct message `(REQ found, FSPEC missing)` |
 | Auto-detection — REQ only, no gap | Derives `req-review`, no log message |
+| Auto-detection — all 5 artifacts present | Derives `implementation`, prints log message `(PROPERTIES found, implementation artifact missing)` — covers `lastContiguousIndex === DETECTION_SEQUENCE.length - 1` case (TE F-04-b) |
+| Auto-detection — empty folder (no artifacts, Step 1 bypassed via fake FS) | Derives `req-review`, no log message — covers `lastContiguousIndex === -1` case (TE F-04-a) |
+| Auto-detection — gap at position 2 (TSPEC absent, PLAN present) | Derives `fspec-creation` (FSPEC is the first missing artifact), prints correct message — covers gap at non-REQ position (TE F-04-c) |
 | Auto-detection — phase not in config | Returns exit 1, error message |
 | Duplicate running workflow | Returns exit 1, error message |
 | Temporal query exception during check | Returns exit 1, error with message |
@@ -1688,9 +1753,12 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | ROUTE_TO_USER — no Discord — stdin closed | Sends empty signal, warning to stderr |
 | ROUTE_TO_USER — Discord present | Does not read stdin |
 | Progress deduplication | Same state → no new lines |
-| Finding count from cross-review file | Correct data-row count |
+| Finding count from cross-review file — round 1 (unversioned path) | Correct data-row count from `CROSS-REVIEW-{skill}-{doc}.md` |
+| Finding count from cross-review file — round 2 (versioned path) | Correct data-row count from `CROSS-REVIEW-{skill}-{doc}-v2.md` (uses `writtenVersions`) |
 | Finding count — file missing | Reports "?" |
-| `statusFilter` passed to listWorkflowsByPrefix | Correct filter values |
+| `emitProgressLines` — unknown/custom phase ID fallback | `label` and `title` both fall back to `phaseId` (TE F-02: unknown phase ID in `PHASE_LABELS`) |
+| `statusFilter` passed to listWorkflowsByPrefix — filter values correct | Asserts `["Running", "ContinuedAsNew"]` is passed |
+| `FakeTemporalClient.listWorkflowsByPrefix` with statusFilter — excludes non-matching statuses | Populate `workflowIds` and `workflowStatuses` with mix of Running and Terminated; assert only Running/ContinuedAsNew are returned (TE F-03: verifies fake correctly filters by status, not just records the call) |
 
 **`tests/unit/orchestrator/cross-review-parser.test.ts`** — add:
 
@@ -1700,6 +1768,8 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `parseRecommendation("Need Attention")` → revision_requested | REQ-CR-06 |
 | `parseRecommendation("NEED ATTENTION")` → revision_requested | Case insensitive |
 | `parseRecommendation("Approved")` → approved | Regression |
+| `parseRecommendation("Approved with Minor Issues — see findings")` → revision_requested | **Negative/partial-match test (TE F-01):** a superset string that contains "approved with minor issues" as a substring but has additional text must NOT match and must fall through to the conservative default. This verifies VALUE_MATCHERS uses exact-equality matching (after normalize), not `includes()`. |
+| `parseRecommendation("needs revision")` → revision_requested | Regression — existing matcher |
 | `crossReviewPath(…, 1)` → unversioned | REQ-CR-02 |
 | `crossReviewPath(…, undefined)` → unversioned | REQ-CR-02 |
 | `crossReviewPath(…, 2)` → -v2 suffix | REQ-CR-02 |
@@ -1711,6 +1781,7 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `agentIdToSkillName("eng")` → "engineer" | REQ-NF-01 backward compat |
 | `agentIdToSkillName("qa")` → "test-engineer" | REQ-NF-01 backward compat |
 | `agentIdToSkillName("pm")` → "product-manager" | REQ-NF-01 backward compat |
+| `agentIdToSkillName("fe")` → "frontend-engineer" | REQ-NF-01 backward compat (TE F-08) |
 
 **`tests/unit/temporal/cross-review-activity.test.ts`** — update:
 
@@ -1730,11 +1801,14 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `evaluateSkipCondition` — unknown artifact key → returns false | REQ-WF-05 |
 | `deriveDocumentType("properties-tests")` → "PROPERTIES" | REQ-WF-03 |
 | `deriveDocumentType("req-review")` → "REQ" (regression) | — |
-| `isCompletionReady` — all reviewers signed off → true | REQ-WF-06 |
-| `isCompletionReady` — one missing → false | REQ-WF-06 |
-| `isCompletionReady` — no implementation-review phase → legacy fallback | REQ-WF-06 |
-| `isCompletionReady` — empty reviewers → true (vacuous) | REQ-WF-06 |
+| `isCompletionReady` — all reviewers signed off (`=== true`) → true | REQ-WF-06 (sign-offs are boolean per FSPEC-WF-02 BR-WF-09) |
+| `isCompletionReady` — one reviewer has `false` sign-off → false | REQ-WF-06 |
+| `isCompletionReady` — one reviewer absent from signOffs → false | REQ-WF-06 |
+| `isCompletionReady` — no implementation-review phase → legacy fallback (`qa === true && pm === true`) | REQ-WF-06 |
+| `isCompletionReady` — empty reviewers → true (vacuous) | REQ-WF-06 FSPEC-WF-02 BR-WF-10 |
 | `buildInitialWorkflowState` — reviewStates have writtenVersions: {} | REQ-NF-04 |
+| `buildInitialWorkflowState` — state has artifactExists: {} | Section 4.3 |
+| `buildInitialWorkflowState` — state has activeAgentIds: [] | Section 4.3 |
 | `buildContinueAsNewPayload` — writtenVersions preserved | REQ-NF-04 |
 | `buildContinueAsNewPayload` — reviewStates carried across CAN | FSPEC-CR-01 AT-CR-01-F |
 | Static-scan: no `mapRecommendationToStatus` in source | REQ-CR-05 FSPEC-CR-02 AT-CR-02-E |
@@ -1803,6 +1877,7 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Senior Software Engineer | Initial TSPEC. Full technical design covering all 25 requirements across CLI, workflow engine, agent configuration, cross-review mechanics, and non-functional requirements. |
+| 1.1 | April 22, 2026 | Senior Software Engineer | Addressed cross-review feedback (iteration 1) from product-manager (6 High/Medium findings) and test-engineer (4 High findings). Key changes: (1) **PM F-01 / TE F-02 (High):** Corrected `isCompletionReady()` sign-off type from timestamp string to boolean (`=== true` check); updated function signature to `Record<string, boolean>`; updated legacy fallback to use `=== true`; aligned with FSPEC-WF-02 BR-WF-09. (2) **PM F-02 (High):** Resolved `SKILL_TO_AGENT`/`AGENT_TO_SKILL` key-collision: documented constraint conflict (REQ-CR-01 "derived exclusively by reversal" is irreconcilable with backward-compat many-to-one requirement); chose `LEGACY_AGENT_TO_SKILL` supplement approach with REQ amendment recommendation; removed `LEGACY_AGENT_TO_SKILL` as a rogue workaround, elevated it as the specified and justified implementation; all 7 `agentIdToSkillName` ACs satisfied. (3) **PM F-03 / TE F-04 (High):** Removed the in-document correction note from `resolveStartPhase()`; published single authoritative algorithm with clearly enumerated cases (`lastContiguousIndex === -1`, `=== 0 with/without gap`, `> 0`, `=== length-1`); added phase-map summary table. (4) **PM F-04 (Medium):** `countFindingsInCrossReviewFile()` now resolves versioned path via `reviewState.writtenVersions[agentId]` instead of always using the unversioned path; full function signature and algorithm specified. (5) **PM F-05 (Medium):** Added `activeAgentIds: string[]` field to `FeatureWorkflowState` (Section 4.3) with lifecycle semantics; fixed `pollUntilTerminal()` to use `PHASE_LABELS` static map (not `state.workflowConfig`) for phase lookup; fixed `emitProgressLines()` to derive optimizer dispatch line from `state.activeAgentIds`; fallback for unknown phase IDs documented. (6) **PM F-06 (Medium):** Added explicit note to YAML template stating FSPEC/TSPEC/PLAN/PROPERTIES creation phases intentionally have no `skip_if` conditions; documented scope rationale. (7) **TE F-01 (High):** Added negative partial-match test for `parseRecommendation()` (superset string must return `revision_requested`). (8) **TE F-03 (High):** Added `FakeTemporalClient` status-filter correctness test (populate both `workflowIds` and `workflowStatuses`; verify non-matching statuses are excluded). (9) **TE F-04 (High):** Added missing `resolveStartPhase()` test cases: empty folder (`lastContiguousIndex === -1`), all-5-artifacts-present (`implementation`), gap at position 2 (TSPEC absent, PLAN present). (10) **TE F-08 (Medium):** Added `agentIdToSkillName("fe")` → `"frontend-engineer"` to test table. (11) General: updated `emitProgressLines()` signature to accept `phaseId: string` instead of `phase: PhaseDefinition`; `pollUntilTerminal()` deduplication state now includes `activeAgentIds`; removed `state.workflowConfig` access from polling loop. |
 
 ---
 
