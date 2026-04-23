@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-021 |
 | **Parent Document** | [REQ-orchestrate-dev-workflow](REQ-orchestrate-dev-workflow.md) (v1.3, Draft) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 22, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -66,7 +66,11 @@ ptah run <req-path> [--from-phase <phase-id>]
   │         e.g. docs/in-progress/my-feature/REQ-my-feature.md → "my-feature"
   │
   ├── STEP 3: Load workflow config
-  │     └── Load ptah.workflow.yaml from current directory
+  │     └── Load ptah.workflow.yaml from current working directory
+  │           ├── File missing → print error (see Error Messages), exit 1
+  │           └── YamlWorkflowConfigLoader throws WorkflowConfigError →
+  │                 catch, reformat, print "Error: ptah.workflow.yaml not found
+  │                 in current directory." to stdout, exit 1
   │
   ├── STEP 4: Resolve start phase (→ FSPEC-CLI-02)
   │     ├── --from-phase provided → validate phase ID in config; if invalid, exit 1
@@ -101,6 +105,7 @@ ptah run <req-path> [--from-phase <phase-id>]
 | BR-CLI-03 | The Temporal workflow ID is `ptah-{slug}`. The duplicate-check query uses this exact prefix. |
 | BR-CLI-04 | A Temporal workflow in `Closed`, `Failed`, `TimedOut`, `Terminated`, or `Completed` status does NOT block a new start. Only `Running` and `ContinuedAsNew` block. |
 | BR-CLI-05 | If the Temporal query itself throws an exception (any error), `ptah run` treats this as a hard error and exits 1. It does not start the workflow under uncertainty. |
+| BR-CLI-06 | `ptah run` catches `WorkflowConfigError` thrown by `YamlWorkflowConfigLoader` and reformats it as: `Error: ptah.workflow.yaml not found in current directory.` This message differs from the raw loader message ("Run 'ptah init' first") to give context-appropriate guidance for headless operation. Exit code 1. |
 
 #### Error Messages
 
@@ -108,6 +113,7 @@ ptah run <req-path> [--from-phase <phase-id>]
 |-----------|---------------|-----------|
 | REQ file not found | `Error: REQ file not found: <path>` | 1 |
 | REQ file is empty | `Error: REQ file is empty: <path>` | 1 |
+| `ptah.workflow.yaml` not found | `Error: ptah.workflow.yaml not found in current directory.` | 1 |
 | Running workflow exists | `Error: workflow already running for feature "<slug>". Use --from-phase to restart from a specific phase after terminating the existing workflow.` | 1 |
 | Temporal query exception | `Error: unable to check for running workflows: <error message>` | 1 |
 | Workflow failed | (final progress line from poll) | 1 |
@@ -117,7 +123,7 @@ ptah run <req-path> [--from-phase <phase-id>]
 #### Edge Cases
 
 - **Path with no parent directory** (e.g., `REQ-foo.md` with no `/`): treat the slug as the filename stem stripped of `REQ-` prefix and `.md` extension. This is an edge case; the canonical form is always `docs/{category}/{slug}/REQ-{slug}.md`.
-- **`ptah.workflow.yaml` missing from current directory**: `ptah run` prints `Error: ptah.workflow.yaml not found in current directory.` and exits 1.
+- **`ptah.workflow.yaml` missing from current directory**: `ptah run` catches the `WorkflowConfigError` from `YamlWorkflowConfigLoader`, prints `Error: ptah.workflow.yaml not found in current directory.` to stdout, and exits 1 (see BR-CLI-06).
 
 #### Acceptance Tests
 
@@ -125,7 +131,7 @@ ptah run <req-path> [--from-phase <phase-id>]
 - Who: Engineer
 - Given: `docs/in-progress/my-feature/REQ-my-feature.md` exists and is non-empty; no running Temporal workflow for `my-feature`
 - When: `ptah run docs/in-progress/my-feature/REQ-my-feature.md`
-- Then: A Temporal `featureLifecycleWorkflow` starts for `my-feature`. stdout begins streaming progress. Command stays alive (non-blocking) until terminal state.
+- Then: A Temporal `featureLifecycleWorkflow` starts for `my-feature`. stdout begins streaming progress. Command stays alive until terminal state. (Testable via a fake Temporal client that returns non-terminal poll state indefinitely until explicitly resolved.)
 
 **AT-CLI-01-B: REQ file not found**
 - Who: Engineer
@@ -163,6 +169,12 @@ ptah run <req-path> [--from-phase <phase-id>]
 - When: Workflow reaches `revision-bound-reached` terminal state
 - Then: Command exits with code 1.
 
+**AT-CLI-01-H: `ptah.workflow.yaml` missing**
+- Who: Engineer
+- Given: No `ptah.workflow.yaml` file exists in the current working directory
+- When: `ptah run docs/in-progress/my-feature/REQ-my-feature.md`
+- Then: stdout prints `Error: ptah.workflow.yaml not found in current directory.` Exit code 1. No Temporal workflow started.
+
 ---
 
 ### FSPEC-CLI-02: Phase Resolution: `--from-phase`, Auto-Detection, and Default
@@ -176,6 +188,8 @@ ptah run <req-path> [--from-phase <phase-id>]
 #### Description
 
 Before starting the Temporal workflow, `ptah run` must determine `startAtPhase`. This is resolved through a strict three-tier priority: explicit flag > auto-detection > default. This FSPEC defines each tier's behavior and the validation gate that follows.
+
+**Architectural note:** CLI-side auto-detection (Tier 2) is a direct filesystem `stat` performed before the Temporal workflow starts, operating on the feature folder derived from the REQ file path. This is an entirely separate check from the `checkArtifactExists` Temporal Activity specified in FSPEC-WF-01, which runs inside the Temporal workflow boundary for determinism safety. Both layers check artifact existence independently; the explicit `startAtPhase` value passed to `featureLifecycleWorkflow` always takes precedence over the workflow-side skip condition result (per Assumption A-05 in the REQ).
 
 #### Behavioral Flow
 
@@ -192,6 +206,9 @@ Phase Resolution
   │
   ├── TIER 2: --from-phase absent → run auto-detection
   │     │
+  │     │  Note: this is a direct filesystem stat on the feature folder
+  │     │  (directory containing the REQ file). It is NOT a Temporal Activity.
+  │     │
   │     │  Detection Order (canonical PDLC sequence):
   │     │    REQ → FSPEC → TSPEC → PLAN → PROPERTIES
   │     │
@@ -202,9 +219,14 @@ Phase Resolution
   │     │  Gaps break contiguity: if FSPEC is absent but TSPEC is present,
   │     │  the contiguous prefix ends at REQ.
   │     │
-  │     ├── Last contiguous artifact = REQ →
+  │     ├── Last contiguous artifact = REQ only (no gap) →
   │     │     startAtPhase = "req-review"
   │     │     stdout: (no auto-detection message — this is the default)
+  │     │
+  │     ├── Last contiguous artifact = REQ, but gap after it →
+  │     │     (e.g., FSPEC absent, TSPEC present)
+  │     │     startAtPhase = "fspec-creation"
+  │     │     stdout: Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)
   │     │
   │     ├── Last contiguous artifact = FSPEC →
   │     │     startAtPhase = "tspec-creation"
@@ -222,7 +244,8 @@ Phase Resolution
   │           startAtPhase = "implementation"
   │           stdout: Auto-detected resume phase: implementation (PROPERTIES found, implementation artifact missing)
   │
-  └── TIER 3 (implicit in Tier 2): No artifacts beyond REQ → startAtPhase = "req-review"
+  └── TIER 3 (implicit in Tier 2): No artifacts in sequence found at all →
+        startAtPhase = "req-review" (same as "REQ only, no gap" case)
 
 After Tier 2: validate derived startAtPhase against loaded workflow config
   ├── Phase ID exists in config → proceed
@@ -238,26 +261,29 @@ After Tier 2: validate derived startAtPhase against loaded workflow config
 |------|--------|
 | BR-CLI-06 | The canonical detection sequence is fixed: REQ, FSPEC, TSPEC, PLAN, PROPERTIES. No other artifact types participate in auto-detection. |
 | BR-CLI-07 | Artifact detection requires the file to be non-empty. A zero-byte or whitespace-only file is treated as absent for auto-detection purposes. |
-| BR-CLI-08 | Contiguity is measured from REQ. If FSPEC is absent but TSPEC is present, the sequence is treated as ending after REQ. TSPEC is ignored for the purpose of advancing the detected phase. |
+| BR-CLI-08 | Contiguity is measured from REQ. If FSPEC is absent but TSPEC is present, the sequence is treated as breaking after REQ. The gap artifact (FSPEC) determines the derived phase — `fspec-creation` — not the artifact beyond the gap (TSPEC). The derived phase is the creation phase for the first missing artifact in the sequence. |
 | BR-CLI-09 | The artifact filename pattern is exactly `<DOCTYPE>-{slug}.md` where `<DOCTYPE>` is the uppercase document type and `{slug}` is the feature slug. The search is case-sensitive and performed in the feature folder (the directory containing the REQ file). |
 | BR-CLI-10 | When `--from-phase` provides an invalid phase ID, the error message lists ALL phase IDs from the loaded config, not a subset. The list must not include `...` or truncation. |
 | BR-CLI-11 | The `--from-phase` flag takes precedence over auto-detection. When the flag is present, auto-detection is not performed. |
+| BR-CLI-12 | The "no artifacts beyond REQ" case (REQ exists, FSPEC absent, no gap artifacts beyond FSPEC) resolves to `req-review` with no stdout message. This is distinct from the gap case (FSPEC absent, TSPEC present) which resolves to `fspec-creation` with a log message. |
+| BR-CLI-13 | CLI auto-detection is a direct synchronous filesystem `stat` call (e.g., `fs.existsSync` / `stat` on the feature folder path), executed before the Temporal workflow is started. It must not use Temporal Activities. |
 
 #### Auto-Detection Phase Map
 
-| Last Contiguous Artifact | Derived `startAtPhase` | Stdout Log Message |
-|--------------------------|------------------------|-------------------|
-| REQ only (default) | `req-review` | (none) |
-| REQ + FSPEC | `tspec-creation` | `Auto-detected resume phase: tspec-creation (FSPEC found, TSPEC missing)` |
-| REQ + FSPEC + TSPEC | `plan-creation` | `Auto-detected resume phase: plan-creation (TSPEC found, PLAN missing)` |
-| REQ + FSPEC + TSPEC + PLAN | `properties-creation` | `Auto-detected resume phase: properties-creation (PLAN found, PROPERTIES missing)` |
-| REQ + FSPEC + TSPEC + PLAN + PROPERTIES | `implementation` | `Auto-detected resume phase: implementation (PROPERTIES found, implementation artifact missing)` |
+| Last Contiguous Artifact | Scenario | Derived `startAtPhase` | Stdout Log Message |
+|--------------------------|----------|------------------------|-------------------|
+| REQ only (no gap, nothing else exists) | Default start | `req-review` | (none) |
+| REQ only (gap: FSPEC absent, TSPEC present) | Gap after REQ | `fspec-creation` | `Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)` |
+| REQ + FSPEC | Next artifact missing | `tspec-creation` | `Auto-detected resume phase: tspec-creation (FSPEC found, TSPEC missing)` |
+| REQ + FSPEC + TSPEC | Next artifact missing | `plan-creation` | `Auto-detected resume phase: plan-creation (TSPEC found, PLAN missing)` |
+| REQ + FSPEC + TSPEC + PLAN | Next artifact missing | `properties-creation` | `Auto-detected resume phase: properties-creation (PLAN found, PROPERTIES missing)` |
+| REQ + FSPEC + TSPEC + PLAN + PROPERTIES | All present | `implementation` | `Auto-detected resume phase: implementation (PROPERTIES found, implementation artifact missing)` |
 
 #### Edge Cases
 
-- **FSPEC absent, TSPEC present**: contiguous prefix ends at REQ; derived phase = `req-review`. The TSPEC is ignored.
-- **Feature folder is empty (only REQ exists)**: derived phase = `req-review`. No log message.
-- **Custom `ptah.workflow.yaml` omits `fspec-creation`**: if the auto-detected phase is `fspec-creation` and the config has no such phase, the command exits 1 with the config-mismatch error.
+- **FSPEC absent, TSPEC present**: gap breaks at FSPEC; derived phase = `fspec-creation`. stdout: `Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)`. The TSPEC file is beyond the gap and does not affect the derived phase.
+- **Feature folder is empty (only REQ exists, nothing else)**: derived phase = `req-review`. No log message.
+- **Custom `ptah.workflow.yaml` omits `tspec-creation`**: if the auto-detected phase is `tspec-creation` and the config has no such phase, the command exits 1 with the config-mismatch error.
 - **All artifacts present**: `startAtPhase` = `implementation`. This is the furthest phase resolvable by artifact detection alone.
 
 #### Acceptance Tests
@@ -284,19 +310,19 @@ After Tier 2: validate derived startAtPhase against loaded workflow config
 - Who: Engineer
 - Given: Feature folder contains `REQ-my-feature.md` (non-empty). `FSPEC-my-feature.md` is absent. `TSPEC-my-feature.md` is present.
 - When: `ptah run docs/in-progress/my-feature/REQ-my-feature.md`
-- Then: stdout does NOT mention TSPEC. Workflow starts at `req-review`. (TSPEC is beyond the broken prefix and is ignored.)
+- Then: stdout prints `Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)`. Workflow starts at `fspec-creation`. (TSPEC beyond the gap does not advance the derived phase.)
 
 **AT-CLI-02-E: Auto-detection — no artifacts beyond REQ**
 - Who: Engineer
-- Given: Only `REQ-my-feature.md` exists in the feature folder
+- Given: Only `REQ-my-feature.md` exists in the feature folder (FSPEC is absent, no gap beyond it)
 - When: `ptah run docs/in-progress/my-feature/REQ-my-feature.md`
 - Then: Workflow starts at `req-review`. No auto-detection log message printed.
 
 **AT-CLI-02-F: Auto-detected phase missing from config**
 - Who: Engineer
-- Given: Custom `ptah.workflow.yaml` has no `fspec-creation` phase. Feature folder has only `REQ-my-feature.md`.
+- Given: Custom `ptah.workflow.yaml` has no `tspec-creation` phase. Feature folder contains `REQ-my-feature.md` and `FSPEC-my-feature.md` (both non-empty), but `TSPEC-my-feature.md` is absent.
 - When: `ptah run docs/in-progress/my-feature/REQ-my-feature.md`
-- Then: stdout prints `Error: auto-detected phase "fspec-creation" not found in workflow config. Use --from-phase to specify a valid start phase.` Exit code 1.
+- Then: Auto-detection derives `tspec-creation`. stdout prints `Error: auto-detected phase "tspec-creation" not found in workflow config. Use --from-phase to specify a valid start phase.` Exit code 1.
 
 ---
 
@@ -311,6 +337,10 @@ After Tier 2: validate derived startAtPhase against loaded workflow config
 #### Description
 
 While `ptah run` is executing, it polls `queryWorkflowState` every 2 seconds and emits progress lines to stdout when the workflow state changes. This provides real-time visibility without requiring Discord or Temporal UI.
+
+**Scope:** Progress reporting is specified only for **review phases** in this FSPEC. Creation phases (req-creation, fspec-creation, tspec-creation, plan-creation, properties-creation) emit no phase-header or reviewer-result progress lines. When a creation phase dispatches its agent, the only output is the optimizer-dispatch line: `[Phase {phase-label} — {phase-title}] {agent-id} running...`. If the orchestrator does not emit a creation phase dispatch signal, no output is produced for that phase. This resolves OQ-01 and OQ-02 as out-of-scope for the initial implementation.
+
+**Cross-review file path:** The finding count `N` is read from the cross-review file on disk. `ptah run` resolves the cross-review file path relative to the REQ file's parent directory (the feature folder). This assumes the workflow worker runs on the same machine as the CLI. Remote Temporal deployments (workflow worker on a separate machine) are not supported for progress finding counts; in that scenario, the file will not exist locally and `N` is reported as `?` (per BR-CLI-14).
 
 #### Behavioral Flow
 
@@ -328,9 +358,14 @@ Progress Polling Loop
   ├── On reviewer result (for each reviewer in the phase):
   │     ├── status = approved or approved_with_minor_issues:
   │     │     emit:   {reviewer-id}:  Approved ✅
+  │     │     Note: both "approved" and "approved_with_minor_issues" from
+  │     │     parseRecommendation() collapse to the "approved" ReviewerStatusValue
+  │     │     stored in reviewerStatuses. The progress reporter reads "approved"
+  │     │     and emits "Approved ✅" — no sub-variant is stored or needed.
   │     └── status = revision_requested:
   │           emit:   {reviewer-id}:  Need Attention ({N} findings)
-  │                   where N = total row count in ## Findings table of cross-review file
+  │                   where N = count of DATA rows only in ## Findings table
+  │                   (header row and separator row are excluded from the count)
   │
   ├── On optimizer dispatch (author addressing feedback):
   │     emit: [Phase {phase-label} — {phase-title}] {agent-id} addressing feedback...
@@ -349,10 +384,12 @@ Progress Polling Loop
 
 | Rule | Detail |
 |------|--------|
-| BR-CLI-12 | Deduplication prevents duplicate lines: a line is only emitted when at least one of (phase name, iteration number, any reviewer's status) has changed from the previous poll. |
-| BR-CLI-13 | The finding count `N` in `Need Attention (N findings)` is the total number of rows in the `## Findings` table of the reviewer's cross-review file for that iteration. All severity rows count. If the cross-review file cannot be read, `N` is reported as `?`. |
-| BR-CLI-14 | Phase label is the short uppercase letter(s) used in the orchestrate-dev format (e.g., `R` for req-review, `F` for fspec-review, `T` for tspec-review, etc.). Phase title is the human-readable name. |
-| BR-CLI-15 | All progress lines go to stdout, not stderr. Stderr is reserved for warnings only (e.g., the stdin-closed warning in FSPEC-CLI-04). |
+| BR-CLI-14 | Deduplication prevents duplicate lines: a line is only emitted when at least one of (phase name, iteration number, any reviewer's status) has changed from the previous poll. |
+| BR-CLI-15 | The finding count `N` in `Need Attention (N findings)` is the count of **data rows only** in the `## Findings` table of the reviewer's cross-review file. The header row (column names) and the separator row (`\|---\|---\|`) are excluded. A table with 4 data rows reports N=4 regardless of how many header or separator rows precede them. If the cross-review file cannot be read, `N` is reported as `?`. |
+| BR-CLI-16 | Phase label is the short uppercase letter(s) used in the orchestrate-dev format (e.g., `R` for req-review, `F` for fspec-review, `T` for tspec-review, etc.). Phase title is the human-readable name. |
+| BR-CLI-17 | All progress lines go to stdout, not stderr. Stderr is reserved for warnings only (e.g., the stdin-closed warning in FSPEC-CLI-04). |
+| BR-CLI-18 | `approved_with_minor_issues` is not a separate `ReviewerStatusValue` variant. `parseRecommendation()` maps it to `{ status: "approved" }`, which is stored as `"approved"` in `reviewerStatuses`. The progress reporter does not need to distinguish `approved` from `approved_with_minor_issues` — both emit `Approved ✅`. |
+| BR-CLI-19 | Cross-review file paths for finding count are resolved relative to the feature folder (the directory containing the REQ file passed to `ptah run`), not relative to CWD. This keeps finding counts accurate regardless of where `ptah run` is invoked from. |
 
 #### Phase Label Map
 
@@ -385,7 +422,7 @@ Progress Polling Loop
 
 **AT-CLI-03-A: Mixed review result output**
 - Who: Engineer
-- Given: Phase R (REQ Review) iteration 1 just completed with `se-review` approving and `te-review` requesting revision with 4 findings
+- Given: Phase R (REQ Review) iteration 1 just completed with `se-review` approving and `te-review` requesting revision. `te-review`'s cross-review file has 4 data rows in the `## Findings` table (plus one header row and one separator row — 6 total rows, 4 data rows).
 - When: The next poll detects the state change
 - Then: stdout contains exactly:
   ```
@@ -427,12 +464,16 @@ Progress Polling Loop
 
 When the workflow reaches a `ROUTE_TO_USER` state (a blocking question from an agent), `ptah run` must handle the question differently based on whether Discord is configured. This FSPEC covers the no-Discord path; the Discord path is unchanged existing behavior.
 
+**Signal name resolution:** The existing codebase defines signal `"user-answer"` used by `ptah start` via Discord. FSPEC-CLI-04 introduces signal `"humanAnswerSignal"` for the headless stdin path. These are **two distinct Temporal signals** on the same workflow. The workflow handler must listen on both signals — `"user-answer"` for Discord-routed answers and `"humanAnswerSignal"` for stdin-routed answers. There is no migration of `"user-answer"`; the two signals coexist. The `ptah run` headless path exclusively uses `"humanAnswerSignal"`, and `ptah start` continues to use `"user-answer"`. The `TemporalClientWrapper` must expose a new method `signalHumanAnswer(workflowId: string, answer: string): Promise<void>` that sends the `"humanAnswerSignal"` signal; it must not reuse `signalUserAnswer()`.
+
+**Config loading:** `ptah run` must use a lenient config loader that treats a missing `discord` section as valid (Discord-less mode). It must not throw an error when `discord` is absent from `ptah.config.json`, unlike the current `ConfigLoader` used by `ptah start` which treats `discord` as required.
+
 #### Behavioral Flow
 
 ```
 ROUTE_TO_USER state detected
   │
-  ├── Discord config present?
+  ├── Discord config present in ptah.config.json?
   │     Yes → route question to Discord as normal (existing behavior)
   │           stdin NOT read
   │           return to progress polling
@@ -442,11 +483,11 @@ ROUTE_TO_USER state detected
         emit to stdout: Answer:   ← (trailing space, no newline, acts as inline prompt)
         Read one line from stdin
         │
-        ├── Line received → send line contents via signal "humanAnswerSignal" to workflow
+        ├── Line received → call signalHumanAnswer(workflowId, line)
         │                   return to progress polling
         │
         └── stdin closed / EOF before input →
-              send empty string via signal "humanAnswerSignal" to workflow
+              call signalHumanAnswer(workflowId, "")
               emit to stderr: Warning: stdin closed before answer was provided;
                               resuming workflow with empty answer.
               return to progress polling
@@ -456,11 +497,13 @@ ROUTE_TO_USER state detected
 
 | Rule | Detail |
 |------|--------|
-| BR-CLI-16 | The `Answer: ` prompt is printed WITHOUT a trailing newline, so the cursor stays on the same line for the engineer to type. This is a deliberate UX choice for inline prompting. |
-| BR-CLI-17 | The signal name used is exactly `"humanAnswerSignal"`. |
-| BR-CLI-18 | Only ONE line is read from stdin per `ROUTE_TO_USER` event. Multi-line input is not supported; only the first line is consumed. |
-| BR-CLI-19 | The closed-stdin warning goes to stderr, not stdout. The progress stream on stdout remains clean. |
-| BR-CLI-20 | When Discord config is present, stdin reading is entirely suppressed even if the question could theoretically be answered via stdin. Discord takes exclusive ownership. |
+| BR-CLI-20 | The `Answer: ` prompt is printed WITHOUT a trailing newline, so the cursor stays on the same line for the engineer to type. This is a deliberate UX choice for inline prompting. |
+| BR-CLI-21 | The signal name used for the headless stdin path is exactly `"humanAnswerSignal"`. The existing `"user-answer"` signal used by `ptah start` / Discord is preserved unchanged. Both signals coexist on the workflow. |
+| BR-CLI-22 | Only ONE line is read from stdin per `ROUTE_TO_USER` event. Multi-line input is not supported; only the first line is consumed. |
+| BR-CLI-23 | The closed-stdin warning goes to stderr, not stdout. The progress stream on stdout remains clean. |
+| BR-CLI-24 | When Discord config is present, stdin reading is entirely suppressed even if the question could theoretically be answered via stdin. Discord takes exclusive ownership. |
+| BR-CLI-25 | `ptah run` uses a lenient config loader: absence of a `discord` section in `ptah.config.json` is treated as "Discord not configured" and is not an error. This differs from `ptah start`'s strict config loader. |
+| BR-CLI-26 | The `TemporalClientWrapper` exposes a new method `signalHumanAnswer(workflowId: string, answer: string): Promise<void>` that sends the `"humanAnswerSignal"` signal. This is a separate method from `signalUserAnswer()` and must not be implemented by reusing that method with a different signal name constant. |
 
 #### Acceptance Tests
 
@@ -468,13 +511,13 @@ ROUTE_TO_USER state detected
 - Who: Engineer with no Discord config
 - Given: `ptah.config.json` has no `discord` section. Workflow reaches `ROUTE_TO_USER` with question "Should the feature include authentication?"
 - When: The state is detected by the progress poller
-- Then: stdout prints `[Question] Should the feature include authentication?` followed by `Answer: ` (no newline). `ptah run` reads one line from stdin. After the engineer types `Yes` and presses Enter, the workflow receives signal `"humanAnswerSignal"` with value `"Yes"`. Progress polling resumes.
+- Then: stdout prints `[Question] Should the feature include authentication?` followed by `Answer: ` (no newline). `ptah run` reads one line from stdin. After the engineer types `Yes` and presses Enter, `signalHumanAnswer(workflowId, "Yes")` is called — which sends signal `"humanAnswerSignal"` with value `"Yes"` to the workflow. Progress polling resumes.
 
 **AT-CLI-04-B: stdin closed before answer**
 - Who: Engineer running in non-interactive mode (e.g., piped stdin)
 - Given: No Discord config. Workflow reaches `ROUTE_TO_USER`. stdin is closed (EOF) before any input.
 - When: `ptah run` reads stdin and gets EOF
-- Then: Signal `"humanAnswerSignal"` is sent with empty string. stderr prints `Warning: stdin closed before answer was provided; resuming workflow with empty answer.`
+- Then: `signalHumanAnswer(workflowId, "")` is called. stderr prints `Warning: stdin closed before answer was provided; resuming workflow with empty answer.`
 
 **AT-CLI-04-C: Discord config present — stdin not read**
 - Who: Engineer with Discord configured
@@ -494,7 +537,43 @@ ROUTE_TO_USER state detected
 
 #### Description
 
-The `SkipCondition` type gains a new variant `{ field: "artifact.exists"; artifact: string }`. Evaluating this condition requires filesystem I/O, which must not run inline in the Temporal workflow (non-determinism violation). This FSPEC defines the pre-loop activity pattern and the `evaluateSkipCondition()` function contract.
+The `SkipCondition` type gains a new discriminated union variant `{ field: "artifact.exists"; artifact: string }`. Evaluating this condition requires filesystem I/O, which must not run inline in the Temporal workflow (non-determinism violation). This FSPEC defines the pre-loop activity pattern, the `evaluateSkipCondition()` function contract, and the `deriveDocumentType()` extension required for the `properties-tests` phase.
+
+#### `SkipCondition` TypeScript Type Definition
+
+The complete discriminated union that must replace the current `{ field: string; equals: boolean }` definition:
+
+```typescript
+type SkipCondition =
+  | { field: `config.${string}`; equals: boolean }
+  | { field: "artifact.exists"; artifact: string };
+```
+
+**Validation rules for `validateStructure()` in `workflow-validator.ts`:**
+
+| Branch | Required fields | Forbidden fields | Validator action on violation |
+|--------|----------------|-----------------|-------------------------------|
+| `config.*` branch | `field` (string starting with `config.`), `equals` (boolean) | `artifact` must not be present | Throw `WorkflowConfigError` |
+| `artifact.exists` branch | `field` (exactly `"artifact.exists"`), `artifact` (non-empty string) | `equals` must not be present | Throw `WorkflowConfigError` |
+
+A `skip_if` block where `field === "artifact.exists"` but `artifact` is absent (or empty) is a validation error. A `skip_if` block with `field === "artifact.exists"` AND an `equals` property present is also a validation error (malformed discriminated union).
+
+#### `deriveDocumentType("properties-tests")` Specification
+
+The existing `deriveDocumentType()` function strips phase ID suffixes using a regex that matches `-creation`, `-review`, and `-approved`. The regex does **not** match `-tests`, so `deriveDocumentType("properties-tests")` currently returns `"PROPERTIES-TESTS"` without this change.
+
+The function must be extended with a special-case lookup **before** the regex stripping step:
+
+```
+deriveDocumentType(phaseId)
+  │
+  ├── Special-case lookup (applied before regex):
+  │     "properties-tests" → "PROPERTIES"
+  │
+  └── Fallback: apply existing regex strip logic
+```
+
+This ensures `deriveDocumentType("properties-tests")` returns `"PROPERTIES"`, allowing reviewer agents to correctly locate the PROPERTIES artifact for the phase.
 
 #### Behavioral Flow
 
@@ -512,7 +591,7 @@ Workflow Start (before main phase loop)
         └── For each phase with skip_if:
               call evaluateSkipCondition(condition, featureConfig, state.artifactExists)
               │
-              ├── condition.field = "config.*" → use existing config-lookup logic
+              ├── condition.field starts with "config." → use existing config-lookup logic
               │
               └── condition.field = "artifact.exists" →
                     ├── artifactExists is undefined (pre-loop) →
@@ -534,6 +613,19 @@ Workflow Start (before main phase loop)
 | BR-WF-04 | If a key is not present in `state.artifactExists` (e.g., an artifact type not covered by pre-loop checks), `evaluateSkipCondition()` returns `false` (treat as absent). |
 | BR-WF-05 | The `checkArtifactExists` activity is called once per artifact type per workflow start. It is not re-evaluated during the main loop. |
 | BR-WF-06 | All three existing call sites of `evaluateSkipCondition()` in `feature-lifecycle.ts` must pass `state.artifactExists` as the third argument. Omitting the third argument for `artifact.exists` conditions is a programming error caught by the throw. |
+| BR-WF-07 | Pre-loop artifact checks run for ALL phases with `artifact.exists` conditions regardless of `startAtPhase`. Even if `startAtPhase` skips past `req-creation`, the activity still checks artifact existence for every phase that declares an `artifact.exists` skip condition, including skipped phases. |
+| BR-WF-08 | `deriveDocumentType()` applies the special-case lookup BEFORE the regex. The special-case table takes precedence over the regex stripping logic. |
+
+#### `ReviewerManifest` and Discipline Key for New Default YAML
+
+The `ReviewerManifest` type in `workflow-config.ts` uses a discipline-keyed object (`{ default?, backend-only?, frontend-only?, fullstack? }`). The new default `ptah.workflow.yaml` generated by `ptah init` must specify reviewer lists using the `"default"` discipline key so that `computeReviewerList()` resolves the reviewer list via its existing `"default"` fallback path. Example:
+
+```yaml
+reviewers:
+  default: [se-review, te-review]
+```
+
+This is the canonical form for all review phases in the new default YAML. FSPEC-WF-02 (which shows flat reviewer arrays in acceptance tests) refers to the resolved list after `computeReviewerList()` processes the manifest — not the raw YAML shape.
 
 #### Acceptance Tests
 
@@ -561,6 +653,24 @@ Workflow Start (before main phase loop)
 - When: `evaluateSkipCondition` is called
 - Then: Returns `false`. Phase is not skipped.
 
+**AT-WF-01-E: resolveNextPhase() propagates evaluateSkipCondition throw**
+- Who: Workflow engine
+- Given: A phase has `skip_if: { field: "artifact.exists", artifact: "REQ" }`. `resolveNextPhase()` is called before the pre-loop activity has run, so `artifactExists` is `undefined`.
+- When: `resolveNextPhase()` calls `evaluateSkipCondition()` internally
+- Then: `resolveNextPhase()` allows the `Error` thrown by `evaluateSkipCondition()` to propagate up uncaught. The error reaches the Temporal workflow boundary and causes the phase to fail with the same error message. `resolveNextPhase()` must NOT catch or swallow this error.
+
+**AT-WF-01-F: deriveDocumentType("properties-tests") returns "PROPERTIES"**
+- Who: Workflow engine
+- Given: Phase ID is `"properties-tests"`
+- When: `deriveDocumentType("properties-tests")` is called
+- Then: Returns `"PROPERTIES"` (not `"PROPERTIES-TESTS"`).
+
+**AT-WF-01-G: checkArtifactExists not re-called mid-loop**
+- Who: Workflow engine
+- Given: Pre-loop artifact checks have completed; `state.artifactExists` is populated
+- When: The main phase loop runs through multiple phases
+- Then: `checkArtifactExists` is not invoked again during the loop. The `state.artifactExists` map used throughout the loop is the one populated before the loop started.
+
 ---
 
 ### FSPEC-WF-02: `isCompletionReady()` Dynamic Sign-Off Derivation
@@ -586,7 +696,7 @@ isCompletionReady(signOffs, workflowConfig)
   │     LEGACY FALLBACK: return signOffs.qa === true && signOffs.pm === true
   │
   └── Phase found →
-        requiredAgents = workflowConfig["implementation-review"].reviewers
+        requiredAgents = computeReviewerList(workflowConfig["implementation-review"].reviewers)
         For each agentId in requiredAgents:
           if signOffs[agentId] !== true → return false
         All present → return true
@@ -596,15 +706,16 @@ isCompletionReady(signOffs, workflowConfig)
 
 | Rule | Detail |
 |------|--------|
-| BR-WF-07 | An approved status is `true` in `signOffs`. An `approved_with_minor_issues` sign-off also maps to `true`. A `revision_requested` or absent sign-off maps to `false`. |
-| BR-WF-08 | The legacy fallback (checking `signOffs.qa && signOffs.pm`) is preserved exclusively for configs that have no `implementation-review` phase. It is not used when the phase exists but has an empty reviewers list — an empty reviewers list means `isCompletionReady()` returns `true` immediately (vacuous truth). |
-| BR-WF-09 | All existing call sites of `isCompletionReady()` must be updated to pass `workflowConfig` as the second argument. |
+| BR-WF-09 | An approved status is `true` in `signOffs`. Both `"approved"` and `"approved_with_minor_issues"` from the reviewer's recommendation map to `true` via `parseRecommendation()` returning `{ status: "approved" }` — which collapses to `"approved"` stored in `reviewerStatuses`, then mapped to `true` in `signOffs`. A `"revision_requested"` or absent sign-off maps to `false`. |
+| BR-WF-10 | The legacy fallback (checking `signOffs.qa && signOffs.pm`) is preserved exclusively for configs that have no `implementation-review` phase. It is not used when the phase exists but has an empty reviewers list — an empty reviewers list means `isCompletionReady()` returns `true` immediately (vacuous truth). Note: when `computeReviewerList()` returns `[]` for zero-reviewer phases, the review cycle in the main loop will also dispatch zero agents and return `"approved"` with `anyRevisionRequested = false` — both behaviors are consistent. |
+| BR-WF-11 | All existing call sites of `isCompletionReady()` must be updated to pass `workflowConfig` as the second argument. |
+| BR-WF-12 | `requiredAgents` is derived by calling `computeReviewerList()` on the `reviewers` manifest of the `implementation-review` phase, using the same resolution logic as any other review phase. This ensures reviewer manifest format consistency across the codebase. |
 
 #### Acceptance Tests
 
 **AT-WF-02-A: All required reviewers signed off**
 - Who: Orchestrator
-- Given: `workflowConfig["implementation-review"].reviewers = ["pm-review", "te-review"]`. `signOffs = { "pm-review": true, "te-review": true }`.
+- Given: `workflowConfig["implementation-review"].reviewers = { default: ["pm-review", "te-review"] }`. After `computeReviewerList()` resolution: `["pm-review", "te-review"]`. `signOffs = { "pm-review": true, "te-review": true }`.
 - When: `isCompletionReady(signOffs, workflowConfig)` is called
 - Then: Returns `true`.
 
@@ -628,9 +739,15 @@ isCompletionReady(signOffs, workflowConfig)
 
 **AT-WF-02-E: Empty reviewers list**
 - Who: Orchestrator
-- Given: `workflowConfig["implementation-review"].reviewers = []`
+- Given: `workflowConfig["implementation-review"].reviewers = { default: [] }`
 - When: Called
 - Then: Returns `true` (vacuous truth — no agents required).
+
+**AT-WF-02-F: approved_with_minor_issues sign-off counts as approved**
+- Who: Orchestrator
+- Given: `workflowConfig["implementation-review"].reviewers = { default: ["pm-review", "te-review"] }`. `signOffs = { "pm-review": true, "te-review": true }` where `"te-review"`'s sign-off was set to `true` because `parseRecommendation()` returned `{ status: "approved" }` for an `"Approved with Minor Issues"` recommendation.
+- When: `isCompletionReady(signOffs, workflowConfig)` is called
+- Then: Returns `true`. (The `approved_with_minor_issues` → `approved` → `true` collapse is transparent to `isCompletionReady()`.)
 
 ---
 
@@ -669,6 +786,7 @@ runReviewCycle() — for each review round
   │     ├── invoke invokeSkill with revisionCount = currentRevision
   │     │     (agent context includes: "Cross-review output file:
   │     │      CROSS-REVIEW-{skillName}-{docType}[-v{N}].md")
+  │     │     (see REQ-NF-03 for SkillActivityInput.revisionCount type change)
   │     │
   │     └── update reviewState.writtenVersions[agentId] = currentRevision
   │
@@ -683,9 +801,10 @@ runReviewCycle() — for each review round
 |------|--------|
 | BR-CR-01 | `revisionCount` is 1-indexed. Round 1 = unversioned file. Round 2 = `-v2` suffix. Round N = `-vN` suffix. |
 | BR-CR-02 | A `revisionCount` of 0 or any negative integer is clamped to 1 (no suffix, no error thrown). |
-| BR-CR-03 | `reviewState.writtenVersions` is initialized to `{}` in `buildInitialWorkflowState()` and included in `buildContinueAsNewPayload()`. It is not reset on `ContinueAsNew`. |
-| BR-CR-04 | The context prompt injected into the reviewer agent's input must include the exact expected output filename: `Cross-review output file: CROSS-REVIEW-{skillName}-{docType}[-v{N}].md`. This is how the agent knows where to write. |
+| BR-CR-03 | `reviewState.writtenVersions` is initialized to `{}` in `buildInitialWorkflowState()` and **explicitly included** in `buildContinueAsNewPayload()`. It is not reset on `ContinueAsNew`. The `buildContinueAsNewPayload()` function must be extended to serialize the full `reviewStates` map (including `writtenVersions` within each `ReviewState`) into the `ContinueAsNewPayload` type. Implementing the `ReviewState.writtenVersions` type field (REQ-NF-04) without updating `buildContinueAsNewPayload()` would cause silent data loss on `ContinueAsNew` — both changes are required together. |
+| BR-CR-04 | The context prompt injected into the reviewer agent's input must include the exact expected output filename: `Cross-review output file: CROSS-REVIEW-{skillName}-{docType}[-v{N}].md`. This is how the agent knows where to write. The context injection happens via the `revisionCount` field added to `SkillActivityInput` (see REQ-NF-03). |
 | BR-CR-05 | `revisionCount` in `ReadCrossReviewInput` and `SkillActivityInput` is optional. When absent, callers that pass no value get unversioned behavior (same as passing 1). |
+| BR-CR-06 | The existing filter in `runReviewCycle()` at line 1319 of `feature-lifecycle.ts` — which restricts cross-review context refs to only reviewers with `revision_requested` status — must be **removed**. FSPEC-CR-03 (BR-CR-10) requires ALL reviewers' files to be included regardless of status. Implementers must remove the `.filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")` call. |
 
 #### Versioning Examples
 
@@ -703,6 +822,11 @@ runReviewCycle() — for each review round
 - Who: Orchestrator
 - Given: `crossReviewPath("docs/in-progress/f/", "software-engineer", "REQ", 1)`
 - Then: Returns `docs/in-progress/f/CROSS-REVIEW-software-engineer-REQ.md`.
+
+**AT-CR-01-A2: revisionCount undefined — unversioned path**
+- Who: Orchestrator
+- Given: `crossReviewPath("docs/in-progress/f/", "software-engineer", "REQ", undefined)`
+- Then: Returns `docs/in-progress/f/CROSS-REVIEW-software-engineer-REQ.md` (same as revision 1).
 
 **AT-CR-01-B: Revision 3 path**
 - Who: Orchestrator
@@ -728,9 +852,9 @@ runReviewCycle() — for each review round
 
 **AT-CR-01-F: writtenVersions preserved across ContinueAsNew**
 - Who: Orchestrator
-- Given: Workflow undergoes `ContinueAsNew` after round 2; `writtenVersions = { "se-review": 2 }`
-- When: Workflow resumes
-- Then: `reviewState.writtenVersions` = `{ "se-review": 2 }` in the resumed workflow state (not reset).
+- Given: Workflow undergoes `ContinueAsNew` after round 2; `writtenVersions = { "se-review": 2 }`. This is verified via a unit test of `buildContinueAsNewPayload()`: the function is called with a state where `reviewStates["req-review"].writtenVersions = { "se-review": 2 }` and the returned payload must include that value.
+- When: The payload is deserialized into the resumed workflow state
+- Then: `reviewState.writtenVersions` = `{ "se-review": 2 }` in the resumed workflow state (not reset). The unit test asserts `buildContinueAsNewPayload(state).reviewStates["req-review"].writtenVersions` equals `{ "se-review": 2 }`.
 
 ---
 
@@ -746,12 +870,20 @@ runReviewCycle() — for each review round
 
 Two new phrases must be recognized: `"approved with minor issues"` (maps to `approved`) and `"need attention"` (maps to `revision_requested`). The existing parallel implementation `mapRecommendationToStatus()` in `feature-lifecycle.ts` is removed; all callers use `parseRecommendation()` from `cross-review-parser.ts` as the single authoritative parser.
 
+**Function contract:** `parseRecommendation()` takes the **normalized value of the `Recommendation:` field only** — not the full file text. The caller (e.g., `readCrossReviewRecommendation` activity or any migration from `mapRecommendationToStatus()`) is responsible for extracting the `Recommendation:` field value from the file before calling `parseRecommendation()`. The function signature is:
+
+```typescript
+function parseRecommendation(recommendationFieldValue: string): { status: ReviewStatus }
+```
+
+The `text` parameter in the behavioral flow below refers to the extracted recommendation field value, not the full file content.
+
 #### Behavioral Flow
 
 ```
-parseRecommendation(text)
+parseRecommendation(recommendationFieldValue)
   │
-  ├── Normalize: lowercase the full Recommendation field value
+  ├── Normalize: lowercase the recommendation field value
   │
   ├── Match against VALUE_MATCHERS (in order, first match wins):
   │     "approved"                    → { status: "approved" }
@@ -768,10 +900,10 @@ parseRecommendation(text)
 
 | Rule | Detail |
 |------|--------|
-| BR-CR-06 | Matching is case-insensitive. `"Approved with Minor Issues"`, `"APPROVED WITH MINOR ISSUES"`, and `"approved with minor issues"` all produce `{ status: "approved" }`. |
-| BR-CR-07 | `mapRecommendationToStatus()` is deleted from `feature-lifecycle.ts`. No references to it may remain after this change. |
-| BR-CR-08 | The unrecognized-value default is `revision_requested` (conservative: unknown = request revision). |
-| BR-CR-09 | Matching uses the normalized value of the `Recommendation:` field in the cross-review file, not the full file text. |
+| BR-CR-07 | Matching is case-insensitive. `"Approved with Minor Issues"`, `"APPROVED WITH MINOR ISSUES"`, and `"approved with minor issues"` all produce `{ status: "approved" }`. |
+| BR-CR-08 | `mapRecommendationToStatus()` is deleted from `feature-lifecycle.ts`. No references to it may remain after this change. Any callers outside `feature-lifecycle.ts` must also be migrated to `parseRecommendation()`. |
+| BR-CR-09 | The unrecognized-value default is `revision_requested` (conservative: unknown = request revision). |
+| BR-CR-10 | `parseRecommendation()` receives the extracted `Recommendation:` field value, not the full file text. Field extraction from the cross-review file is the caller's responsibility (handled by `readCrossReviewRecommendation` activity). |
 
 #### VALUE_MATCHERS — Complete Set After Change
 
@@ -788,26 +920,26 @@ parseRecommendation(text)
 
 **AT-CR-02-A: "Approved with Minor Issues" recognized**
 - Who: Recommendation parser
-- Given: Cross-review file contains `Recommendation: Approved with Minor Issues`
-- When: `parseRecommendation()` is called
+- Given: The `Recommendation:` field value extracted from a cross-review file is `"Approved with Minor Issues"`
+- When: `parseRecommendation("Approved with Minor Issues")` is called
 - Then: Returns `{ status: "approved" }`.
 
 **AT-CR-02-B: "Need Attention" recognized**
 - Who: Recommendation parser
-- Given: Cross-review file contains `Recommendation: Need Attention`
-- When: `parseRecommendation()` is called
+- Given: The extracted `Recommendation:` field value is `"Need Attention"`
+- When: `parseRecommendation("Need Attention")` is called
 - Then: Returns `{ status: "revision_requested" }`.
 
 **AT-CR-02-C: Case insensitivity**
 - Who: Recommendation parser
-- Given: `Recommendation: NEED ATTENTION`
-- When: `parseRecommendation()` is called
+- Given: `parseRecommendation("NEED ATTENTION")` is called
+- When: The function runs
 - Then: Returns `{ status: "revision_requested" }`.
 
 **AT-CR-02-D: Existing "Approved" still works**
 - Who: Recommendation parser
-- Given: `Recommendation: Approved`
-- When: `parseRecommendation()` is called
+- Given: `parseRecommendation("Approved")` is called
+- When: The function runs
 - Then: Returns `{ status: "approved" }`.
 
 **AT-CR-02-E: No reference to mapRecommendationToStatus**
@@ -852,10 +984,10 @@ Build optimizer context for revision dispatch
 
 | Rule | Detail |
 |------|--------|
-| BR-CR-10 | ALL reviewers' files are included, regardless of their recommendation status. A reviewer who `approved` in round 1 still contributes their file to context in round 2. |
-| BR-CR-11 | ALL prior iterations are included. If a reviewer has `writtenVersions["se-review"] = 3`, files for v1, v2, and v3 are all checked and included if present. |
-| BR-CR-12 | A missing file (file written in a previous round but not found on disk now) is silently skipped. No error is raised, no workflow status is changed. |
-| BR-CR-13 | The iteration enumeration starts at v=1. The unversioned file (v=1) and versioned files (v≥2) are treated uniformly using `crossReviewPath()`. |
+| BR-CR-11 | ALL reviewers' files are included, regardless of their recommendation status. A reviewer who `approved` in round 1 still contributes their file to context in round 2. The existing status-filter in `runReviewCycle()` (line 1319 of `feature-lifecycle.ts`) that restricts context to only `revision_requested` reviewers must be removed (see FSPEC-CR-01 BR-CR-06). |
+| BR-CR-12 | ALL prior iterations are included. If a reviewer has `writtenVersions["se-review"] = 3`, files for v1, v2, and v3 are all checked and included if present. |
+| BR-CR-13 | A missing file (file written in a previous round but not found on disk now) is silently skipped. No error is raised, no workflow status is changed. Specifically: `phaseStatus` remains `"running"` and no `failureInfo` is set. |
+| BR-CR-14 | The iteration enumeration starts at v=1. The unversioned file (v=1) and versioned files (v≥2) are treated uniformly using `crossReviewPath()`. |
 
 #### Context Assembly Example
 
@@ -876,11 +1008,11 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 - When: Optimizer (`pm-author`) is dispatched for revision
 - Then: Context includes: `CROSS-REVIEW-product-manager-REQ.md` (v1), `CROSS-REVIEW-software-engineer-REQ.md` (v1), `CROSS-REVIEW-software-engineer-REQ-v2.md` (v2). Total: 3 files.
 
-**AT-CR-03-B: Missing file silently skipped**
+**AT-CR-03-B: Missing file silently skipped — workflow state unchanged**
 - Who: Orchestrator
 - Given: `pm-review` v1 cross-review file does not exist on disk
 - When: Building optimizer context
-- Then: `CROSS-REVIEW-product-manager-REQ.md` is excluded from the context list. No error is raised. Workflow status is unchanged.
+- Then: `CROSS-REVIEW-product-manager-REQ.md` is excluded from the context list. No error is raised. `phaseStatus` remains `"running"`. No `failureInfo` is set on the workflow state.
 
 **AT-CR-03-C: Approving reviewer files still included**
 - Who: Orchestrator
@@ -894,10 +1026,10 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 
 | ID | Question | Affects | Status |
 |----|----------|---------|--------|
-| OQ-01 | What is the phase label scheme for creation phases (req-creation, fspec-creation, etc.) in progress output? The REQ covers only review phases in progress examples. | FSPEC-CLI-03 | Open |
-| OQ-02 | Should `ptah run` emit progress for creation phases (dispatching pm-author for req-creation) or only for review phases? | FSPEC-CLI-03 | Open |
 | OQ-03 | When PROPERTIES file is absent during `properties-tests` phase, what specific text does `se-implement` include in its output to indicate the absence? Should `ptah run` surface this as a warning? | REQ-WF-03 | Open |
 | OQ-04 | Is the `listWorkflowsByPrefix` enhancement (adding `statusFilter`) intended as a breaking change to the existing method signature, or should it be a new overload? | REQ-CLI-06 | Open — engineering to decide |
+
+*Note: OQ-01 and OQ-02 (creation phase progress label and emission) are resolved: creation phases are out of scope for this FSPEC iteration. Creation phases emit no phase-header or reviewer-result progress lines (see FSPEC-CLI-03 Description).*
 
 ---
 
@@ -913,7 +1045,7 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 | REQ-CLI-06 | FSPEC-CLI-01 | Covered |
 | REQ-WF-01 | FSPEC-WF-01 | Covered |
 | REQ-WF-02 | No FSPEC — configuration table, no behavioral branching | Not required |
-| REQ-WF-03 | No FSPEC — phase position and document type mapping are deterministic | Not required |
+| REQ-WF-03 | FSPEC-WF-01 (deriveDocumentType specification) | Covered |
 | REQ-WF-04 | No FSPEC — validation rule is a single check with clear error message | Not required |
 | REQ-WF-05 | FSPEC-WF-01 | Covered |
 | REQ-WF-06 | FSPEC-WF-02 | Covered |
@@ -938,6 +1070,7 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Product Manager | Initial FSPEC. 9 functional specifications covering CLI flows, workflow engine skip conditions, cross-review versioning, and recommendation parser consolidation. |
+| 1.1 | April 22, 2026 | Product Manager | Addressed cross-review feedback from software-engineer (4 High, 6 Medium) and test-engineer (4 High, 7 Medium). Key changes: (1) SE F-01 / REQ-WF-03 traceability: added `deriveDocumentType("properties-tests")` special-case lookup spec to FSPEC-WF-01; updated traceability row. (2) SE F-02: added full TypeScript discriminated union definition for `SkipCondition` with validator rules table to FSPEC-WF-01. (3) SE F-03 / TE F-09: resolved signal name conflict — specified `"humanAnswerSignal"` and `"user-answer"` coexist as two distinct Temporal signals; added `signalHumanAnswer()` method spec; specified lenient config loader requirement in FSPEC-CLI-04. (4) SE F-04 / TE F-08: explicitly required `buildContinueAsNewPayload()` to carry full `reviewStates` including `writtenVersions`; added unit test mechanism to AT-CR-01-F. (5) TE F-01: added AT-WF-01-E specifying `resolveNextPhase()` must propagate `evaluateSkipCondition()` throw without catching. (6) TE F-02: reconciled FSPEC-CLI-02 vs REQ-CLI-05 contradiction — gap-after-REQ case now derives `fspec-creation` with a log message (matching REQ AC), while no-artifacts-beyond-REQ derives `req-review` with no message; updated flow diagram, business rules, phase map, and acceptance tests. (7) SE F-03 / TE F-03: clarified `N` in "Need Attention (N findings)" = data rows only, header and separator rows excluded; updated BR-CLI-15 and AT-CLI-03-A. (8) SE F-04 / TE F-04: specified `parseRecommendation()` takes extracted recommendation field value not full file text; added function signature; updated BR-CR-10. (9) SE F-05 / BR-CR-06: called out filter removal required in `runReviewCycle()`. (10) SE F-06: specified `ReviewerManifest` discipline key as `"default"` for new YAML in FSPEC-WF-01. (11) SE F-07: added missing `ptah.workflow.yaml` error to FSPEC-CLI-01 error table and acceptance test AT-CLI-01-H; specified WorkflowConfigError catch-and-reformat as BR-CLI-06. (12) SE F-08 / BR-CLI-18: specified `approved_with_minor_issues` collapses to `"approved"` ReviewerStatusValue — no sub-variant needed. (13) SE F-09 / BR-CLI-19: specified cross-review file paths resolved relative to feature folder (REQ parent dir). (14) SE F-10: added architectural note to FSPEC-CLI-02 about CLI-side stat vs Temporal Activity dual-check. (15) TE F-06: fixed AT-CLI-02-F to use REQ+FSPEC present → derives `tspec-creation` → absent from custom config. (16) TE F-07: added AT-WF-02-F testing `approved_with_minor_issues` path. (17) TE F-10: resolved OQ-01/OQ-02 — creation phases are out of scope for progress reporting. (18) TE F-11: added `phaseStatus`/`failureInfo` invariant to AT-CR-03-B. Added AT-WF-01-F (`deriveDocumentType`), AT-WF-01-G (no re-call mid-loop), AT-CR-01-A2 (`undefined` revisionCount). Removed OQ-01 and OQ-02 from open questions. |
 
 ---
 
