@@ -38,9 +38,13 @@ Commands:
   init     Scaffold the Ptah docs structure into the current Git repository
   start    Start the Orchestrator as a Discord bot
   migrate  Migrate v4 pdlc-state.json to Temporal Workflows
+  run      Start a feature workflow from a REQ file and stream progress
 
 Options:
-  --help  Show this help message`);
+  --help  Show this help message
+
+Run options:
+  ptah run <path/to/REQ-feature.md> [--from-phase <phase-id>]`);
 }
 
 async function main(): Promise<void> {
@@ -357,6 +361,69 @@ async function main(): Promise<void> {
         if (result.errors.length > 0) {
           process.exitCode = 1;
         }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Error: ${message}`);
+        process.exitCode = 1;
+      }
+      break;
+    }
+
+    case "run": {
+      const reqPath = args[1];
+      if (!reqPath) {
+        console.error("Error: ptah run requires a REQ file path.");
+        console.error("Usage: ptah run <path/to/REQ-feature.md> [--from-phase <phase-id>]");
+        process.exitCode = 1;
+        break;
+      }
+
+      // Parse --from-phase flag
+      const fromPhaseIdx = args.indexOf("--from-phase");
+      const fromPhase = fromPhaseIdx !== -1 ? args[fromPhaseIdx + 1] : undefined;
+
+      const { RunCommand, LenientConfigLoader } = await import("../src/commands/run.js");
+      const { YamlWorkflowConfigLoader } = await import("../src/config/workflow-config.js");
+      const { TemporalClientWrapperImpl } = await import("../src/temporal/client.js");
+      const { NodeFileSystem } = await import("../src/services/filesystem.js");
+
+      const runFs = new NodeFileSystem();
+      const runConfigLoader = new LenientConfigLoader(runFs);
+      const runWorkflowConfigLoader = new YamlWorkflowConfigLoader(runFs);
+
+      // Load config to get Temporal address
+      let runConfig;
+      try {
+        runConfig = await runConfigLoader.load();
+      } catch {
+        // Config load failure is handled inside RunCommand.execute()
+        runConfig = {};
+      }
+
+      const runTemporalConfig = (runConfig as { temporal?: import("../src/types.js").TemporalConfig }).temporal ?? {
+        address: "localhost:7233",
+        namespace: "default",
+        taskQueue: "ptah-main",
+        worker: { maxConcurrentWorkflowTasks: 10, maxConcurrentActivities: 3 },
+        retry: { maxAttempts: 3, initialIntervalSeconds: 30, backoffCoefficient: 2.0, maxIntervalSeconds: 600 },
+        heartbeat: { intervalSeconds: 30, timeoutSeconds: 120 },
+      };
+
+      const runTemporalClient = new TemporalClientWrapperImpl(runTemporalConfig);
+
+      const command = new RunCommand({
+        fs: runFs,
+        temporalClient: runTemporalClient,
+        workflowConfigLoader: runWorkflowConfigLoader,
+        configLoader: runConfigLoader,
+        stdout: process.stdout,
+        stderr: process.stderr,
+        stdin: process.stdin,
+      });
+
+      try {
+        const exitCode = await command.execute({ reqPath, fromPhase });
+        process.exitCode = exitCode;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`Error: ${message}`);
