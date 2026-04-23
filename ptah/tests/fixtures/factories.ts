@@ -1420,6 +1420,10 @@ export class FakeTemporalClient implements TemporalClientWrapper {
   sentSignals: { workflowId: string; signal: string; payload: unknown }[] = [];
   workflowStates: Map<string, FeatureWorkflowState> = new Map();
   workflowIds: Map<string, string[]> = new Map(); // prefix → workflow IDs
+  /** Maps workflowId → status string (e.g. "Running", "Completed", "ContinuedAsNew") */
+  workflowStatuses: Map<string, string> = new Map();
+  /** Records all signalHumanAnswer calls: { workflowId, answer } */
+  humanAnswerSignals: Array<{ workflowId: string; answer: string }> = [];
   connectionError: Error | null = null;
   disconnectError: Error | null = null;
   startWorkflowError: Error | null = null;
@@ -1490,8 +1494,24 @@ export class FakeTemporalClient implements TemporalClientWrapper {
     this.sentSignals.push({ workflowId, signal: "ad-hoc-revision", payload: signal });
   }
 
-  async listWorkflowsByPrefix(prefix: string): Promise<string[]> {
-    return this.workflowIds.get(prefix) ?? [];
+  async signalHumanAnswer(workflowId: string, answer: string): Promise<void> {
+    this.humanAnswerSignals.push({ workflowId, answer });
+    this.sentSignals.push({ workflowId, signal: "humanAnswerSignal", payload: answer });
+  }
+
+  async listWorkflowsByPrefix(
+    prefix: string,
+    options?: { statusFilter?: ("Running" | "ContinuedAsNew")[] },
+  ): Promise<string[]> {
+    const ids = this.workflowIds.get(prefix) ?? [];
+    if (!options?.statusFilter || options.statusFilter.length === 0) {
+      return ids;
+    }
+    const allowedStatuses = new Set<string>(options.statusFilter);
+    return ids.filter((id) => {
+      const status = this.workflowStatuses.get(id);
+      return status !== undefined && allowedStatuses.has(status);
+    });
   }
 
   isConnected(): boolean {
@@ -1555,6 +1575,8 @@ export function defaultFeatureWorkflowState(
     signOffs: {},
     adHocQueue: [],
     adHocInProgress: false,
+    artifactExists: {},
+    completedPhaseResults: {},
     ...overrides,
   };
 }

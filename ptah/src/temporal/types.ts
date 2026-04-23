@@ -29,6 +29,7 @@ export type ReviewerStatusValue = "pending" | "approved" | "revision_requested";
 export interface ReviewState {
   reviewerStatuses: Record<string, ReviewerStatusValue>;
   revisionCount: number;
+  writtenVersions: Record<string, number>;  // agentId → highest revision dispatched
 }
 
 /** Alias for migration compatibility with v4 ReviewPhaseState shape */
@@ -108,6 +109,16 @@ export interface FeatureWorkflowState {
   adHocQueue: AdHocRevisionSignal[];
   /** True while processing an ad-hoc dispatch + cascade */
   adHocInProgress: boolean;
+
+  // --- Artifact Existence and Phase Results ---
+  /** Pre-fetched artifact existence map. Keyed by docType (e.g. "REQ", "FSPEC"). */
+  artifactExists: Record<string, boolean>;
+  /**
+   * Per-phase terminal outcome map. Keyed by phaseId.
+   * Set by the workflow when a review phase exits (approved or revision-bound).
+   * Used by pollUntilTerminal() to emit per-phase Passed ✅ / Revision Bound Reached ⚠️ lines.
+   */
+  completedPhaseResults: Record<string, "passed" | "revision-bound-reached">;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +159,8 @@ export interface SkillActivityInput {
   priorAnswer?: string;
   /** Ad-hoc instruction text from user's @-mention message */
   adHocInstruction?: string;
+  /** 1-indexed revision count; injected into agent context prompt */
+  revisionCount?: number;
 }
 
 export interface SkillActivityResult {
@@ -173,6 +186,16 @@ export interface CrossReviewResult {
   status: "approved" | "revision_requested" | "parse_error";
   reason?: string;       // only when status === "parse_error"
   rawValue?: string;     // only when status === "parse_error" and value was found but unrecognized
+}
+
+// ---------------------------------------------------------------------------
+// Artifact Existence Check Activity
+// ---------------------------------------------------------------------------
+
+export interface CheckArtifactExistsInput {
+  slug: string;        // feature slug (e.g. "my-feature")
+  docType: string;     // document type prefix (e.g. "REQ", "FSPEC", "TSPEC")
+  featurePath: string; // feature folder path (e.g. "docs/in-progress/my-feature/")
 }
 
 // ---------------------------------------------------------------------------

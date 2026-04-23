@@ -17,6 +17,8 @@ import type {
   V4PhaseMapping,
   ReviewPhaseState,
   StartWorkflowParams,
+  CheckArtifactExistsInput,
+  ReadCrossReviewInput,
 } from "../../../src/temporal/types.js";
 import type { WorkflowConfig } from "../../../src/config/workflow-config.js";
 
@@ -66,12 +68,34 @@ describe("Temporal shared types", () => {
           fe: "revision_requested",
         },
         revisionCount: 1,
+        writtenVersions: {},
       };
 
       expect(reviewState.reviewerStatuses["eng"]).toBe("pending");
       expect(reviewState.reviewerStatuses["qa"]).toBe("approved");
       expect(reviewState.reviewerStatuses["fe"]).toBe("revision_requested");
       expect(reviewState.revisionCount).toBe(1);
+    });
+
+    it("tracks written versions per reviewer agent ID", () => {
+      const reviewState: ReviewState = {
+        reviewerStatuses: { "se-review": "approved", "te-review": "revision_requested" },
+        revisionCount: 2,
+        writtenVersions: { "se-review": 2, "te-review": 1 },
+      };
+
+      expect(reviewState.writtenVersions["se-review"]).toBe(2);
+      expect(reviewState.writtenVersions["te-review"]).toBe(1);
+    });
+
+    it("initializes with empty writtenVersions", () => {
+      const reviewState: ReviewState = {
+        reviewerStatuses: {},
+        revisionCount: 0,
+        writtenVersions: {},
+      };
+
+      expect(Object.keys(reviewState.writtenVersions)).toHaveLength(0);
     });
   });
 
@@ -250,6 +274,219 @@ describe("Temporal shared types", () => {
 
       expect(notification.type).toBe("failure");
       expect(notification.workflowId).toBe("ptah-feature-auth-1");
+    });
+  });
+
+  describe("CheckArtifactExistsInput", () => {
+    it("can be constructed with slug, docType, and featurePath", () => {
+      const input: CheckArtifactExistsInput = {
+        slug: "my-feature",
+        docType: "REQ",
+        featurePath: "docs/in-progress/my-feature/",
+      };
+
+      expect(input.slug).toBe("my-feature");
+      expect(input.docType).toBe("REQ");
+      expect(input.featurePath).toBe("docs/in-progress/my-feature/");
+    });
+
+    it("accepts different docType values", () => {
+      const fspecInput: CheckArtifactExistsInput = {
+        slug: "auth",
+        docType: "FSPEC",
+        featurePath: "docs/in-progress/auth/",
+      };
+      const tspecInput: CheckArtifactExistsInput = {
+        slug: "auth",
+        docType: "TSPEC",
+        featurePath: "docs/in-progress/auth/",
+      };
+
+      expect(fspecInput.docType).toBe("FSPEC");
+      expect(tspecInput.docType).toBe("TSPEC");
+    });
+  });
+
+  describe("SkillActivityInput — revisionCount", () => {
+    it("accepts revisionCount as an optional field", () => {
+      const input: SkillActivityInput = {
+        agentId: "se-author",
+        featureSlug: "auth",
+        phaseId: "tspec-creation",
+        taskType: "Create",
+        documentType: "TSPEC",
+        contextDocumentRefs: ["{feature}/REQ"],
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        forkJoin: false,
+        isRevision: true,
+        revisionCount: 2,
+      };
+
+      expect(input.revisionCount).toBe(2);
+    });
+
+    it("can be constructed without revisionCount (backward compatibility)", () => {
+      const input: SkillActivityInput = {
+        agentId: "eng",
+        featureSlug: "auth",
+        phaseId: "tspec-creation",
+        taskType: "Create",
+        documentType: "TSPEC",
+        contextDocumentRefs: [],
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        forkJoin: false,
+        isRevision: false,
+      };
+
+      expect(input.revisionCount).toBeUndefined();
+    });
+  });
+
+  describe("ReadCrossReviewInput — revisionCount", () => {
+    it("accepts revisionCount as an optional field", () => {
+      const input: ReadCrossReviewInput = {
+        featurePath: "docs/in-progress/my-feature/",
+        agentId: "se-review",
+        documentType: "TSPEC",
+        revisionCount: 3,
+      };
+
+      expect(input.revisionCount).toBe(3);
+    });
+
+    it("can be constructed without revisionCount (backward compatibility)", () => {
+      const input: ReadCrossReviewInput = {
+        featurePath: "docs/in-progress/my-feature/",
+        agentId: "te-review",
+        documentType: "REQ",
+      };
+
+      expect(input.revisionCount).toBeUndefined();
+    });
+  });
+
+  describe("FeatureWorkflowState — artifactExists, activeAgentIds, completedPhaseResults", () => {
+    it("can be constructed with artifactExists field", () => {
+      const state: FeatureWorkflowState = {
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        workflowConfig: { version: 1, phases: [] },
+        currentPhaseId: "req-creation",
+        completedPhaseIds: [],
+        activeAgentIds: [],
+        phaseStatus: "running",
+        reviewStates: {},
+        forkJoinState: null,
+        pendingQuestion: null,
+        failureInfo: null,
+        startedAt: "2026-04-22T00:00:00Z",
+        updatedAt: "2026-04-22T00:00:00Z",
+        featurePath: null,
+        worktreeRoot: null,
+        signOffs: {},
+        adHocQueue: [],
+        adHocInProgress: false,
+        artifactExists: { REQ: true, FSPEC: false },
+        completedPhaseResults: {},
+      };
+
+      expect(state.artifactExists["REQ"]).toBe(true);
+      expect(state.artifactExists["FSPEC"]).toBe(false);
+    });
+
+    it("initializes artifactExists as empty record", () => {
+      const state: FeatureWorkflowState = {
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        workflowConfig: { version: 1, phases: [] },
+        currentPhaseId: "req-creation",
+        completedPhaseIds: [],
+        activeAgentIds: [],
+        phaseStatus: "running",
+        reviewStates: {},
+        forkJoinState: null,
+        pendingQuestion: null,
+        failureInfo: null,
+        startedAt: "2026-04-22T00:00:00Z",
+        updatedAt: "2026-04-22T00:00:00Z",
+        featurePath: null,
+        worktreeRoot: null,
+        signOffs: {},
+        adHocQueue: [],
+        adHocInProgress: false,
+        artifactExists: {},
+        completedPhaseResults: {},
+      };
+
+      expect(Object.keys(state.artifactExists)).toHaveLength(0);
+    });
+
+    it("tracks completedPhaseResults with passed outcome", () => {
+      const state: FeatureWorkflowState = {
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        workflowConfig: { version: 1, phases: [] },
+        currentPhaseId: "fspec-creation",
+        completedPhaseIds: ["req-creation", "req-review"],
+        activeAgentIds: [],
+        phaseStatus: "running",
+        reviewStates: {},
+        forkJoinState: null,
+        pendingQuestion: null,
+        failureInfo: null,
+        startedAt: "2026-04-22T00:00:00Z",
+        updatedAt: "2026-04-22T00:00:00Z",
+        featurePath: null,
+        worktreeRoot: null,
+        signOffs: {},
+        adHocQueue: [],
+        adHocInProgress: false,
+        artifactExists: {},
+        completedPhaseResults: { "req-review": "passed" },
+      };
+
+      expect(state.completedPhaseResults["req-review"]).toBe("passed");
+    });
+
+    it("tracks completedPhaseResults with revision-bound-reached outcome", () => {
+      const state: FeatureWorkflowState = {
+        featureSlug: "my-feature",
+        featureConfig: { discipline: "backend-only", skipFspec: false },
+        workflowConfig: { version: 1, phases: [] },
+        currentPhaseId: "tspec-creation",
+        completedPhaseIds: ["req-creation", "req-review", "fspec-creation", "fspec-review"],
+        activeAgentIds: [],
+        phaseStatus: "running",
+        reviewStates: {},
+        forkJoinState: null,
+        pendingQuestion: null,
+        failureInfo: null,
+        startedAt: "2026-04-22T00:00:00Z",
+        updatedAt: "2026-04-22T00:00:00Z",
+        featurePath: null,
+        worktreeRoot: null,
+        signOffs: {},
+        adHocQueue: [],
+        adHocInProgress: false,
+        artifactExists: {},
+        completedPhaseResults: {
+          "req-review": "passed",
+          "fspec-review": "revision-bound-reached",
+        },
+      };
+
+      expect(state.completedPhaseResults["fspec-review"]).toBe("revision-bound-reached");
+    });
+
+    it("accumulates multiple phase results without removing prior entries", () => {
+      const results: Record<string, "passed" | "revision-bound-reached"> = {};
+      results["req-review"] = "passed";
+      results["fspec-review"] = "passed";
+      results["tspec-review"] = "revision-bound-reached";
+
+      expect(Object.keys(results)).toHaveLength(3);
+      expect(results["req-review"]).toBe("passed");
+      expect(results["tspec-review"]).toBe("revision-bound-reached");
     });
   });
 
