@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as yaml from "js-yaml";
 import {
   DIRECTORY_MANIFEST,
   FILE_MANIFEST,
@@ -196,6 +197,82 @@ describe("FILE_MANIFEST", () => {
     expect(implReviewIdx).toBeGreaterThan(-1);
     expect(implIdx).toBeLessThan(propTestsIdx);
     expect(propTestsIdx).toBeLessThan(implReviewIdx);
+  });
+});
+
+// PROP-INIT-08: ptah.workflow.yaml reviewer assignment matrix must exactly match REQ-WF-02
+describe("FILE_MANIFEST — PROP-INIT-08: reviewer assignment matrix in ptah.workflow.yaml", () => {
+  // Parse the YAML template once for all assertions
+  const yamlContent = FILE_MANIFEST["ptah.workflow.yaml"];
+  type Phase = {
+    id: string;
+    type?: string;
+    agent?: string;
+    reviewers?: { default?: string[] };
+    revision_bound?: number;
+  };
+  type WorkflowYaml = { version: number; phases: Phase[] };
+  const parsed = yaml.load(yamlContent) as WorkflowYaml;
+  const phases = parsed.phases;
+  const byId = (id: string): Phase => {
+    const found = phases.find((p) => p.id === id);
+    if (!found) throw new Error(`Phase "${id}" not found in ptah.workflow.yaml`);
+    return found;
+  };
+
+  it("req-review: agent is pm-author, reviewers.default contains se-review and te-review", () => {
+    const phase = byId("req-review");
+    expect(phase.agent).toBe("pm-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["se-review", "te-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
+  });
+
+  it("fspec-review: agent is pm-author, reviewers.default contains se-review and te-review", () => {
+    const phase = byId("fspec-review");
+    expect(phase.agent).toBe("pm-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["se-review", "te-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
+  });
+
+  it("tspec-review: agent is se-author, reviewers.default contains pm-review and te-review", () => {
+    const phase = byId("tspec-review");
+    expect(phase.agent).toBe("se-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["pm-review", "te-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
+  });
+
+  it("plan-review: agent is se-author, reviewers.default contains pm-review and te-review", () => {
+    const phase = byId("plan-review");
+    expect(phase.agent).toBe("se-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["pm-review", "te-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
+  });
+
+  it("properties-review: agent is te-author, reviewers.default contains pm-review and se-review", () => {
+    const phase = byId("properties-review");
+    expect(phase.agent).toBe("te-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["pm-review", "se-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
+  });
+
+  it("implementation: agent is tech-lead with no reviewers", () => {
+    const phase = byId("implementation");
+    expect(phase.agent).toBe("tech-lead");
+    // implementation is not a review phase — no reviewers field expected
+    expect(phase.reviewers).toBeUndefined();
+  });
+
+  it("properties-tests: agent is se-implement with no reviewers", () => {
+    const phase = byId("properties-tests");
+    expect(phase.agent).toBe("se-implement");
+    expect(phase.reviewers).toBeUndefined();
+  });
+
+  it("implementation-review: agent is se-author, reviewers.default contains pm-review and te-review", () => {
+    const phase = byId("implementation-review");
+    expect(phase.agent).toBe("se-author");
+    expect(phase.reviewers?.default).toEqual(expect.arrayContaining(["pm-review", "te-review"]));
+    expect(phase.reviewers?.default).toHaveLength(2);
   });
 });
 

@@ -201,6 +201,29 @@ describe("agentIdToSkillName", () => {
   it("maps 'te-review' to 'test-engineer'", () => {
     expect(agentIdToSkillName("te-review")).toBe("test-engineer");
   });
+
+  // PROP-MAP-01-09 / REQ-CR-01: AGENT_TO_SKILL must cover all 8 role agent IDs.
+  // The 5 author/implementation agent IDs must also return non-null values
+  // so that any cross-review context assembly for these agents works correctly.
+  it("maps 'pm-author' to a non-null skill name (PROP-MAP coverage for all 8 agents)", () => {
+    expect(agentIdToSkillName("pm-author")).not.toBeNull();
+  });
+
+  it("maps 'se-author' to a non-null skill name (PROP-MAP coverage for all 8 agents)", () => {
+    expect(agentIdToSkillName("se-author")).not.toBeNull();
+  });
+
+  it("maps 'te-author' to a non-null skill name (PROP-MAP coverage for all 8 agents)", () => {
+    expect(agentIdToSkillName("te-author")).not.toBeNull();
+  });
+
+  it("maps 'tech-lead' to a non-null skill name (PROP-MAP coverage for all 8 agents)", () => {
+    expect(agentIdToSkillName("tech-lead")).not.toBeNull();
+  });
+
+  it("maps 'se-implement' to a non-null skill name (PROP-MAP coverage for all 8 agents)", () => {
+    expect(agentIdToSkillName("se-implement")).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

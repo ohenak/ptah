@@ -308,6 +308,25 @@ export function buildInitialWorkflowState(
     startingPhaseId = workflowConfig.phases[0].id;
   }
 
+  // PROP-RWV-02: Pre-populate reviewStates entries for all review phases so that
+  // writtenVersions is initialized to {} for each review phase at workflow start.
+  // When initialReviewState is provided (from ContinueAsNew), use those values directly.
+  let initializedReviewStates: Record<string, ReviewState>;
+  if (initialReviewState !== undefined) {
+    initializedReviewStates = initialReviewState;
+  } else {
+    initializedReviewStates = {};
+    for (const phase of workflowConfig.phases) {
+      if (phase.type === "review") {
+        initializedReviewStates[phase.id] = {
+          reviewerStatuses: {},
+          revisionCount: 0,
+          writtenVersions: {},
+        };
+      }
+    }
+  }
+
   return {
     featureSlug,
     featureConfig,
@@ -316,7 +335,7 @@ export function buildInitialWorkflowState(
     completedPhaseIds: [],
     activeAgentIds: [],
     phaseStatus: "running",
-    reviewStates: initialReviewState ?? {},
+    reviewStates: initializedReviewStates,
     forkJoinState: null,
     pendingQuestion: null,
     failureInfo: null,
@@ -715,6 +734,8 @@ const { checkArtifactExists } = wf.proxyActivities<{
 // ---------------------------------------------------------------------------
 
 const userAnswerSignal = wf.defineSignal<[UserAnswerSignal]>("user-answer");
+// REQ-NF-02: humanAnswerSignal — used by ptah run stdin path (signalHumanAnswer in client.ts)
+const humanAnswerSignal = wf.defineSignal<[string]>("humanAnswerSignal");
 const retryOrCancelSignal = wf.defineSignal<[RetryOrCancelSignal]>("retry-or-cancel");
 const resumeOrCancelSignal = wf.defineSignal<[ResumeOrCancelSignal]>("resume-or-cancel");
 const adHocRevisionSignal = wf.defineSignal<[AdHocRevisionSignal]>("ad-hoc-revision");
@@ -802,7 +823,9 @@ async function handleQuestionFlow(params: {
     workflowId,
   });
 
-  // Wait for user-answer Signal (BR-07: Temporal buffers signals)
+  // Wait for user-answer Signal (BR-07: Temporal buffers signals).
+  // Accepts both the Discord path ("user-answer" / UserAnswerSignal) and the
+  // stdin path ("humanAnswerSignal" / plain string) per REQ-NF-02.
   let receivedAnswer: UserAnswerSignal | null = null;
 
   wf.setHandler(userAnswerSignal, (signal) => {
@@ -815,6 +838,18 @@ async function handleQuestionFlow(params: {
         return;
       }
       receivedAnswer = signal;
+    }
+  });
+
+  // REQ-NF-02: also handle humanAnswerSignal (plain string) sent by ptah run stdin path
+  wf.setHandler(humanAnswerSignal, (answerText) => {
+    if (receivedAnswer === null) {
+      // Wrap the plain string into a UserAnswerSignal shape so the rest of the flow works uniformly
+      receivedAnswer = {
+        answer: answerText,
+        answeredBy: "stdin",
+        answeredAt: new Date().toISOString(),
+      };
     }
   });
 

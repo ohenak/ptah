@@ -683,6 +683,63 @@ describe("pollUntilTerminal() — advanced behavior", () => {
     expect(temporalClient.humanAnswerSignals.length).toBeGreaterThan(0);
     expect(temporalClient.humanAnswerSignals[0]!.answer).toBe("Yes, add auth");
   });
+
+  // PROP-CLI-18: activeAgentIds [] → ["pm-author"] transition invalidates dedup key
+  it("(i-prop-cli-18) deduplication: activeAgentIds change from [] to ['pm-author'] triggers re-emit (PROP-CLI-18)", async () => {
+    const { pollUntilTerminal } = await importRun();
+    const { FakeTemporalClient: FTC, defaultFeatureWorkflowState } = await import("../../fixtures/factories.js");
+    const temporalClient = new FTC();
+    const workflowId = "ptah-test-feature";
+
+    // Same phase, iteration, and reviewerStatuses — only activeAgentIds changes
+    const reviewerStatuses = { "se-review": "approved" as const, "pm-review": "approved" as const };
+    const reviewState = {
+      reviewerStatuses,
+      revisionCount: 0,
+      writtenVersions: {},
+    };
+
+    const state1 = defaultFeatureWorkflowState({
+      phaseStatus: "running",
+      currentPhaseId: "req-review",
+      activeAgentIds: [],
+      reviewStates: { "req-review": reviewState },
+    });
+    const state2 = defaultFeatureWorkflowState({
+      phaseStatus: "running",
+      currentPhaseId: "req-review",
+      activeAgentIds: ["pm-author"],
+      reviewStates: { "req-review": reviewState },
+    });
+    const completedState = defaultFeatureWorkflowState({ phaseStatus: "completed" });
+
+    let callCount = 0;
+    temporalClient.queryWorkflowState = async (_id: string) => {
+      callCount++;
+      if (callCount === 1) return state1;
+      if (callCount === 2) return state2;
+      return completedState;
+    };
+
+    const stdout = makeStdout();
+    const stderr = makeStderr();
+
+    await pollUntilTerminal({
+      workflowId,
+      temporalClient,
+      discordConfig: undefined,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stderr: stderr as unknown as NodeJS.WriteStream,
+      stdin: {} as NodeJS.ReadableStream,
+      featureFolder: "docs/in-progress/test-feature",
+      slug: "test-feature",
+      fs: new FakeFileSystem(),
+    });
+
+    const allOutput = stdout.lines.join("");
+    // Second poll changes activeAgentIds → optimizer-dispatch line must appear
+    expect(allOutput).toContain("pm-author addressing feedback");
+  });
 });
 
 // ---------------------------------------------------------------------------

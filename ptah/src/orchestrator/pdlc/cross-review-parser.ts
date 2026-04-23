@@ -24,6 +24,13 @@ const LEGACY_AGENT_TO_SKILL: Record<string, string> = {
   "pm-review": "product-manager",
   "te-review": "test-engineer",
   "se-review": "software-engineer",
+  // Author/implementation agent IDs → self-named skill identifiers (REQ-CR-01, PROP-MAP-01-09)
+  // These agents don't write cross-review files but AGENT_TO_SKILL must cover all 8 role IDs.
+  "pm-author": "pm-author",
+  "se-author": "se-author",
+  "te-author": "te-author",
+  "tech-lead": "tech-lead",
+  "se-implement": "se-implement",
 };
 
 // --- Recommendation heading patterns (outside code blocks) ---

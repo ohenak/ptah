@@ -518,4 +518,18 @@ describe("bin/ptah.ts static-structure: checkArtifactExists activity registratio
     const source = fs.readFileSync(binPtahPath, "utf-8");
     expect(source).toContain("checkArtifactExists");
   });
+
+  // PROP-CNP-05: checkArtifactExists must appear within the activities registration block,
+  // not merely anywhere in the file (e.g. an import or comment would not satisfy this property).
+  it("checkArtifactExists token appears within the activities registration block in bin/ptah.ts (PROP-CNP-05)", () => {
+    const source = fs.readFileSync(binPtahPath, "utf-8");
+    // The activities block is the object literal passed to createTemporalWorker({ activities: { ... } }).
+    // We verify checkArtifactExists appears within the activities: { ... } block by matching
+    // the pattern: "activities:" followed (within ~2000 chars) by "checkArtifactExists".
+    const activitiesBlockPattern = /activities\s*:\s*\{[\s\S]{0,2000}checkArtifactExists/;
+    expect(
+      activitiesBlockPattern.test(source),
+      "Expected checkArtifactExists to appear within the activities registration block"
+    ).toBe(true);
+  });
 });

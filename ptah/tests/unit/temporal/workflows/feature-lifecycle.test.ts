@@ -667,6 +667,103 @@ describe("buildInitialWorkflowState — Phase 3 new fields", () => {
 });
 
 // ---------------------------------------------------------------------------
+// PROP-RWV-01, PROP-RWV-02: buildInitialWorkflowState initializes writtenVersions to {}
+// for each review phase in a multi-phase workflow config (functional test)
+// ---------------------------------------------------------------------------
+
+describe("buildInitialWorkflowState — writtenVersions initialized per review phase (PROP-RWV-01, PROP-RWV-02)", () => {
+  it("initializes reviewStates[phaseId].writtenVersions to {} for each review phase when config has multiple review phases (PROP-RWV-02)", () => {
+    const multiPhaseConfig: WorkflowConfig = {
+      version: 1,
+      phases: [
+        { id: "req-creation", name: "REQ Creation", type: "creation", agent: "pm-author" },
+        {
+          id: "req-review",
+          name: "REQ Review",
+          type: "review",
+          reviewers: { default: ["se-review", "te-review"] },
+          revision_bound: 5,
+        },
+        { id: "fspec-creation", name: "FSPEC Creation", type: "creation", agent: "pm-author" },
+        {
+          id: "fspec-review",
+          name: "FSPEC Review",
+          type: "review",
+          reviewers: { default: ["se-review", "te-review"] },
+          revision_bound: 5,
+        },
+      ],
+    };
+
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: multiPhaseConfig,
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    // PROP-RWV-02: every review phase entry must have writtenVersions initialized to {}
+    expect(state.reviewStates["req-review"]).toBeDefined();
+    expect(state.reviewStates["req-review"].writtenVersions).toEqual({});
+    expect(state.reviewStates["fspec-review"]).toBeDefined();
+    expect(state.reviewStates["fspec-review"].writtenVersions).toEqual({});
+  });
+
+  it("initializes reviewStates[phaseId].revisionCount to 0 for each review phase (PROP-RWV-01)", () => {
+    const config: WorkflowConfig = {
+      version: 1,
+      phases: [
+        { id: "req-creation", name: "REQ Creation", type: "creation", agent: "pm-author" },
+        {
+          id: "req-review",
+          name: "REQ Review",
+          type: "review",
+          reviewers: { default: ["se-review", "te-review"] },
+          revision_bound: 5,
+        },
+      ],
+    };
+
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: config,
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    expect(state.reviewStates["req-review"].writtenVersions).toEqual({});
+    expect(state.reviewStates["req-review"].revisionCount).toBe(0);
+  });
+
+  it("does not create reviewStates entries for non-review phases (creation/approved/done types)", () => {
+    const config: WorkflowConfig = {
+      version: 1,
+      phases: [
+        { id: "req-creation", name: "REQ Creation", type: "creation", agent: "pm-author" },
+        {
+          id: "req-review",
+          name: "REQ Review",
+          type: "review",
+          reviewers: { default: ["se-review"] },
+          revision_bound: 5,
+        },
+      ],
+    };
+
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: config,
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    // Only review phase gets an entry
+    expect(state.reviewStates["req-creation"]).toBeUndefined();
+    expect(state.reviewStates["req-review"]).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 3 Task 3.7: isCompletionReady — dynamic derivation from workflowConfig
 // PROP-ICR-01 through PROP-ICR-07
 // ---------------------------------------------------------------------------
@@ -884,6 +981,89 @@ describe("buildContinueAsNewPayload — reviewStates inclusion (PROP-CNP-01, PRO
 });
 
 // ---------------------------------------------------------------------------
+// PROP-RWV-04, PROP-RWV-06: functional value assertions for writtenVersions
+// round 2+ increment and ContinueAsNew preservation
+// ---------------------------------------------------------------------------
+
+describe("PROP-RWV-04: writtenVersions correctly represents round 2 and round 3 values (functional assertions)", () => {
+  it("buildContinueAsNewPayload preserves writtenVersions=2 from round 2 state (PROP-RWV-04)", () => {
+    // Simulate state after round 2: se-review was dispatched for revision 2
+    const round2State: Record<string, ReviewState> = {
+      "req-review": {
+        reviewerStatuses: { "se-review": "revision_requested" },
+        revisionCount: 1,
+        writtenVersions: { "se-review": 2 },  // round 2 value
+      },
+    };
+
+    const payload = buildContinueAsNewPayload({
+      featurePath: "docs/in-progress/test-feature/",
+      signOffs: {},
+      adHocQueue: [],
+      reviewStates: round2State,
+    });
+
+    // Value must equal 2, not 1 or 0
+    expect(payload.reviewStates["req-review"].writtenVersions["se-review"]).toBe(2);
+  });
+
+  it("buildContinueAsNewPayload preserves writtenVersions=3 from round 3 state (PROP-RWV-04)", () => {
+    // Simulate state after round 3
+    const round3State: Record<string, ReviewState> = {
+      "req-review": {
+        reviewerStatuses: { "se-review": "revision_requested", "pm-review": "approved" },
+        revisionCount: 2,
+        writtenVersions: { "se-review": 3, "pm-review": 2 },  // round 3 for se-review, round 2 for pm-review
+      },
+    };
+
+    const payload = buildContinueAsNewPayload({
+      featurePath: "docs/in-progress/test-feature/",
+      signOffs: {},
+      adHocQueue: [],
+      reviewStates: round3State,
+    });
+
+    expect(payload.reviewStates["req-review"].writtenVersions["se-review"]).toBe(3);
+    expect(payload.reviewStates["req-review"].writtenVersions["pm-review"]).toBe(2);
+  });
+});
+
+describe("PROP-RWV-06: ContinueAsNew preserves writtenVersions — resumed workflow has same values as pre-transition state", () => {
+  it("writtenVersions values in resumed workflow equal the values set before ContinueAsNew transition (PROP-RWV-06)", () => {
+    // Simulate pre-transition state with writtenVersions populated from multiple rounds
+    const preTransitionState: Record<string, ReviewState> = {
+      "req-review": {
+        reviewerStatuses: { "se-review": "approved", "te-review": "approved" },
+        revisionCount: 2,
+        writtenVersions: { "se-review": 2, "te-review": 1 },
+      },
+      "fspec-review": {
+        reviewerStatuses: { "se-review": "revision_requested" },
+        revisionCount: 1,
+        writtenVersions: { "se-review": 1 },
+      },
+    };
+
+    // buildContinueAsNewPayload simulates what happens at ContinueAsNew boundary
+    const payload = buildContinueAsNewPayload({
+      featurePath: "docs/in-progress/test-feature/",
+      signOffs: { "se-review": true, "te-review": true },
+      adHocQueue: [],
+      reviewStates: preTransitionState,
+    });
+
+    // The resumed workflow's state must equal pre-transition values — NOT reset to {}
+    expect(payload.reviewStates["req-review"].writtenVersions).toEqual({ "se-review": 2, "te-review": 1 });
+    expect(payload.reviewStates["fspec-review"].writtenVersions).toEqual({ "se-review": 1 });
+
+    // Verify it is NOT reset to empty object
+    expect(payload.reviewStates["req-review"].writtenVersions).not.toEqual({});
+    expect(payload.reviewStates["fspec-review"].writtenVersions).not.toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 3 Task 3.8: static-scan for mapRecommendationToStatus removal
 // PROP-PR-09, PROP-PR-10
 // ---------------------------------------------------------------------------
@@ -935,6 +1115,25 @@ describe("PROP-SC-07/SC-09: pre-loop checkArtifactExists scan in featureLifecycl
     const source = fs.readFileSync(workflowSrcPath, "utf-8");
     // The scan must use workflowConfig.phases to find artifact.exists conditions
     expect(source).toContain("artifact.exists");
+  });
+
+  // PROP-SC-08: checkArtifactExists must NOT be called inside the main workflow loop.
+  // It is called ONLY in the pre-loop scan block and never again during phase processing.
+  it("checkArtifactExists is NOT called inside the main while(true) phase loop — only in the pre-loop scan (PROP-SC-08)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+
+    // Find the position of the main loop marker "D2: Main workflow loop"
+    // and the pre-loop scan block — checkArtifactExists must only appear BEFORE the main loop
+    const mainLoopMarkerIdx = source.indexOf("// D2: Main workflow loop");
+    expect(mainLoopMarkerIdx).toBeGreaterThan(-1);
+
+    // The main loop body is everything from mainLoopMarkerIdx to end of the function.
+    // We verify that checkArtifactExists does NOT appear after the main loop starts.
+    const mainLoopAndBeyond = source.slice(mainLoopMarkerIdx);
+
+    // checkArtifactExists should NOT appear in the main loop body
+    // (it was already called in the pre-loop scan block above the loop)
+    expect(mainLoopAndBeyond).not.toContain("checkArtifactExists");
   });
 });
 
@@ -1025,5 +1224,39 @@ describe("PROP-RRC-04/RRC-05/RWV-07: optimizer context uses full version history
     const fnBody = fnMatch![0];
     // Must use writtenVersions to enumerate paths
     expect(fnBody).toContain("writtenVersions");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-04 (PM Review): humanAnswerSignal must be registered in feature-lifecycle.ts
+// REQ-NF-02 requires the workflow to handle "humanAnswerSignal" for ptah run stdin path
+// ---------------------------------------------------------------------------
+
+describe("F-04 REQ-NF-02: workflow registers humanAnswerSignal for ptah run stdin path (static scan)", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("defines humanAnswerSignal using wf.defineSignal with name \"humanAnswerSignal\"", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Must define the signal with the exact name "humanAnswerSignal"
+    expect(source).toContain('"humanAnswerSignal"');
+    // Must use wf.defineSignal with this name
+    expect(source).toMatch(/wf\.defineSignal[\s\S]*?["']humanAnswerSignal["']/);
+  });
+
+  it("sets a handler for humanAnswerSignal in handleQuestionFlow", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Extract handleQuestionFlow body
+    const fnMatch = source.match(
+      /async function handleQuestionFlow\b[\s\S]*?(?=\n\/\/ -{10,}|\nasync function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    // Must call wf.setHandler with humanAnswerSignal
+    expect(fnBody).toContain("humanAnswerSignal");
+    expect(fnBody).toContain("wf.setHandler");
   });
 });
