@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | FSPEC-021 |
 | **Parent Document** | [REQ-orchestrate-dev-workflow](REQ-orchestrate-dev-workflow.md) (v1.3, Draft) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 22, 2026 |
 | **Author** | Product Manager |
 | **Status** | Draft |
@@ -106,6 +106,7 @@ ptah run <req-path> [--from-phase <phase-id>]
 | BR-CLI-04 | A Temporal workflow in `Closed`, `Failed`, `TimedOut`, `Terminated`, or `Completed` status does NOT block a new start. Only `Running` and `ContinuedAsNew` block. |
 | BR-CLI-05 | If the Temporal query itself throws an exception (any error), `ptah run` treats this as a hard error and exits 1. It does not start the workflow under uncertainty. |
 | BR-CLI-06 | `ptah run` catches `WorkflowConfigError` thrown by `YamlWorkflowConfigLoader` and reformats it as: `Error: ptah.workflow.yaml not found in current directory.` This message differs from the raw loader message ("Run 'ptah init' first") to give context-appropriate guidance for headless operation. Exit code 1. |
+| BR-CLI-28 | **`listWorkflowsByPrefix` interface contract (OQ-04 resolution):** The `TemporalClientWrapper` interface method is extended with an optional second parameter: `listWorkflowsByPrefix(prefix: string, options?: { statusFilter?: ("Running" \| "ContinuedAsNew")[] }): Promise<string[]>`. This is a non-breaking additive change — the parameter is optional and existing callers (e.g., in `start.ts` or `migrate.ts`) that call `listWorkflowsByPrefix(prefix)` with no second argument continue to compile and behave identically. When `options.statusFilter` is provided, the implementation appends `AND ExecutionStatus IN (<statuses>)` to the Temporal visibility query. When absent, the query is unchanged (existing behavior). Both `TemporalClientWrapperImpl` and `FakeTemporalClient` must be updated to accept the optional second parameter. The `FakeTemporalClient` implementation should respect the `statusFilter` when filtering its in-memory workflow list so tests can assert the filter is applied. |
 
 #### Error Messages
 
@@ -497,13 +498,14 @@ ROUTE_TO_USER state detected
 
 | Rule | Detail |
 |------|--------|
-| BR-CLI-20 | The `Answer: ` prompt is printed WITHOUT a trailing newline, so the cursor stays on the same line for the engineer to type. This is a deliberate UX choice for inline prompting. |
+| BR-CLI-20 | The `Answer: ` prompt is printed WITHOUT a trailing newline, so the cursor stays on the same line for the engineer to type. This is a deliberate UX choice for inline prompting. The implementation must call `process.stdout.write("Answer: ")` (not `console.log`) to suppress the newline, and must explicitly flush stdout before blocking on stdin. In Node.js, `process.stdout` is synchronous when writing to a TTY but may be line-buffered when piped; the implementation must call `process.stdout.write("Answer: ", () => { /* then read stdin */ })` — i.e., begin the stdin read from inside the `write` callback so the prompt bytes are guaranteed to have been handed to the OS before stdin reading begins. In CI/non-TTY environments where the prompt would never be visible anyway (because stdin is piped or closed), this flush contract still ensures the prompt bytes are not silently lost if stdout is also piped. |
 | BR-CLI-21 | The signal name used for the headless stdin path is exactly `"humanAnswerSignal"`. The existing `"user-answer"` signal used by `ptah start` / Discord is preserved unchanged. Both signals coexist on the workflow. |
 | BR-CLI-22 | Only ONE line is read from stdin per `ROUTE_TO_USER` event. Multi-line input is not supported; only the first line is consumed. |
 | BR-CLI-23 | The closed-stdin warning goes to stderr, not stdout. The progress stream on stdout remains clean. |
 | BR-CLI-24 | When Discord config is present, stdin reading is entirely suppressed even if the question could theoretically be answered via stdin. Discord takes exclusive ownership. |
 | BR-CLI-25 | `ptah run` uses a lenient config loader: absence of a `discord` section in `ptah.config.json` is treated as "Discord not configured" and is not an error. This differs from `ptah start`'s strict config loader. |
 | BR-CLI-26 | The `TemporalClientWrapper` exposes a new method `signalHumanAnswer(workflowId: string, answer: string): Promise<void>` that sends the `"humanAnswerSignal"` signal. This is a separate method from `signalUserAnswer()` and must not be implemented by reusing that method with a different signal name constant. |
+| BR-CLI-27 | Adding `signalHumanAnswer()` to the `TemporalClientWrapper` interface requires a co-change to `FakeTemporalClient` (the test double defined in `factories.ts`). `FakeTemporalClient` must implement `signalHumanAnswer(workflowId: string, answer: string): Promise<void>` — the simplest implementation records the call (e.g., pushes to a `humanAnswerSignals: Array<{ workflowId: string; answer: string }>` array) so tests can assert it was called with the correct arguments. Failing to add this method causes TypeScript compilation errors in every test file that imports `FakeTemporalClient`. |
 
 #### Acceptance Tests
 
@@ -511,7 +513,7 @@ ROUTE_TO_USER state detected
 - Who: Engineer with no Discord config
 - Given: `ptah.config.json` has no `discord` section. Workflow reaches `ROUTE_TO_USER` with question "Should the feature include authentication?"
 - When: The state is detected by the progress poller
-- Then: stdout prints `[Question] Should the feature include authentication?` followed by `Answer: ` (no newline). `ptah run` reads one line from stdin. After the engineer types `Yes` and presses Enter, `signalHumanAnswer(workflowId, "Yes")` is called — which sends signal `"humanAnswerSignal"` with value `"Yes"` to the workflow. Progress polling resumes.
+- Then: stdout prints `[Question] Should the feature include authentication?` followed by `Answer: ` (no newline, flushed to stdout before stdin read begins via `process.stdout.write` callback). `ptah run` reads one line from stdin. After the engineer types `Yes` and presses Enter, `signalHumanAnswer(workflowId, "Yes")` is called — which sends signal `"humanAnswerSignal"` with value `"Yes"` to the workflow. Progress polling resumes. In unit tests, the flush behavior is verified by asserting `process.stdout.write` was called with `"Answer: "` (no newline) before the mocked stdin reader was invoked.
 
 **AT-CLI-04-B: stdin closed before answer**
 - Who: Engineer running in non-interactive mode (e.g., piped stdin)
@@ -541,7 +543,13 @@ The `SkipCondition` type gains a new discriminated union variant `{ field: "arti
 
 #### `SkipCondition` TypeScript Type Definition
 
-The complete discriminated union that must replace the current `{ field: string; equals: boolean }` definition:
+The complete discriminated union that must replace the current `{ field: string; equals: boolean }` definition. **Three co-changes are required together:**
+
+1. **`workflow-config.ts`** — Replace the `SkipCondition` type definition (the source of truth) with the new discriminated union below.
+2. **`feature-lifecycle.ts`** — Update `evaluateSkipCondition()` signature to accept `SkipCondition` (which now refers to the updated type) and add the third `artifactExists` parameter.
+3. **`feature-lifecycle.ts` call sites** — Update all `resolveNextPhase()` and `evaluateSkipCondition()` call sites to pass `state.artifactExists` as the third argument.
+
+Failing to update `workflow-config.ts` (item 1) while updating `feature-lifecycle.ts` (items 2 and 3) leaves the source-of-truth type incorrect; TypeScript will not catch the mismatch because the old `{ field: string; equals: boolean }` type is a structural supertype of the old usage.
 
 ```typescript
 type SkipCondition =
@@ -670,6 +678,12 @@ This is the canonical form for all review phases in the new default YAML. FSPEC-
 - Given: Pre-loop artifact checks have completed; `state.artifactExists` is populated
 - When: The main phase loop runs through multiple phases
 - Then: `checkArtifactExists` is not invoked again during the loop. The `state.artifactExists` map used throughout the loop is the one populated before the loop started.
+
+**AT-WF-01-H: Pre-loop scan is exhaustive over entire config regardless of startAtPhase**
+- Who: Workflow engine
+- Given: A workflow config with 3 phases: `req-creation` (has `skip_if: { field: "artifact.exists", artifact: "REQ" }`), `fspec-creation` (has `skip_if: { field: "artifact.exists", artifact: "FSPEC" }`), and `tspec-creation` (no `skip_if`). `startAtPhase` is set to `"fspec-creation"`, meaning `req-creation` will be skipped by the start-phase offset.
+- When: The workflow starts pre-loop collection
+- Then: `checkArtifactExists` is called for BOTH `"REQ"` and `"FSPEC"` — i.e., for every phase in the config that has an `artifact.exists` condition, regardless of whether that phase is before or at/after `startAtPhase`. `state.artifactExists["REQ"]` and `state.artifactExists["FSPEC"]` are both populated before the main phase loop begins. This verifies BR-WF-07: the pre-loop scan iterates the full config, not just phases at or after `startAtPhase`.
 
 ---
 
@@ -855,6 +869,7 @@ runReviewCycle() — for each review round
 - Given: Workflow undergoes `ContinueAsNew` after round 2; `writtenVersions = { "se-review": 2 }`. This is verified via a unit test of `buildContinueAsNewPayload()`: the function is called with a state where `reviewStates["req-review"].writtenVersions = { "se-review": 2 }` and the returned payload must include that value.
 - When: The payload is deserialized into the resumed workflow state
 - Then: `reviewState.writtenVersions` = `{ "se-review": 2 }` in the resumed workflow state (not reset). The unit test asserts `buildContinueAsNewPayload(state).reviewStates["req-review"].writtenVersions` equals `{ "se-review": 2 }`.
+- **Test fixture note:** The existing `buildContinueAsNewPayload()` unit tests in `tests/unit/temporal/workflows/feature-lifecycle.test.ts` pass a state shaped as `{ featurePath, signOffs, adHocQueue }` — there is no `reviewStates` field in the current fixture. Implementing this acceptance test requires updating the test fixture to include a `reviewStates` map in the state argument. The type of the state parameter to `buildContinueAsNewPayload()` must be extended to include `reviewStates: Record<string, ReviewPhaseState>` (which contains `writtenVersions`). This type extension is a co-change required alongside the function body update — the test cannot be written to its current fixture shape without first updating the type.
 
 ---
 
@@ -870,13 +885,15 @@ runReviewCycle() — for each review round
 
 Two new phrases must be recognized: `"approved with minor issues"` (maps to `approved`) and `"need attention"` (maps to `revision_requested`). The existing parallel implementation `mapRecommendationToStatus()` in `feature-lifecycle.ts` is removed; all callers use `parseRecommendation()` from `cross-review-parser.ts` as the single authoritative parser.
 
-**Function contract:** `parseRecommendation()` takes the **normalized value of the `Recommendation:` field only** — not the full file text. The caller (e.g., `readCrossReviewRecommendation` activity or any migration from `mapRecommendationToStatus()`) is responsible for extracting the `Recommendation:` field value from the file before calling `parseRecommendation()`. The function signature is:
+**Function contract:** `parseRecommendation()` takes the **normalized value of the `Recommendation:` field only** — not the full file text. The function signature is:
 
 ```typescript
 function parseRecommendation(recommendationFieldValue: string): { status: ReviewStatus }
 ```
 
 The `text` parameter in the behavioral flow below refers to the extracted recommendation field value, not the full file content.
+
+**Breaking change to `readCrossReviewRecommendation` call site:** The existing `parseRecommendation()` in `cross-review-parser.ts` accepts the full file content (`fileContent: string`) and performs its own heading extraction, code-fence skipping, and multi-line look-ahead internally. The refactored signature accepts only the pre-extracted field value. This is a **breaking change** to the `readCrossReviewRecommendation` activity: the activity's internal logic must be updated to extract the `Recommendation:` field value from the file content (the heading-extraction logic currently inside `parseRecommendation()` — `HEADING_PATTERN`, `BOLD_PATTERN`, `TABLE_PATTERN`, code-fence handling — moves to the caller, i.e., `readCrossReviewRecommendation`) and then pass that extracted value to the refactored `parseRecommendation()`. No other caller of `parseRecommendation()` outside `cross-review-activity.ts` exists that requires migration. The test file `cross-review-activity.test.ts` currently passes full file content to the parser; it must be updated to reflect the new two-step call pattern.
 
 #### Behavioral Flow
 
@@ -943,9 +960,10 @@ parseRecommendation(recommendationFieldValue)
 - Then: Returns `{ status: "approved" }`.
 
 **AT-CR-02-E: No reference to mapRecommendationToStatus**
-- Who: Codebase
+- Who: Test suite (static source scan)
 - Given: The post-change codebase
 - Then: No file imports or calls `mapRecommendationToStatus`. The function does not exist in `feature-lifecycle.ts`.
+- **Test mechanism:** This is a static-analysis acceptance test, implemented as a source-scan test in `tests/unit/temporal/workflows/feature-lifecycle.test.ts` (alongside existing determinism tests such as `PROP-TF-89`). The test reads the source content of `feature-lifecycle.ts` as a string (using `fs.readFileSync`) and asserts that the string does not contain the token `"mapRecommendationToStatus"`. This is the same pattern used by existing `feature-lifecycle.test.ts` static-analysis assertions. A failing test of this form means the function was not deleted or a reference was inadvertently re-introduced.
 
 ---
 
@@ -1027,7 +1045,7 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 | ID | Question | Affects | Status |
 |----|----------|---------|--------|
 | OQ-03 | When PROPERTIES file is absent during `properties-tests` phase, what specific text does `se-implement` include in its output to indicate the absence? Should `ptah run` surface this as a warning? | REQ-WF-03 | Open |
-| OQ-04 | Is the `listWorkflowsByPrefix` enhancement (adding `statusFilter`) intended as a breaking change to the existing method signature, or should it be a new overload? | REQ-CLI-06 | Open — engineering to decide |
+| OQ-04 | Is the `listWorkflowsByPrefix` enhancement (adding `statusFilter`) intended as a breaking change to the existing method signature, or should it be a new overload? | REQ-CLI-06 | Resolved — optional parameter (see FSPEC-CLI-01 BR-CLI-05 extension below) |
 
 *Note: OQ-01 and OQ-02 (creation phase progress label and emission) are resolved: creation phases are out of scope for this FSPEC iteration. Creation phases emit no phase-header or reviewer-result progress lines (see FSPEC-CLI-03 Description).*
 
@@ -1071,6 +1089,7 @@ When round 2 optimizer is dispatched, context includes all 4 files above (minus 
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Product Manager | Initial FSPEC. 9 functional specifications covering CLI flows, workflow engine skip conditions, cross-review versioning, and recommendation parser consolidation. |
 | 1.1 | April 22, 2026 | Product Manager | Addressed cross-review feedback from software-engineer (4 High, 6 Medium) and test-engineer (4 High, 7 Medium). Key changes: (1) SE F-01 / REQ-WF-03 traceability: added `deriveDocumentType("properties-tests")` special-case lookup spec to FSPEC-WF-01; updated traceability row. (2) SE F-02: added full TypeScript discriminated union definition for `SkipCondition` with validator rules table to FSPEC-WF-01. (3) SE F-03 / TE F-09: resolved signal name conflict — specified `"humanAnswerSignal"` and `"user-answer"` coexist as two distinct Temporal signals; added `signalHumanAnswer()` method spec; specified lenient config loader requirement in FSPEC-CLI-04. (4) SE F-04 / TE F-08: explicitly required `buildContinueAsNewPayload()` to carry full `reviewStates` including `writtenVersions`; added unit test mechanism to AT-CR-01-F. (5) TE F-01: added AT-WF-01-E specifying `resolveNextPhase()` must propagate `evaluateSkipCondition()` throw without catching. (6) TE F-02: reconciled FSPEC-CLI-02 vs REQ-CLI-05 contradiction — gap-after-REQ case now derives `fspec-creation` with a log message (matching REQ AC), while no-artifacts-beyond-REQ derives `req-review` with no message; updated flow diagram, business rules, phase map, and acceptance tests. (7) SE F-03 / TE F-03: clarified `N` in "Need Attention (N findings)" = data rows only, header and separator rows excluded; updated BR-CLI-15 and AT-CLI-03-A. (8) SE F-04 / TE F-04: specified `parseRecommendation()` takes extracted recommendation field value not full file text; added function signature; updated BR-CR-10. (9) SE F-05 / BR-CR-06: called out filter removal required in `runReviewCycle()`. (10) SE F-06: specified `ReviewerManifest` discipline key as `"default"` for new YAML in FSPEC-WF-01. (11) SE F-07: added missing `ptah.workflow.yaml` error to FSPEC-CLI-01 error table and acceptance test AT-CLI-01-H; specified WorkflowConfigError catch-and-reformat as BR-CLI-06. (12) SE F-08 / BR-CLI-18: specified `approved_with_minor_issues` collapses to `"approved"` ReviewerStatusValue — no sub-variant needed. (13) SE F-09 / BR-CLI-19: specified cross-review file paths resolved relative to feature folder (REQ parent dir). (14) SE F-10: added architectural note to FSPEC-CLI-02 about CLI-side stat vs Temporal Activity dual-check. (15) TE F-06: fixed AT-CLI-02-F to use REQ+FSPEC present → derives `tspec-creation` → absent from custom config. (16) TE F-07: added AT-WF-02-F testing `approved_with_minor_issues` path. (17) TE F-10: resolved OQ-01/OQ-02 — creation phases are out of scope for progress reporting. (18) TE F-11: added `phaseStatus`/`failureInfo` invariant to AT-CR-03-B. Added AT-WF-01-F (`deriveDocumentType`), AT-WF-01-G (no re-call mid-loop), AT-CR-01-A2 (`undefined` revisionCount). Removed OQ-01 and OQ-02 from open questions. |
+| 1.2 | April 22, 2026 | Product Manager | Addressed cross-review feedback iteration 2 from software-engineer (4 Medium) and test-engineer (4 Medium). Key changes: (1) SE v2 F-01: identified `parseRecommendation()` refactor as a breaking change to the `readCrossReviewRecommendation` call site — heading-extraction logic moves from parser to caller; `cross-review-activity.test.ts` must be updated; no other callers require migration. (2) SE v2 F-02: explicitly called out `SkipCondition` type in `workflow-config.ts` as the source-of-truth requiring replacement (not just the `evaluateSkipCondition()` signature); enumerated all 3 co-changes required together. (3) SE v2 F-03: added BR-CLI-27 — `FakeTemporalClient` must implement `signalHumanAnswer()` with a call-recording body; failure to do so causes TypeScript compilation errors in test files. (4) SE v2 F-04: resolved OQ-04 — `listWorkflowsByPrefix` gains optional second parameter `options?: { statusFilter?: ("Running" \| "ContinuedAsNew")[] }` (non-breaking additive change); specified in BR-CLI-28; `FakeTemporalClient` must respect `statusFilter` when filtering in-memory workflow list. (5) TE v2 F-01: expanded BR-CLI-20 with explicit stdout flush contract — `process.stdout.write` with callback pattern; stdin read begins inside write callback to guarantee prompt bytes are handed to OS first; unit test assertion pattern specified. Updated AT-CLI-04-A. (6) TE v2 F-02: added AT-WF-01-H — verifies pre-loop scan is exhaustive over the full config regardless of `startAtPhase`; demonstrates that phases before `startAtPhase` still have their `artifact.exists` conditions evaluated pre-loop. (7) TE v2 F-03: added test-fixture note to AT-CR-01-F — existing `buildContinueAsNewPayload()` test fixture must be extended to include `reviewStates`; this is a required co-change alongside the function body update. (8) TE v2 F-04: specified AT-CR-02-E test mechanism — static source-scan test in `feature-lifecycle.test.ts` using `fs.readFileSync` to assert `"mapRecommendationToStatus"` token is absent; same pattern as existing determinism tests. |
 
 ---
 
