@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | PROPERTIES-021 |
 | **Parent Documents** | REQ-021 (v1.3), FSPEC-021 (v1.2), TSPEC-021 (v1.2), PLAN-021 (v1.1) |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | April 22, 2026 |
 | **Author** | Senior Test Engineer |
 | **Status** | Draft |
@@ -23,18 +23,20 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Domain | Count | Property IDs |
 |--------|-------|-------------|
-| CLI — ptah run | 22 | PROP-CLI-01 through PROP-CLI-22 |
-| SkipCondition Evaluation | 8 | PROP-SC-01 through PROP-SC-08 |
+| CLI — ptah run | 24 | PROP-CLI-01 through PROP-CLI-24 |
+| SkipCondition Evaluation | 9 | PROP-SC-01 through PROP-SC-09 |
 | crossReviewPath Versioning | 6 | PROP-CRP-01 through PROP-CRP-06 |
-| parseRecommendation / VALUE_MATCHERS | 9 | PROP-PR-01 through PROP-PR-09 |
+| parseRecommendation / VALUE_MATCHERS | 10 | PROP-PR-01 through PROP-PR-10 |
 | AGENT_TO_SKILL Mapping | 9 | PROP-MAP-01 through PROP-MAP-09 |
 | ReviewState.writtenVersions Lifecycle | 7 | PROP-RWV-01 through PROP-RWV-07 |
 | runReviewCycle Revision Threading | 6 | PROP-RRC-01 through PROP-RRC-06 |
 | isCompletionReady Dynamic Derivation | 7 | PROP-ICR-01 through PROP-ICR-07 |
-| buildContinueAsNewPayload Completeness | 5 | PROP-CNP-01 through PROP-CNP-05 |
+| buildContinueAsNewPayload Completeness | 4 | PROP-CNP-01, PROP-CNP-03 through PROP-CNP-05 |
 | ptah init Scaffold | 8 | PROP-INIT-01 through PROP-INIT-08 |
+| Workflow Validator | 4 | PROP-WFV-01 through PROP-WFV-04 |
+| Backward Compatibility | 1 | PROP-BC-01 |
 
-**Total: 87 properties**
+**Total: 95 properties**
 
 ---
 
@@ -44,9 +46,10 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | `ptah run <req-path>` must start a Temporal `featureLifecycleWorkflow` for the feature slug derived from `<req-path>` when the REQ file exists, is non-empty, no duplicate workflow is running, and `ptah.workflow.yaml` is present and valid. |
+| **Statement** | `ptah run <req-path>` must start a Temporal `featureLifecycleWorkflow` for the feature slug derived from `<req-path>` when the REQ file exists, is non-empty, no duplicate workflow is running, and `ptah.workflow.yaml` is present and valid. This test uses `FakeTemporalClient` (not a real Temporal cluster) and is therefore a unit test. |
 | **Category** | Functional |
-| **Test Level** | Integration |
+| **Test Level** | Unit |
+| **Test File** | `ptah/tests/unit/commands/run.test.ts` |
 | **PLAN Tasks** | 5.6, 5.7 |
 | **Requirements** | REQ-CLI-01 |
 
@@ -94,7 +97,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | `ptah run` must print `Error: workflow already running for feature "<slug>". Use --from-phase to restart from a specific phase after terminating the existing workflow.` to stdout and exit with code 1 when a Temporal workflow with `Running` or `ContinuedAsNew` status exists for the same feature slug. No new workflow must be started. |
+| **Statement** | `ptah run` must print `Error: workflow already running for feature "<slug>". Use --from-phase to restart from a specific phase after terminating the existing workflow.` to stdout and exit with code 1 when a Temporal workflow with `Running` or `ContinuedAsNew` status exists for the same feature slug. The test must verify both statuses independently: one test case stubs `FakeTemporalClient.listWorkflowsByPrefix` to return a workflow with `Running` status and asserts the error fires; a second test case stubs `ContinuedAsNew` status and asserts the same error fires. No new workflow must be started in either case. |
 | **Category** | Error Handling |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.6, 3.9 |
@@ -214,7 +217,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | Progress polling must emit `[Phase <label> — <title>] Iteration <N>` for each new review phase iteration and per-reviewer status lines (`Approved ✅` for `approved`; `Need Attention (<N> findings)` for `revision_requested`). Deduplication must suppress repeat emission when phase name, iteration number, and all reviewer statuses are unchanged between consecutive polls. |
+| **Statement** | Progress polling must emit `[Phase <label> — <title>] Iteration <N>` for each new review phase iteration and per-reviewer status lines (`Approved ✅` for `approved`; `Need Attention (<N> findings)` for `revision_requested`). Deduplication must suppress repeat emission when phase name, iteration number, all reviewer statuses, AND `completedPhaseResults` are all unchanged between consecutive polls. If `completedPhaseResults` changes (a phase exit result appears) but reviewer statuses are otherwise identical, the deduplication key is treated as changed and new lines are emitted. |
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.3b, 5.4b |
@@ -259,6 +262,26 @@ This document defines the testable system properties for the orchestrate-dev wor
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.5 |
 | **Requirements** | REQ-NF-02 |
+
+### PROP-CLI-23
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `ptah run` progress polling must emit a phase transition line `[Phase <label> — <title>] Passed ✅` when `completedPhaseResults[phaseId] = "passed"` is detected in the workflow state for the first time for a given phase. The line must be emitted exactly once per phase (not repeated on subsequent polls after the phase is already in `completedPhaseResults`). |
+| **Category** | Functional |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 5.3b |
+| **Requirements** | REQ-CLI-03 |
+
+### PROP-CLI-24
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `ptah run` progress polling must emit a phase transition line `[Phase <label> — <title>] Revision Bound Reached ⚠️` when `completedPhaseResults[phaseId] = "revision-bound-reached"` is detected in the workflow state for the first time for a given phase. Additionally, the optimizer-dispatch line `[Phase <label> — <title>] <agent-id> addressing feedback...` must be emitted when all reviewers for a phase are done AND `activeAgentIds` contains at least one agent ID — indicating the author agent is actively addressing feedback. Both lines are governed by the same deduplication key (see PROP-CLI-18): they are emitted only when the combined key changes. |
+| **Category** | Functional |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 5.3b, 5.4b |
+| **Requirements** | REQ-CLI-03 |
 
 ---
 
@@ -340,6 +363,16 @@ This document defines the testable system properties for the orchestrate-dev wor
 |-------|--------|
 | **Statement** | `checkArtifactExists` must NOT be called again during the main phase loop; the `state.artifactExists` map populated before the loop is used throughout the loop without re-evaluation. |
 | **Category** | Idempotency |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.4 |
+| **Requirements** | REQ-WF-05 |
+
+### PROP-SC-09
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | When `startAtPhase` is set to a phase after `req-creation` (e.g., `"implementation"`), `checkArtifactExists` must still be called for `req-creation`'s `artifact.exists` condition — i.e., the pre-loop scan must NOT skip phases that precede `startAtPhase`. A unit test must configure a workflow with `startAtPhase = "implementation"` and assert that `checkArtifactExists` is called for the `"REQ"` artifact (belonging to `req-creation`) before the main loop starts. |
+| **Category** | Error Handling |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.4 |
 | **Requirements** | REQ-WF-05 |
@@ -497,6 +530,16 @@ This document defines the testable system properties for the orchestrate-dev wor
 | Field | Detail |
 |-------|--------|
 | **Statement** | `mapRecommendationToStatus()` must NOT exist anywhere in `feature-lifecycle.ts` after the migration. A static source-scan test must assert the string `"mapRecommendationToStatus"` is absent from the source file content. |
+| **Category** | Data Integrity |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.8 |
+| **Requirements** | REQ-CR-05 |
+
+### PROP-PR-10
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | A complementary static source-scan test must assert that `feature-lifecycle.ts` contains an import of `parseRecommendation` from `cross-review-parser.ts` and that at least one call to `parseRecommendation(` is present in the file. This guards against a scenario where `mapRecommendationToStatus` is merely renamed (satisfying PROP-PR-09's absence check) but consolidation to the canonical parser is not actually completed. |
 | **Category** | Data Integrity |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.8 |
@@ -664,7 +707,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | The optimizer context assembly must enumerate all prior versions for each reviewer using `reviewState.writtenVersions[agentId]` — for a reviewer with `writtenVersions["se-review"] = 3`, all three versioned files (v1, v2, v3) must be included in the context list (excluding any that are missing on disk, which are silently skipped without error). |
+| **Statement** | The optimizer context assembly must enumerate all prior versions for each reviewer using `reviewState.writtenVersions[agentId]` — for a reviewer with `writtenVersions["se-review"] = 3`, all three versioned paths (v1, v2, v3) must be passed to the context assembler. The workflow's responsibility is to enumerate paths unconditionally via `crossReviewPath()`; the `DefaultContextAssembler` (not `runReviewCycle()` itself) is responsible for silently skipping refs whose files are unreadable on disk. A unit test of `runReviewCycle()` with a mocked context assembler must verify that the workflow passes all three paths to the assembler rather than verifying the assembler's skip behavior. |
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.6 |
@@ -718,7 +761,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | A missing cross-review file (not found on disk when building optimizer context) must be silently skipped — excluded from the context list without causing a hard error, without changing `phaseStatus`, and without setting `failureInfo` on the workflow state. |
+| **Statement** | `runReviewCycle()` must build the optimizer context path list unconditionally — passing all versioned cross-review paths (enumerated via `crossReviewPath()`) to the context assembler without performing its own existence check. A unit test of `runReviewCycle()` must verify that all N paths are passed to the assembler, independent of whether those files exist on disk. The silent-skip behavior for missing files belongs to `DefaultContextAssembler` and is tested at the assembler level, not at the `runReviewCycle()` level. |
 | **Category** | Error Handling |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.6 |
@@ -822,16 +865,6 @@ This document defines the testable system properties for the orchestrate-dev wor
 | **PLAN Tasks** | 3.8 |
 | **Requirements** | REQ-NF-04 |
 
-### PROP-CNP-02
-
-| Field | Detail |
-|-------|--------|
-| **Statement** | `buildContinueAsNewPayload()` must deep-copy `reviewStates` — mutating the original state's `writtenVersions` after calling `buildContinueAsNewPayload()` must not affect the returned payload. |
-| **Category** | Data Integrity |
-| **Test Level** | Unit |
-| **PLAN Tasks** | 3.8 |
-| **Requirements** | REQ-NF-04 |
-
 ### PROP-CNP-03
 
 | Field | Detail |
@@ -856,7 +889,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | A static-structure test must assert that `bin/ptah.ts` source contains the token `"checkArtifactExists"` in the worker activities registration block, verifying the activity is registered before the workflow can use it. |
+| **Statement** | A static-structure test must assert that `bin/ptah.ts` source contains the token `"checkArtifactExists"` within the worker activities registration block — specifically within the `proxyActivities()` call or `createWorker({ activities: ... })` call — and not merely anywhere in the file (e.g., an import or comment containing the token would not satisfy this property). The test should use a targeted regex or structural parse to verify the token appears in the activities context. |
 | **Category** | Integration |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.9 |
@@ -880,7 +913,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | The total number of files created by `ptah init` (i.e., `Object.keys(FILE_MANIFEST).length`) must equal 20. The `init.test.ts` assertion `expect(Object.keys(FILE_MANIFEST).length).toBe(20)` must pass. |
+| **Statement** | The total number of files created by `ptah init` (i.e., `Object.keys(FILE_MANIFEST).length`) must equal the value derived by the formula: `(prior FILE_MANIFEST count) − (prior skill stub count) − (prior agent-log stub count) + 8`. The `init.test.ts` assertion must verify this derived count rather than a hardcoded value, OR the test must include a comment citing the verified baseline count from which the expected value was computed. Per PLAN task 4.1, the expected count after removing 3 old skill stubs and 3 old agent-log stubs and adding 8 new skill stubs is `20` — but this value must be confirmed against the actual codebase manifest before the assertion is hardcoded; the implementation must count the actual manifest entries and update the assertion accordingly. |
 | **Category** | Contract |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 4.1 |
@@ -948,21 +981,79 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 ---
 
-## 13. Coverage Matrix
+## 13. Domain: Workflow Validator
+
+### PROP-WFV-01
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `YamlWorkflowConfigLoader.validateStructure()` must throw `WorkflowConfigError` identifying the offending phase when it encounters a review-phase entry in `ptah.workflow.yaml` that is missing a `revision_bound` field. The `ptah run` command must catch this error and exit with code 1, printing the validation error message. |
+| **Category** | Error Handling |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.1 |
+| **Requirements** | REQ-WF-04 |
+
+### PROP-WFV-02
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `validateStructure()` must accept a `skip_if` block with `field: "artifact.exists"` and a non-empty `artifact` string as a valid `SkipCondition` — no `WorkflowConfigError` must be thrown for a well-formed `artifact.exists` condition. |
+| **Category** | Functional |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.1 |
+| **Requirements** | REQ-WF-01, REQ-WF-05 |
+
+### PROP-WFV-03
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `validateStructure()` must throw `WorkflowConfigError` when a `skip_if` block has `field: "artifact.exists"` but the `artifact` field is absent or empty. A malformed `artifact.exists` condition with a missing `artifact` key must not pass validation. |
+| **Category** | Error Handling |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.1 |
+| **Requirements** | REQ-WF-01, REQ-WF-05 |
+
+### PROP-WFV-04
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `validateStructure()` must throw `WorkflowConfigError` when a `skip_if` block has `field: "artifact.exists"` AND an `equals` property present simultaneously — this is a malformed discriminated union and must not pass validation. Similarly, a `config.*` branch with `artifact` present (instead of `equals`) must also throw `WorkflowConfigError`. |
+| **Category** | Error Handling |
+| **Test Level** | Unit |
+| **PLAN Tasks** | 3.1 |
+| **Requirements** | REQ-WF-01, REQ-WF-05 |
+
+---
+
+## 14. Domain: Backward Compatibility
+
+### PROP-BC-01
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `ptah start` must continue to operate correctly after all changes from this feature are applied. An integration test using a project configured with the old 3-agent config (`pm`, `eng`, `qa`) and an old-format `ptah.workflow.yaml` (no new phases, no `artifact.exists` conditions, `revision_bound: 3`) must successfully start a workflow and complete without error. This property verifies the headline acceptance criterion of REQ-NF-01 — that the primary entry point for legacy projects remains functional. |
+| **Category** | Integration |
+| **Test Level** | Integration |
+| **PLAN Tasks** | 5.6 |
+| **Requirements** | REQ-NF-01 |
+
+---
+
+## 15. Coverage Matrix
 
 | Requirement | Properties | Gap? |
 |-------------|------------|------|
 | REQ-CLI-01 | PROP-CLI-01, PROP-CLI-04, PROP-CLI-08, PROP-CLI-09 | None |
 | REQ-CLI-02 | PROP-CLI-02, PROP-CLI-03 | None |
-| REQ-CLI-03 | PROP-CLI-18, PROP-CLI-19, PROP-CLI-20, PROP-CRP-06 | None |
+| REQ-CLI-03 | PROP-CLI-18, PROP-CLI-19, PROP-CLI-20, PROP-CLI-23, PROP-CLI-24, PROP-CRP-06 | None |
 | REQ-CLI-04 | PROP-CLI-10, PROP-CLI-11 | None |
 | REQ-CLI-05 | PROP-CLI-12, PROP-CLI-13, PROP-CLI-14, PROP-CLI-15, PROP-CLI-16, PROP-CLI-17 | None |
 | REQ-CLI-06 | PROP-CLI-06, PROP-CLI-07 | None |
-| REQ-WF-01 | PROP-INIT-07, PROP-SC-01, PROP-SC-02 | None |
+| REQ-WF-01 | PROP-INIT-07, PROP-SC-01, PROP-SC-02, PROP-WFV-02, PROP-WFV-03, PROP-WFV-04 | None |
 | REQ-WF-02 | PROP-INIT-08 | None |
 | REQ-WF-03 | PROP-INIT-05, PROP-RRC-06 | None |
-| REQ-WF-04 | PROP-INIT-06 | None |
-| REQ-WF-05 | PROP-SC-01 through PROP-SC-08 | None |
+| REQ-WF-04 | PROP-INIT-06, PROP-WFV-01 | None |
+| REQ-WF-05 | PROP-SC-01 through PROP-SC-09 | None |
 | REQ-WF-06 | PROP-ICR-01 through PROP-ICR-07 | None |
 | REQ-AG-01 | PROP-INIT-01, PROP-INIT-02 | None |
 | REQ-AG-02 | PROP-INIT-03, PROP-INIT-04 | None |
@@ -970,17 +1061,17 @@ This document defines the testable system properties for the orchestrate-dev wor
 | REQ-CR-02 | PROP-CRP-01 through PROP-CRP-04 | None |
 | REQ-CR-03 | PROP-CRP-05, PROP-RRC-02 | None |
 | REQ-CR-04 | PROP-RRC-01, PROP-RRC-02, PROP-RWV-03, PROP-RWV-04 | None |
-| REQ-CR-05 | PROP-PR-01, PROP-PR-03, PROP-PR-04, PROP-PR-06, PROP-PR-07, PROP-PR-08, PROP-PR-09 | None |
+| REQ-CR-05 | PROP-PR-01, PROP-PR-03, PROP-PR-04, PROP-PR-06, PROP-PR-07, PROP-PR-08, PROP-PR-09, PROP-PR-10 | None |
 | REQ-CR-06 | PROP-PR-02, PROP-PR-03 | None |
 | REQ-CR-07 | PROP-RWV-07, PROP-RRC-04, PROP-RRC-05 | None |
-| REQ-NF-01 | PROP-MAP-04 through PROP-MAP-09, PROP-PR-04, PROP-ICR-03 | None |
+| REQ-NF-01 | PROP-MAP-04 through PROP-MAP-09, PROP-PR-04, PROP-ICR-03, PROP-BC-01 | None |
 | REQ-NF-02 | PROP-CLI-21, PROP-CLI-22 | None |
 | REQ-NF-03 | PROP-RRC-03 | None |
-| REQ-NF-04 | PROP-RWV-01, PROP-RWV-02, PROP-RWV-05, PROP-RWV-06, PROP-CNP-01 through PROP-CNP-04 | None |
+| REQ-NF-04 | PROP-RWV-01, PROP-RWV-02, PROP-RWV-05, PROP-RWV-06, PROP-CNP-01, PROP-CNP-03, PROP-CNP-04 | None |
 
 ---
 
-## 14. Negative Properties
+## 16. Negative Properties
 
 The following properties define what must NOT happen after implementation:
 
@@ -989,51 +1080,57 @@ The following properties define what must NOT happen after implementation:
 | PROP-CLI-02 | `ptah run` must NOT start a Temporal workflow when the REQ file is absent | Unit |
 | PROP-CLI-03 | `ptah run` must NOT start a Temporal workflow when the REQ file is empty/whitespace-only | Unit |
 | PROP-CLI-05 | `ptah run` must NOT start a Temporal workflow when `ptah.workflow.yaml` is missing | Unit |
-| PROP-CLI-06 | `ptah run` must NOT start a duplicate workflow when one is already running | Unit |
+| PROP-CLI-06 | `ptah run` must NOT start a duplicate workflow when one is already running (Running or ContinuedAsNew) | Unit |
 | PROP-CLI-22 | `ptah run` must NOT print the stdin-closed warning to stdout (it goes to stderr) | Unit |
 | PROP-SC-04 | `evaluateSkipCondition()` must NOT silently return `false` when called before the pre-loop activity — it must throw | Unit |
 | PROP-SC-05 | `resolveNextPhase()` must NOT catch the throw from `evaluateSkipCondition()` | Unit |
 | PROP-SC-08 | `checkArtifactExists` must NOT be invoked again during the main phase loop | Unit |
-| PROP-RRC-05 | A missing cross-review file must NOT cause a hard error or change `phaseStatus` | Unit |
+| PROP-SC-09 | The pre-loop scan must NOT skip phases that precede `startAtPhase` | Unit |
+| PROP-RRC-05 | `runReviewCycle()` must NOT perform its own file-existence check on cross-review paths — path enumeration is unconditional; file-existence filtering belongs to the context assembler | Unit |
 | PROP-PR-09 | `mapRecommendationToStatus()` must NOT exist in `feature-lifecycle.ts` | Unit |
 | PROP-MAP-08 | `AGENT_TO_SKILL` must NOT be a fully independent hand-maintained table | Unit |
-| PROP-CNP-05 | `bin/ptah.ts` must NOT be missing the `checkArtifactExists` token in the worker activities block | Unit |
+| PROP-CNP-05 | `bin/ptah.ts` must NOT be missing the `checkArtifactExists` token in the worker activities registration block | Unit |
+| PROP-WFV-01 | A review phase missing `revision_bound` must NOT be accepted by the workflow validator | Unit |
+| PROP-WFV-03 | A `skip_if` block with `field: "artifact.exists"` but no `artifact` key must NOT pass validation | Unit |
+| PROP-WFV-04 | A malformed discriminated union (`artifact.exists` + `equals`, or `config.*` + `artifact`) must NOT pass validation | Unit |
 
 ---
 
-## 15. E2E Properties
+## 17. E2E Properties
 
 The following 2 properties require end-to-end validation (maximum E2E tests per feature: 3–5):
 
 | Property ID | E2E Scenario |
 |-------------|-------------|
-| PROP-CLI-01 | Happy-path: REQ file valid, no duplicate workflow, config present → workflow starts and exits 0 on completion |
+| PROP-CLI-01 | Happy-path: REQ file valid, no duplicate workflow, config present → workflow starts and exits 0 on completion (driven by FakeTemporalClient in unit test; real cluster for full E2E) |
 | PROP-CNP-01 | Resume after ContinueAsNew: workflow carries `writtenVersions` through a full `ContinueAsNew` boundary with real Temporal infrastructure |
 
 ---
 
-## 16. Test File Mapping
+## 18. Test File Mapping
 
 | Test File | Properties Covered |
 |-----------|-------------------|
-| `ptah/tests/unit/orchestrator/cross-review-parser.test.ts` | PROP-CRP-01–06, PROP-PR-01–09, PROP-MAP-01–09 |
+| `ptah/tests/unit/orchestrator/cross-review-parser.test.ts` | PROP-CRP-01–06, PROP-PR-01–10, PROP-MAP-01–09 |
 | `ptah/tests/unit/temporal/cross-review-activity.test.ts` | PROP-CRP-05, PROP-PR-06, PROP-PR-07 |
 | `ptah/tests/unit/temporal/activities/artifact-activity.test.ts` (new) | PROP-SC-06 |
-| `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | PROP-SC-01–08, PROP-RWV-01–07, PROP-RRC-01–06, PROP-ICR-01–07, PROP-CNP-01–05 |
-| `ptah/tests/unit/config/workflow-validator.test.ts` | PROP-INIT-06 (revision_bound validation) |
+| `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | PROP-SC-01–09, PROP-RWV-01–07, PROP-RRC-01–06, PROP-ICR-01–07, PROP-CNP-01, PROP-CNP-03–05, PROP-PR-09, PROP-PR-10 |
+| `ptah/tests/unit/config/workflow-validator.test.ts` | PROP-INIT-06 (revision_bound validation), PROP-WFV-01–04 |
 | `ptah/tests/unit/config/defaults.test.ts` | PROP-INIT-01–08 |
 | `ptah/tests/unit/commands/init.test.ts` | PROP-INIT-01, PROP-INIT-02 |
-| `ptah/tests/unit/commands/run.test.ts` (new) | PROP-CLI-01–22 |
+| `ptah/tests/unit/commands/run.test.ts` (new) | PROP-CLI-01–24 |
 | `ptah/tests/unit/fixtures/factories.test.ts` | PROP-CLI-06 (FakeTemporalClient statusFilter behavior) |
 | `ptah/tests/unit/temporal/client.test.ts` | PROP-CNP-05 (static-structure test for checkArtifactExists in ptah.ts) |
+| `ptah/tests/integration/commands/run.integration.test.ts` (new) | PROP-BC-01 |
 
 ---
 
-## 17. Change Log
+## 19. Change Log
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Senior Test Engineer | Initial PROPERTIES document. 87 properties across 10 domains, derived from REQ-021 v1.3, FSPEC-021 v1.2, TSPEC-021 v1.2, and PLAN-021 v1.1. Coverage matrix confirms all 25 requirements have at least one property. 12 negative properties and 2 E2E properties identified. |
+| 1.1 | April 22, 2026 | Senior Test Engineer | Addressed cross-review feedback from product-manager (3 High, 4 Medium) and software-engineer (3 High, 4 Medium). **High findings resolved:** (1) PM-F-01: Added PROP-WFV-01 — workflow validator must throw WorkflowConfigError for review phase missing `revision_bound`, covering REQ-WF-04 negative AC. (2) PM-F-02: Added PROP-WFV-02, PROP-WFV-03, PROP-WFV-04 — YAML validator acceptance of valid `artifact.exists` SkipCondition and rejection of two malformed variants (missing `artifact` field; spurious `equals` field with `artifact.exists`). (3) PM-F-03: Added PROP-CLI-23 (Passed ✅ phase transition) and PROP-CLI-24 (Revision Bound Reached ⚠️ + optimizer-dispatch line) to cover REQ-CLI-03 phase transition output. (4) SE-F-01: Rewrote PROP-RRC-05 — clarified that `runReviewCycle()` builds path list unconditionally and the silent-skip responsibility belongs to `DefaultContextAssembler`; updated PROP-RWV-07 to reflect the same layering. (5) SE-F-02: Fixed PROP-CLI-01 — reclassified from Integration to Unit, added explicit note that FakeTemporalClient drives the test; removed the Integration classification conflict with `tests/unit/` file placement. (6) SE-F-03: Added PROP-SC-09 — negative property asserting the pre-loop scan must still fire for phases before `startAtPhase` when `startAtPhase` is set to a later phase. **Medium findings resolved:** (7) PM-F-04 / SE-F-11: Revised PROP-INIT-02 — replaced hardcoded `20` with derivation rule and instruction to verify baseline count; kept `20` as the PLAN-stated expected value with a verification caveat. (8) PM-F-05: Added PROP-BC-01 (new Backward Compatibility domain) — integration property verifying `ptah start` continues to operate with old 3-agent config post-upgrade. (9) PM-F-06: Removed PROP-CNP-02 (deep-copy requirement) — reclassified as a TSPEC implementation decision not derivable from product requirements; renumbered PROP-CNP-03 and PROP-CNP-04 accordingly (PROP-CNP-02 number retired). (10) SE-F-04: Updated PROP-CLI-06 to explicitly require two independent test cases — one for `Running` status and one for `ContinuedAsNew` status. (11) SE-F-05: Updated PROP-CNP-05 to require the token appear within the activities registration block context, not merely anywhere in the file. (12) SE-F-06: Added PROP-PR-10 — complementary import/call assertion verifying `parseRecommendation` is imported and called in `feature-lifecycle.ts`. (13) SE-F-07: Updated PROP-CLI-18 deduplication key to include `completedPhaseResults` alongside phase, iteration, and reviewer statuses. Property index updated (95 total properties, 12 domains). Coverage matrix updated to include new properties. Negative properties section updated. Test file mapping updated. |
 
 ---
 
