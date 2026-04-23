@@ -193,28 +193,31 @@ This matrix provides full traceability from user scenarios through requirements 
 | [US-23], [US-24], [US-25] | [REQ-NF-14-03] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23], [US-24], [US-25] | [REQ-NF-14-04] | Pending TSPEC | P0 | 14 | Pending Spec |
 | [US-23] | [REQ-NF-14-05] | [FSPEC-TL-02](../014-tech-lead-orchestration/014-FSPEC-tech-lead-orchestration.md) | P1 | 14 | FSPEC Complete |
-| [US-01] | [REQ-CLI-01] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-01] | [REQ-CLI-02] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-06] | [REQ-CLI-03] | Pending FSPEC | P1 | 21 | Pending Spec |
-| [US-07] | [REQ-CLI-04] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-07] | [REQ-CLI-05] | Pending FSPEC | P1 | 21 | Pending Spec |
-| [US-01] | [REQ-WF-01] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-02] | [REQ-WF-02] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-04] | [REQ-WF-03] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-05] | [REQ-WF-04] | Pending FSPEC | P1 | 21 | Pending Spec |
-| [US-01] | [REQ-WF-05] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-02] | [REQ-AG-01] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-02] | [REQ-AG-02] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-01] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-02] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-03] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-04] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-05] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-06] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-03] | [REQ-CR-07] | Pending FSPEC | P1 | 21 | Pending Spec |
-| [US-02] | [REQ-NF-01] | Pending FSPEC | P0 | 21 | Pending Spec |
-| [US-01], [US-06] | [REQ-NF-02] | Pending FSPEC | P1 | 21 | Pending Spec |
-| [US-03] | [REQ-NF-03] | Pending FSPEC | P0 | 21 | Pending Spec |
+| [US-01], [US-06] | [REQ-CLI-01] | [FSPEC-CLI-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-01] | [REQ-CLI-02] | [FSPEC-CLI-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-06] | [REQ-CLI-03] | [FSPEC-CLI-03](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P1 | 21 | FSPEC Complete |
+| [US-07] | [REQ-CLI-04] | [FSPEC-CLI-02](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-07] | [REQ-CLI-05] | [FSPEC-CLI-02](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P1 | 21 | FSPEC Complete |
+| [US-01] | [REQ-CLI-06] | [FSPEC-CLI-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P1 | 21 | FSPEC Complete |
+| [US-01] | [REQ-WF-01] | [FSPEC-WF-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-02] | [REQ-WF-02] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-04] | [REQ-WF-03] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-05] | [REQ-WF-04] | No FSPEC required | P1 | 21 | Pending TSPEC |
+| [US-01] | [REQ-WF-05] | [FSPEC-WF-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-02] | [REQ-WF-06] | [FSPEC-WF-02](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-02] | [REQ-AG-01] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-02] | [REQ-AG-02] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-03] | [REQ-CR-01] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-03] | [REQ-CR-02] | [FSPEC-CR-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-CR-03] | [FSPEC-CR-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-CR-04] | [FSPEC-CR-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-CR-05] | [FSPEC-CR-02](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-CR-06] | [FSPEC-CR-02](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-CR-07] | [FSPEC-CR-03](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P1 | 21 | FSPEC Complete |
+| [US-02] | [REQ-NF-01] | No FSPEC required | P0 | 21 | Pending TSPEC |
+| [US-01], [US-06] | [REQ-NF-02] | [FSPEC-CLI-04](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P1 | 21 | FSPEC Complete |
+| [US-03] | [REQ-NF-03] | [FSPEC-CR-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
+| [US-03] | [REQ-NF-04] | [FSPEC-CR-01](../in-progress/orchestrate-dev-workflow/FSPEC-orchestrate-dev-workflow.md) | P0 | 21 | FSPEC Complete |
 
 ---
 
