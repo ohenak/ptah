@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | TSPEC-021 |
 | **Parent Documents** | REQ-021 (v1.3), FSPEC-021 (v1.2) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 22, 2026 |
 | **Author** | Senior Software Engineer |
 | **Status** | Draft |
@@ -38,7 +38,9 @@ No new external dependencies are required. All changes use existing dependencies
 | File | Purpose |
 |------|---------|
 | `ptah/src/commands/run.ts` | `RunCommand` class — `ptah run` CLI entry point |
+| `ptah/src/temporal/activities/artifact-activity.ts` | `createArtifactActivities()` factory — `checkArtifactExists` activity |
 | `ptah/tests/unit/commands/run.test.ts` | Unit tests for `RunCommand` |
+| `ptah/tests/unit/temporal/activities/artifact-activity.test.ts` | Unit tests for `checkArtifactExists` activity |
 
 ### 3.2 Modified Files
 
@@ -108,17 +110,28 @@ export interface FeatureWorkflowState {
    * Used by pollUntilTerminal() to detect "addressing feedback" optimizer dispatch.
    */
   activeAgentIds: string[];
+  /**
+   * Per-phase terminal outcome map. Keyed by phaseId.
+   * Set by the workflow when a review phase exits (approved or revision-bound).
+   * Used by pollUntilTerminal() to emit per-phase Passed ✅ / Revision Bound Reached ⚠️ lines.
+   */
+  completedPhaseResults: Record<string, "passed" | "revision-bound-reached">;
 }
 ```
 
-Initialize `artifactExists` to `{}` and `activeAgentIds` to `[]` in `buildInitialWorkflowState()`.
+Initialize `artifactExists` to `{}`, `activeAgentIds` to `[]`, and `completedPhaseResults` to `{}` in `buildInitialWorkflowState()`.
 
 **`activeAgentIds` lifecycle:**
 - When `invokeSkill` is dispatched for the optimizer (author) agent in `runReviewCycle()`, add the agentId to `state.activeAgentIds`.
 - When the optimizer completes (or fails), remove the agentId from `state.activeAgentIds`.
 - Reviewer agents are also tracked in `activeAgentIds` while they are running (added on dispatch, removed on completion). This enables `pollUntilTerminal()` to detect whether the author agent is active.
 
-**`queryWorkflowState()` return value:** The `FeatureWorkflowState` returned by `queryWorkflowState()` includes `activeAgentIds`. The `pollUntilTerminal()` algorithm uses `state.activeAgentIds` directly — it does NOT access `state.workflowConfig`. The `PHASE_LABELS` static map in `run.ts` provides phase label lookup by phase ID; `workflowConfig` is not needed at poll time.
+**`completedPhaseResults` lifecycle:**
+- When a review phase completes successfully (all reviewers approved), `runReviewCycle()` sets `state.completedPhaseResults[phaseId] = "passed"` before returning.
+- When a review phase hits its revision bound, the workflow sets `state.completedPhaseResults[phaseId] = "revision-bound-reached"` before transitioning.
+- `completedPhaseResults` entries are additive and never removed — they accumulate across the workflow run as a permanent record of phase outcomes.
+
+**`queryWorkflowState()` return value:** The `FeatureWorkflowState` returned by `queryWorkflowState()` includes `activeAgentIds` and `completedPhaseResults`. The `pollUntilTerminal()` algorithm uses both fields directly — it does NOT access `state.workflowConfig`. The `PHASE_LABELS` static map in `run.ts` provides phase label lookup by phase ID; `workflowConfig` is not needed at poll time.
 
 ### 4.4 `ReadCrossReviewInput` — `ptah/src/temporal/types.ts`
 
@@ -152,7 +165,7 @@ Extend to carry `reviewStates`:
 export interface ContinueAsNewPayload {
   featurePath: string | null;
   worktreeRoot: null;
-  signOffs: Record<string, string>;
+  signOffs: Record<string, boolean>;
   adHocQueue: AdHocRevisionSignal[];
   reviewStates: Record<string, ReviewState>;  // NEW — carries writtenVersions
 }
@@ -352,7 +365,8 @@ Initialize new fields on the returned state:
 return {
   // ... existing fields ...
   reviewStates: initialReviewState ?? {},  // existing — but ReviewState now has writtenVersions
-  artifactExists: {},  // NEW — populated by pre-loop checkArtifactExists Activity
+  artifactExists: {},         // NEW — populated by pre-loop checkArtifactExists Activity
+  completedPhaseResults: {},  // NEW — populated by workflow when review phases complete
 };
 ```
 
@@ -765,6 +779,7 @@ execute(params: { reqPath, fromPhase? })
           stdin,
           featureFolder: path.dirname(reqPath),
           slug,
+          fs,
         })
         await temporalClient.disconnect()
         return exitCode
@@ -890,7 +905,7 @@ resolveStartPhase({ reqPath, slug, fromPhase, workflowConfig, fs })
 |----------|----------------------|----------------|-------------|
 | Empty folder (no REQ) | -1 | `req-review` | none |
 | REQ only, no gap | 0, `!hasGapBeyondFSPEC` | `req-review` | none |
-| REQ only, gap (FSPEC absent, TSPEC present) | 0, `hasGapBeyondFSPEC` | `fspec-creation` | `"Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"` |
+| REQ only, gap (FSPEC absent, TSPEC present) | 0, `hasGapBeyondFSPEC = true` | `fspec-creation` | `"Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"` |
 | REQ + FSPEC | 1 | `tspec-creation` | `"Auto-detected resume phase: tspec-creation (FSPEC found, TSPEC missing)"` |
 | REQ + FSPEC + TSPEC | 2 | `plan-creation` | `"Auto-detected resume phase: plan-creation (TSPEC found, PLAN missing)"` |
 | REQ + FSPEC + TSPEC + PLAN | 3 | `properties-creation` | `"Auto-detected resume phase: properties-creation (PLAN found, PROPERTIES missing)"` |
@@ -908,6 +923,7 @@ interface PollParams {
   stdin: NodeJS.ReadableStream;
   featureFolder: string;
   slug: string;
+  fs: FileSystem;  // injected for countFindingsInCrossReviewFile
 }
 
 async function pollUntilTerminal(params: PollParams): Promise<number>
@@ -924,6 +940,12 @@ pollUntilTerminal(params)
   │     reviewerStatuses: Record<string, string>;
   │     activeAgentIds: string[];
   │   } | null = null
+  │
+  ├── lastTrackedPhaseId: string | null = null
+  │   // Tracks the current phaseId on every tick (even non-PHASE_LABELS phases).
+  │   // Updated unconditionally each tick. Prevents the transition-detection block
+  │   // from re-triggering when the new phase is not in PHASE_LABELS and
+  │   // lastEmittedState remains stale from the previous PHASE_LABELS phase.
   │
   └── LOOP every 2 seconds:
         try:
@@ -950,6 +972,28 @@ pollUntilTerminal(params)
           await handleQuestion(state.pendingQuestion, workflowId, params)
           continue
 
+        // Per-phase transition detection:
+        // When the current phase changes from the previously tracked phase, emit the
+        // completion line for the exited phase before processing the new phase.
+        // Use state.completedPhaseResults[exitedPhaseId] to determine the outcome.
+        if lastTrackedPhaseId !== null && lastTrackedPhaseId !== state.currentPhaseId:
+          exitedPhaseId = lastTrackedPhaseId
+          if PHASE_LABELS[exitedPhaseId] !== undefined:
+            exitedPhaseInfo = PHASE_LABELS[exitedPhaseId]
+            exitedResult = state.completedPhaseResults?.[exitedPhaseId]
+            if exitedResult === "passed":
+              stdout.write("[Phase {exitedPhaseInfo.label} — {exitedPhaseInfo.title}] Passed ✅\n")
+            elif exitedResult === "revision-bound-reached":
+              stdout.write("[Phase {exitedPhaseInfo.label} — {exitedPhaseInfo.title}] Revision Bound Reached ⚠️\n")
+            // If exitedResult is undefined (phase exited without recording outcome — e.g.,
+            // creation or approved phase), no line is emitted. Completion line only applies
+            // to review phases that record a result in completedPhaseResults.
+
+        // Always update lastTrackedPhaseId to the current phase on every tick.
+        // This prevents the transition block from re-triggering across multiple ticks
+        // when the new phase is not in PHASE_LABELS (and lastEmittedState stays stale).
+        lastTrackedPhaseId = state.currentPhaseId
+
         // Progress emission (deduplication)
         // Phase lookup uses PHASE_LABELS static map — workflowConfig is NOT accessed.
         // state.currentPhaseId identifies the phase; type is determined by checking
@@ -968,7 +1012,7 @@ pollUntilTerminal(params)
           )
 
           if hasChanged:
-            emitProgressLines(state, state.currentPhaseId, reviewState, featureFolder, slug, stdout)
+            await emitProgressLines(state, state.currentPhaseId, reviewState, featureFolder, slug, stdout, params.fs)
             lastEmittedState = {
               phaseId: state.currentPhaseId,
               iteration: currentIteration,
@@ -982,14 +1026,15 @@ pollUntilTerminal(params)
 ### 6.6 `emitProgressLines()` — Stdout Format
 
 ```typescript
-function emitProgressLines(
+async function emitProgressLines(
   state: FeatureWorkflowState,
   phaseId: string,
   reviewState: ReviewState | undefined,
   featureFolder: string,
   slug: string,
   stdout: NodeJS.WriteStream,
-): void
+  fs: FileSystem,
+): Promise<void>
 ```
 
 **Phase label map** (matches FSPEC-CLI-03):
@@ -1022,7 +1067,7 @@ emitProgressLines(state, phaseId, reviewState, featureFolder, slug, stdout)
   │     if status === "approved":
   │       emit: "  {agentId}:  Approved ✅\n"
   │     elif status === "revision_requested":
-  │       N = countFindingsInCrossReviewFile(featureFolder, agentId, phaseId, reviewState, slug)
+  │       N = await countFindingsInCrossReviewFile(featureFolder, agentId, phaseId, reviewState, slug, fs)
   │       emit: "  {agentId}:  Need Attention ({N} findings)\n"
   │
   └── // Optimizer (author) dispatch detection:
@@ -1050,21 +1095,22 @@ emitProgressLines(state, phaseId, reviewState, featureFolder, slug, stdout)
 **`countFindingsInCrossReviewFile()`:**
 
 ```typescript
-function countFindingsInCrossReviewFile(
+async function countFindingsInCrossReviewFile(
   featureFolder: string,
   agentId: string,
-  phase: PhaseDefinition,
+  phaseId: string,
   reviewState: ReviewState | undefined,
   slug: string,
-): number | "?"
+  fs: FileSystem,
+): Promise<number | "?">
 ```
 
-Resolves the cross-review file path using the versioned path for the current iteration, consistent with REQ-CLI-03 and FSPEC-CLI-03:
+Accepts the injected `FileSystem` dependency (same `deps.fs` used by `RunCommand`) and uses the async `readFile()` method, keeping the function fully testable with `FakeFileSystem`. Resolves the cross-review file path using the versioned path for the current iteration, consistent with REQ-CLI-03 and FSPEC-CLI-03:
 
 ```
-countFindingsInCrossReviewFile(featureFolder, agentId, phase, reviewState, slug)
+countFindingsInCrossReviewFile(featureFolder, agentId, phaseId, reviewState, slug, fs)
   │
-  ├── docType = deriveDocumentType(phase.id)
+  ├── docType = deriveDocumentType(phaseId)
   │   // e.g. "req-review" → "REQ", "tspec-review" → "TSPEC"
   │
   ├── skillName = agentIdToSkillName(agentId) ?? agentId
@@ -1079,7 +1125,7 @@ countFindingsInCrossReviewFile(featureFolder, agentId, phase, reviewState, slug)
   │   //      round 2: "...CROSS-REVIEW-product-manager-REQ-v2.md"
   │
   ├── try:
-  │     content = fs.readFileSync(filePath, "utf-8")
+  │     content = await fs.readFile(filePath)
   │   catch:
   │     return "?"  // file not found or unreadable
   │
@@ -1736,11 +1782,10 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `--from-phase` valid | Workflow starts at given phase |
 | `--from-phase` invalid | Returns exit 1, full phase list in error |
 | Auto-detection — full prefix (REQ+FSPEC+TSPEC present, PLAN absent) | Derives `plan-creation`, prints log message |
-| Auto-detection — gap (FSPEC absent, TSPEC present) | Derives `fspec-creation`, correct message `(REQ found, FSPEC missing)` |
+| Auto-detection — gap (FSPEC absent, TSPEC present) | Derives `fspec-creation` (`lastContiguousIndex === 0`, `hasGapArtifactBeyondFSPEC = true` because TSPEC at index 2 is found), prints `"Auto-detected resume phase: fspec-creation (REQ found, FSPEC missing)"` — covers `lastContiguousIndex === 0` with gap per REQ-CLI-05 AC |
 | Auto-detection — REQ only, no gap | Derives `req-review`, no log message |
 | Auto-detection — all 5 artifacts present | Derives `implementation`, prints log message `(PROPERTIES found, implementation artifact missing)` — covers `lastContiguousIndex === DETECTION_SEQUENCE.length - 1` case (TE F-04-b) |
 | Auto-detection — empty folder (no artifacts, Step 1 bypassed via fake FS) | Derives `req-review`, no log message — covers `lastContiguousIndex === -1` case (TE F-04-a) |
-| Auto-detection — gap at position 2 (TSPEC absent, PLAN present) | Derives `fspec-creation` (FSPEC is the first missing artifact), prints correct message — covers gap at non-REQ position (TE F-04-c) |
 | Auto-detection — phase not in config | Returns exit 1, error message |
 | Duplicate running workflow | Returns exit 1, error message |
 | Temporal query exception during check | Returns exit 1, error with message |
@@ -1757,6 +1802,9 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | Finding count from cross-review file — round 2 (versioned path) | Correct data-row count from `CROSS-REVIEW-{skill}-{doc}-v2.md` (uses `writtenVersions`) |
 | Finding count — file missing | Reports "?" |
 | `emitProgressLines` — unknown/custom phase ID fallback | `label` and `title` both fall back to `phaseId` (TE F-02: unknown phase ID in `PHASE_LABELS`) |
+| Per-phase transition — `Passed ✅` emitted when phase changes and `completedPhaseResults[oldPhaseId] === "passed"` | AT-CLI-03-D: state transitions from `req-review` to `fspec-review`; `completedPhaseResults["req-review"] = "passed"`; asserts stdout contains `[Phase R — REQ Review] Passed ✅` before the next phase lines |
+| Per-phase transition — `Revision Bound Reached ⚠️` emitted when `completedPhaseResults[oldPhaseId] === "revision-bound-reached"` | Mirrors AT-CLI-03-D but with revision-bound outcome |
+| Per-phase transition — no completion line for creation/approved phases (no `completedPhaseResults` entry) | When phase changes from a non-review phase (e.g., `req-creation`) to a review phase, no Passed/Revision Bound line is emitted |
 | `statusFilter` passed to listWorkflowsByPrefix — filter values correct | Asserts `["Running", "ContinuedAsNew"]` is passed |
 | `FakeTemporalClient.listWorkflowsByPrefix` with statusFilter — excludes non-matching statuses | Populate `workflowIds` and `workflowStatuses` with mix of Running and Terminated; assert only Running/ContinuedAsNew are returned (TE F-03: verifies fake correctly filters by status, not just records the call) |
 
@@ -1809,9 +1857,20 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 | `buildInitialWorkflowState` — reviewStates have writtenVersions: {} | REQ-NF-04 |
 | `buildInitialWorkflowState` — state has artifactExists: {} | Section 4.3 |
 | `buildInitialWorkflowState` — state has activeAgentIds: [] | Section 4.3 |
+| `buildInitialWorkflowState` — state has completedPhaseResults: {} | Section 4.3 |
 | `buildContinueAsNewPayload` — writtenVersions preserved | REQ-NF-04 |
 | `buildContinueAsNewPayload` — reviewStates carried across CAN | FSPEC-CR-01 AT-CR-01-F |
 | Static-scan: no `mapRecommendationToStatus` in source | REQ-CR-05 FSPEC-CR-02 AT-CR-02-E |
+
+**`tests/unit/temporal/activities/artifact-activity.test.ts`** — new file:
+
+| Test | Covers |
+|------|--------|
+| `checkArtifactExists` — file exists with non-empty content → `true` | Section 5.8, 11 |
+| `checkArtifactExists` — file exists but content is whitespace-only → `false` | Section 5.8: `content.trim().length > 0` contract |
+| `checkArtifactExists` — `fs.readFile()` throws (file not found) → `false` | Section 5.8: catch returns false |
+| `checkArtifactExists` — path construction: `featurePath` + `docType` + `-` + `slug` + `.md` | Section 5.8: `${featurePath}${docType}-${slug}.md` |
+| `checkArtifactExists` — `featurePath` ends with `/` (e.g., `"docs/in-progress/my-feature/"`) → correct path `"docs/in-progress/my-feature/REQ-my-feature.md"` | Section 5.8 TE Q-03: path construction with trailing slash |
 
 **`tests/unit/commands/init.test.ts`** — update:
 
@@ -1878,6 +1937,7 @@ it("does not contain mapRecommendationToStatus after cleanup", () => {
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Senior Software Engineer | Initial TSPEC. Full technical design covering all 25 requirements across CLI, workflow engine, agent configuration, cross-review mechanics, and non-functional requirements. |
 | 1.1 | April 22, 2026 | Senior Software Engineer | Addressed cross-review feedback (iteration 1) from product-manager (6 High/Medium findings) and test-engineer (4 High findings). Key changes: (1) **PM F-01 / TE F-02 (High):** Corrected `isCompletionReady()` sign-off type from timestamp string to boolean (`=== true` check); updated function signature to `Record<string, boolean>`; updated legacy fallback to use `=== true`; aligned with FSPEC-WF-02 BR-WF-09. (2) **PM F-02 (High):** Resolved `SKILL_TO_AGENT`/`AGENT_TO_SKILL` key-collision: documented constraint conflict (REQ-CR-01 "derived exclusively by reversal" is irreconcilable with backward-compat many-to-one requirement); chose `LEGACY_AGENT_TO_SKILL` supplement approach with REQ amendment recommendation; removed `LEGACY_AGENT_TO_SKILL` as a rogue workaround, elevated it as the specified and justified implementation; all 7 `agentIdToSkillName` ACs satisfied. (3) **PM F-03 / TE F-04 (High):** Removed the in-document correction note from `resolveStartPhase()`; published single authoritative algorithm with clearly enumerated cases (`lastContiguousIndex === -1`, `=== 0 with/without gap`, `> 0`, `=== length-1`); added phase-map summary table. (4) **PM F-04 (Medium):** `countFindingsInCrossReviewFile()` now resolves versioned path via `reviewState.writtenVersions[agentId]` instead of always using the unversioned path; full function signature and algorithm specified. (5) **PM F-05 (Medium):** Added `activeAgentIds: string[]` field to `FeatureWorkflowState` (Section 4.3) with lifecycle semantics; fixed `pollUntilTerminal()` to use `PHASE_LABELS` static map (not `state.workflowConfig`) for phase lookup; fixed `emitProgressLines()` to derive optimizer dispatch line from `state.activeAgentIds`; fallback for unknown phase IDs documented. (6) **PM F-06 (Medium):** Added explicit note to YAML template stating FSPEC/TSPEC/PLAN/PROPERTIES creation phases intentionally have no `skip_if` conditions; documented scope rationale. (7) **TE F-01 (High):** Added negative partial-match test for `parseRecommendation()` (superset string must return `revision_requested`). (8) **TE F-03 (High):** Added `FakeTemporalClient` status-filter correctness test (populate both `workflowIds` and `workflowStatuses`; verify non-matching statuses are excluded). (9) **TE F-04 (High):** Added missing `resolveStartPhase()` test cases: empty folder (`lastContiguousIndex === -1`), all-5-artifacts-present (`implementation`), gap at position 2 (TSPEC absent, PLAN present). (10) **TE F-08 (Medium):** Added `agentIdToSkillName("fe")` → `"frontend-engineer"` to test table. (11) General: updated `emitProgressLines()` signature to accept `phaseId: string` instead of `phase: PhaseDefinition`; `pollUntilTerminal()` deduplication state now includes `activeAgentIds`; removed `state.workflowConfig` access from polling loop. |
+| 1.2 | April 22, 2026 | Senior Software Engineer | Addressed cross-review feedback (iteration 2) from product-manager (4 Medium findings) and test-engineer (3 Medium findings). Key changes: (1) **PM F-01 (Medium):** Fixed `ContinueAsNewPayload.signOffs` type from `Record<string, string>` to `Record<string, boolean>` (Section 4.6) — consistent with `FeatureWorkflowState.signOffs` updated in v1.1 and `buildContinueAsNewPayload()` parameter type. (2) **PM F-02 / TE F-01 (Medium):** Corrected "gap at position 2" test description to "gap (FSPEC absent, TSPEC present)" — the original "TSPEC absent, PLAN present" description was inconsistent with the expected result `fspec-creation` and the REQ-CLI-05 AC phrasing. Removed duplicate test row. (3) **PM F-03 (Medium):** Changed `countFindingsInCrossReviewFile()` third parameter from `phase: PhaseDefinition` to `phaseId: string`; updated pseudocode body to call `deriveDocumentType(phaseId)` directly; aligned call site in `emitProgressLines()` (call already passed `phaseId`). (4) **PM F-04 (Medium):** Specified per-phase `Passed ✅` / `Revision Bound Reached ⚠️` emission path: added `completedPhaseResults: Record<string, "passed" | "revision-bound-reached">` to `FeatureWorkflowState` (Section 4.3); documented lifecycle (set by workflow on review phase exit); added `lastTrackedPhaseId` to `pollUntilTerminal()` for transition detection; emission block reads `completedPhaseResults[exitedPhaseId]` and writes the appropriate line. Added three test cases to Section 13.2 covering passed, revision-bound, and non-review-phase transitions. (5) **TE F-02 (Medium):** Changed `countFindingsInCrossReviewFile()` to use injected async `FileSystem.readFile()` instead of `fs.readFileSync`; function signature changed to `async` returning `Promise<number | "?">`; added `fs: FileSystem` parameter; updated `emitProgressLines()` to be `async` and `await` the call; added `fs: FileSystem` to `PollParams` interface threaded from `RunCommandDeps`. (6) **TE F-05 (Medium):** Added unit tests for `checkArtifactExists` activity to new `tests/unit/temporal/activities/artifact-activity.test.ts`; added file to Section 3.1 new files list; covers non-empty file → true, whitespace-only → false, read error → false, path construction, and trailing-slash normalization. |
 
 ---
 
