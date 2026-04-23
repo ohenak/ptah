@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Mock @temporalio/client before any imports that use it
 vi.mock("@temporalio/client", () => {
@@ -500,5 +503,19 @@ describe("TemporalClientWrapperImpl", () => {
         client.signalAdHocRevision("ptah-auth-feature", adHocSignal),
       ).rejects.toThrow(/not connected/i);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.9: bin/ptah.ts registers checkArtifactExists activity
+// ---------------------------------------------------------------------------
+
+describe("bin/ptah.ts static-structure: checkArtifactExists activity registration", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const binPtahPath = path.resolve(currentDir, "../../../bin/ptah.ts");
+
+  it("bin/ptah.ts source contains the checkArtifactExists token", () => {
+    const source = fs.readFileSync(binPtahPath, "utf-8");
+    expect(source).toContain("checkArtifactExists");
   });
 });

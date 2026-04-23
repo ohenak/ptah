@@ -85,6 +85,52 @@ export class DefaultWorkflowValidator implements WorkflowValidator {
             message: `Phase "${phase.id}" of type "review" must have "reviewers" field with at least one manifest.`,
           });
         }
+
+        // PROP-WFV-01: revision_bound required for review phases
+        if (phase.revision_bound === undefined || phase.revision_bound === null) {
+          errors.push({
+            phase: phase.id,
+            field: "revision_bound",
+            message: `Phase "${phase.id}" of type "review" must have a "revision_bound" field.`,
+          });
+        }
+      }
+
+      // PROP-WFV-02, PROP-WFV-03, PROP-WFV-04: validate skip_if block
+      if (phase.skip_if !== undefined) {
+        this.validateSkipIfBlock(phase, errors);
+      }
+    }
+  }
+
+  private validateSkipIfBlock(phase: PhaseDefinition, errors: ValidationError[]): void {
+    const skipIf = phase.skip_if as unknown as Record<string, unknown>;
+
+    if (skipIf["field"] === "artifact.exists") {
+      // PROP-WFV-04: artifact.exists must NOT have equals
+      if ("equals" in skipIf) {
+        errors.push({
+          phase: phase.id,
+          field: "skip_if",
+          message: `Phase "${phase.id}" skip_if with field "artifact.exists" must not have an "equals" property (malformed discriminated union).`,
+        });
+      }
+      // PROP-WFV-03: artifact.exists must have a non-empty artifact field
+      if (!skipIf["artifact"] || typeof skipIf["artifact"] !== "string" || skipIf["artifact"] === "") {
+        errors.push({
+          phase: phase.id,
+          field: "skip_if",
+          message: `Phase "${phase.id}" skip_if with field "artifact.exists" must have a non-empty "artifact" field.`,
+        });
+      }
+    } else {
+      // config.* branch: must NOT have artifact property
+      if ("artifact" in skipIf) {
+        errors.push({
+          phase: phase.id,
+          field: "skip_if",
+          message: `Phase "${phase.id}" skip_if with a config.* field must not have an "artifact" property (malformed discriminated union).`,
+        });
       }
     }
   }

@@ -101,8 +101,8 @@ export interface FeatureWorkflowState {
   featurePath: string | null;
   /** Absolute path to the active worktree root (e.g. "/tmp/ptah-wt-abc123/") */
   worktreeRoot: string | null;
-  /** Sign-off tracking: agent ID → ISO 8601 timestamp of LGTM */
-  signOffs: Record<string, string>;
+  /** Sign-off tracking: agent ID → true (approved) or false (revision requested) */
+  signOffs: Record<string, boolean>;
 
   // --- Agent Coordination ---
   /** FIFO queue of pending ad-hoc revision signals */

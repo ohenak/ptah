@@ -14,10 +14,13 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { WorkflowConfig } from "../../../../src/config/workflow-config.js";
 import type { FeatureConfig } from "../../../../src/types.js";
-import type { AdHocRevisionSignal } from "../../../../src/temporal/types.js";
+import type { AdHocRevisionSignal, ReviewState } from "../../../../src/temporal/types.js";
 import {
   buildInitialWorkflowState,
   buildContinueAsNewPayload,
+  evaluateSkipCondition,
+  isCompletionReady,
+  deriveDocumentType,
 } from "../../../../src/temporal/workflows/feature-lifecycle.js";
 
 // ---------------------------------------------------------------------------
@@ -109,6 +112,7 @@ describe("buildContinueAsNewPayload — ad-hoc queue carry-over", () => {
       featurePath: "docs/in-progress/test-feature/" as string | null,
       signOffs: {},
       adHocQueue: signals,
+      reviewStates: {},
     };
 
     const payload = buildContinueAsNewPayload(state);
@@ -121,6 +125,7 @@ describe("buildContinueAsNewPayload — ad-hoc queue carry-over", () => {
       featurePath: "docs/in-progress/test-feature/" as string | null,
       signOffs: {},
       adHocQueue: [] as AdHocRevisionSignal[],
+      reviewStates: {},
     };
 
     const payload = buildContinueAsNewPayload(state);
@@ -134,6 +139,7 @@ describe("buildContinueAsNewPayload — ad-hoc queue carry-over", () => {
       featurePath: "docs/in-progress/test-feature/" as string | null,
       signOffs: {},
       adHocQueue: signals,
+      reviewStates: {},
     };
 
     const payload = buildContinueAsNewPayload(state);
@@ -545,5 +551,418 @@ describe("REQ-RC-01 E5: runReviewCycle sets phaseStatus to revision-bound-reache
     // Find the wf.condition call that follows the revision-bound-reached assignment
     const conditionAfterStatus = fnBody.indexOf("wf.condition", statusIdx);
     expect(conditionAfterStatus).toBeGreaterThan(statusIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.3: evaluateSkipCondition — artifact.exists branch
+// PROP-SC-01 through PROP-SC-05
+// ---------------------------------------------------------------------------
+
+function makeFeatureConfigForEvaluate(overrides?: Partial<FeatureConfig>): FeatureConfig {
+  return { name: "test", slug: "test", discipline: "fullstack", skipFspec: false, ...overrides };
+}
+
+describe("evaluateSkipCondition — artifact.exists branch (PROP-SC-01 through PROP-SC-04)", () => {
+  it("returns true when artifactExists[condition.artifact] is true (PROP-SC-01)", () => {
+    const condition = { field: "artifact.exists" as const, artifact: "REQ" };
+    const featureConfig = makeFeatureConfigForEvaluate();
+    const artifactExists = { REQ: true };
+
+    const result = evaluateSkipCondition(condition, featureConfig, artifactExists);
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when artifactExists[condition.artifact] is false (PROP-SC-02)", () => {
+    const condition = { field: "artifact.exists" as const, artifact: "REQ" };
+    const featureConfig = makeFeatureConfigForEvaluate();
+    const artifactExists = { REQ: false };
+
+    const result = evaluateSkipCondition(condition, featureConfig, artifactExists);
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when artifact key is absent from artifactExists map (PROP-SC-03)", () => {
+    const condition = { field: "artifact.exists" as const, artifact: "FSPEC" };
+    const featureConfig = makeFeatureConfigForEvaluate();
+    const artifactExists = { REQ: true }; // FSPEC not populated
+
+    const result = evaluateSkipCondition(condition, featureConfig, artifactExists);
+
+    expect(result).toBe(false);
+  });
+
+  it("throws with exact error message when artifactExists is undefined (PROP-SC-04)", () => {
+    const condition = { field: "artifact.exists" as const, artifact: "REQ" };
+    const featureConfig = makeFeatureConfigForEvaluate();
+
+    expect(() => {
+      evaluateSkipCondition(condition, featureConfig, undefined);
+    }).toThrow(
+      "evaluateSkipCondition: artifactExists map not yet populated — checkArtifactExists Activity must run before evaluating artifact.exists conditions"
+    );
+  });
+});
+
+describe("evaluateSkipCondition — config.* branch still works", () => {
+  it("returns true when config field matches equals=true", () => {
+    const condition = { field: "config.skipFspec" as `config.${string}`, equals: true };
+    const featureConfig = makeFeatureConfigForEvaluate({ skipFspec: true });
+
+    const result = evaluateSkipCondition(condition, featureConfig);
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when config field does not match", () => {
+    const condition = { field: "config.skipFspec" as `config.${string}`, equals: true };
+    const featureConfig = makeFeatureConfigForEvaluate({ skipFspec: false });
+
+    const result = evaluateSkipCondition(condition, featureConfig);
+
+    expect(result).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.4: buildInitialWorkflowState initializes artifactExists/completedPhaseResults
+// ---------------------------------------------------------------------------
+
+describe("buildInitialWorkflowState — Phase 3 new fields", () => {
+  it("initializes artifactExists as empty object", () => {
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: { version: 1, phases: [{ id: "req", name: "REQ", type: "creation", agent: "pm" }] },
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    expect(state.artifactExists).toEqual({});
+  });
+
+  it("initializes completedPhaseResults as empty object", () => {
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: { version: 1, phases: [{ id: "req", name: "REQ", type: "creation", agent: "pm" }] },
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    expect(state.completedPhaseResults).toEqual({});
+  });
+
+  it("initializes activeAgentIds as empty array", () => {
+    const state = buildInitialWorkflowState({
+      featureSlug: "test-feature",
+      featureConfig: makeFeatureConfigForEvaluate(),
+      workflowConfig: { version: 1, phases: [{ id: "req", name: "REQ", type: "creation", agent: "pm" }] },
+      startedAt: "2026-04-22T00:00:00Z",
+    });
+
+    expect(state.activeAgentIds).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.7: isCompletionReady — dynamic derivation from workflowConfig
+// PROP-ICR-01 through PROP-ICR-07
+// ---------------------------------------------------------------------------
+
+function makeWorkflowConfigWithImplReview(reviewers: string[]): WorkflowConfig {
+  return {
+    version: 1,
+    phases: [
+      { id: "req-creation", name: "REQ", type: "creation", agent: "pm" },
+      {
+        id: "implementation-review",
+        name: "Implementation Review",
+        type: "review",
+        reviewers: { default: reviewers },
+        revision_bound: 5,
+      },
+    ],
+  };
+}
+
+function makeWorkflowConfigWithoutImplReview(): WorkflowConfig {
+  return {
+    version: 1,
+    phases: [
+      { id: "req-creation", name: "REQ", type: "creation", agent: "pm" },
+    ],
+  };
+}
+
+describe("isCompletionReady — dynamic derivation (PROP-ICR-01 through PROP-ICR-07)", () => {
+  it("returns true when all implementation-review phase reviewers have signOffs=true (PROP-ICR-01)", () => {
+    const config = makeWorkflowConfigWithImplReview(["pm-review", "te-review"]);
+    const signOffs = { "pm-review": true, "te-review": true };
+
+    expect(isCompletionReady(signOffs, config)).toBe(true);
+  });
+
+  it("returns false when at least one reviewer does not have signOff=true (PROP-ICR-02)", () => {
+    const config = makeWorkflowConfigWithImplReview(["pm-review", "te-review"]);
+    const signOffs = { "pm-review": true, "te-review": false };
+
+    expect(isCompletionReady(signOffs, config)).toBe(false);
+  });
+
+  it("returns false when a reviewer signOff is absent (PROP-ICR-02)", () => {
+    const config = makeWorkflowConfigWithImplReview(["pm-review", "te-review"]);
+    const signOffs = { "pm-review": true };
+
+    expect(isCompletionReady(signOffs, config)).toBe(false);
+  });
+
+  it("falls back to legacy signOffs.qa && signOffs.pm when no implementation-review phase (PROP-ICR-03)", () => {
+    const config = makeWorkflowConfigWithoutImplReview();
+    const signOffs = { qa: true, pm: true };
+
+    expect(isCompletionReady(signOffs, config)).toBe(true);
+  });
+
+  it("legacy fallback returns false when qa or pm is missing (PROP-ICR-03)", () => {
+    const config = makeWorkflowConfigWithoutImplReview();
+    const signOffs = { pm: true };
+
+    expect(isCompletionReady(signOffs, config)).toBe(false);
+  });
+
+  it("returns true when implementation-review has empty reviewers list (PROP-ICR-04 — vacuous truth)", () => {
+    const config = makeWorkflowConfigWithImplReview([]);
+    const signOffs = {};
+
+    expect(isCompletionReady(signOffs, config)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.8: deriveDocumentType — DOCUMENT_TYPE_OVERRIDES
+// PROP-RRC-06
+// ---------------------------------------------------------------------------
+
+describe("deriveDocumentType — PROP-RRC-06: properties-tests maps to PROPERTIES", () => {
+  it("returns PROPERTIES for properties-tests phase ID", () => {
+    expect(deriveDocumentType("properties-tests")).toBe("PROPERTIES");
+  });
+
+  it("still returns correct values for non-overridden phase IDs", () => {
+    expect(deriveDocumentType("req-review")).toBe("REQ");
+    expect(deriveDocumentType("fspec-creation")).toBe("FSPEC");
+    expect(deriveDocumentType("tspec-review")).toBe("TSPEC");
+    expect(deriveDocumentType("properties-review")).toBe("PROPERTIES");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.8: buildContinueAsNewPayload — includes reviewStates
+// PROP-CNP-01, PROP-CNP-03, PROP-CNP-04
+// ---------------------------------------------------------------------------
+
+describe("buildContinueAsNewPayload — reviewStates inclusion (PROP-CNP-01, PROP-CNP-03, PROP-CNP-04)", () => {
+  it("includes reviewStates in the payload with non-trivial writtenVersions (PROP-CNP-01, PROP-CNP-04)", () => {
+    const reviewStates: Record<string, ReviewState> = {
+      "req-review": {
+        reviewerStatuses: { "se-review": "approved" },
+        revisionCount: 2,
+        writtenVersions: { "se-review": 2 },
+      },
+    };
+
+    const payload = buildContinueAsNewPayload({
+      featurePath: "docs/in-progress/test-feature/",
+      signOffs: {},
+      adHocQueue: [],
+      reviewStates,
+    });
+
+    expect(payload.reviewStates).toBeDefined();
+    expect(payload.reviewStates["req-review"].writtenVersions).toEqual({ "se-review": 2 });
+  });
+
+  it("preserves all existing fields alongside reviewStates (PROP-CNP-03)", () => {
+    const payload = buildContinueAsNewPayload({
+      featurePath: "docs/in-progress/test-feature/",
+      signOffs: { "se-review": true },
+      adHocQueue: [],
+      reviewStates: {},
+    });
+
+    expect(payload.featurePath).toBe("docs/in-progress/test-feature/");
+    expect(payload.worktreeRoot).toBeNull();
+    expect(payload.signOffs).toBeDefined();
+    expect(payload.adHocQueue).toBeDefined();
+    expect(payload.reviewStates).toBeDefined();
+  });
+
+  it("deep-copies reviewStates (writtenVersions preserved, not same reference)", () => {
+    const writtenVersions = { "se-review": 3 };
+    const reviewStates: Record<string, ReviewState> = {
+      "req-review": {
+        reviewerStatuses: {},
+        revisionCount: 3,
+        writtenVersions,
+      },
+    };
+
+    const payload = buildContinueAsNewPayload({
+      featurePath: null,
+      signOffs: {},
+      adHocQueue: [],
+      reviewStates,
+    });
+
+    // Values are preserved
+    expect(payload.reviewStates["req-review"].writtenVersions["se-review"]).toBe(3);
+    // Not same reference — deep copy
+    expect(payload.reviewStates["req-review"].writtenVersions).not.toBe(writtenVersions);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.8: static-scan for mapRecommendationToStatus removal
+// PROP-PR-09, PROP-PR-10
+// ---------------------------------------------------------------------------
+
+describe("PROP-PR-09 / PROP-PR-10: feature-lifecycle.ts static scan", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("does not contain mapRecommendationToStatus (PROP-PR-09)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    expect(source).not.toContain("mapRecommendationToStatus");
+  });
+
+  it("imports parseRecommendation from cross-review-parser (PROP-PR-10)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    expect(source).toContain("parseRecommendation");
+    expect(source).toMatch(/from\s+["'].*cross-review-parser/);
+  });
+
+  it("calls parseRecommendation at least once (PROP-PR-10)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    expect(source).toContain("parseRecommendation(");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.4: static-scan for pre-loop checkArtifactExists Activity
+// PROP-SC-07, PROP-SC-08, PROP-SC-09
+// ---------------------------------------------------------------------------
+
+describe("PROP-SC-07/SC-09: pre-loop checkArtifactExists scan in featureLifecycleWorkflow", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("registers checkArtifactExists activity proxy in the workflow file", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    expect(source).toContain("checkArtifactExists");
+    // Must be in a proxyActivities call
+    expect(source).toMatch(/proxyActivities[\s\S]*?checkArtifactExists/);
+  });
+
+  it("the pre-loop scan uses the full workflowConfig.phases (not filtered by startAtPhase)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // The scan must use workflowConfig.phases to find artifact.exists conditions
+    expect(source).toContain("artifact.exists");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.5: runReviewCycle revision threading
+// PROP-RRC-01, PROP-RRC-02, PROP-RWV-03
+// ---------------------------------------------------------------------------
+
+describe("PROP-RRC-01/RRC-02/RWV-03: runReviewCycle revision threading (static scan)", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("computes currentRevision = reviewState.revisionCount + 1 (PROP-RRC-01)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    expect(fnBody).toContain("revisionCount + 1");
+  });
+
+  it("passes revisionCount to readCrossReviewRecommendation (PROP-RRC-02)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    // readCrossReviewRecommendation call must include revisionCount
+    expect(fnBody).toMatch(/readCrossReviewRecommendation[\s\S]*?revisionCount/);
+  });
+
+  it("updates reviewState.writtenVersions[reviewerId] after dispatch (PROP-RWV-03)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    expect(fnBody).toContain("writtenVersions");
+  });
+
+  it("initializes writtenVersions: {} in new ReviewState construction", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    expect(fnBody).toContain("writtenVersions: {}");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.6: optimizer context uses full version history
+// PROP-RRC-04, PROP-RRC-05, PROP-RWV-07
+// ---------------------------------------------------------------------------
+
+describe("PROP-RRC-04/RRC-05/RWV-07: optimizer context uses full version history (static scan)", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("does not filter reviewers by revision_requested status for optimizer context (PROP-RRC-04)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    // The old filter .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
+    // must be gone from the cross-review context assembly section
+    expect(fnBody).not.toMatch(/\.filter\(\s*\([^)]+\)\s*=>\s*reviewState\.reviewerStatuses\[[^\]]+\]\s*===\s*["']revision_requested["']\s*\)/);
+  });
+
+  it("enumerates versions using writtenVersions for optimizer context paths (PROP-RWV-07)", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    const fnMatch = source.match(
+      /async function runReviewCycle\b[\s\S]*?(?=\n\/\/ -{10,}|\nexport async function )/
+    );
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    // Must use writtenVersions to enumerate paths
+    expect(fnBody).toContain("writtenVersions");
   });
 });

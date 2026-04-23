@@ -210,6 +210,7 @@ async function main(): Promise<void> {
       const { createNotificationActivities } = await import("../src/temporal/activities/notification-activity.js");
       const { createCrossReviewActivities } = await import("../src/temporal/activities/cross-review-activity.js");
       const { createPromotionActivities } = await import("../src/orchestrator/promotion-activity.js");
+      const { createArtifactActivities } = await import("../src/temporal/activities/artifact-activity.js");
       const skillActivities = createActivities({
         skillInvoker,
         contextAssembler,
@@ -231,6 +232,7 @@ async function main(): Promise<void> {
         fs,
         logger,
       });
+      const artifactActivities = createArtifactActivities(fs);
 
       // Create Temporal Worker
       let worker;
@@ -245,6 +247,7 @@ async function main(): Promise<void> {
             promoteBacklogToInProgress: promotionActivities.promoteBacklogToInProgress,
             promoteInProgressToCompleted: promotionActivities.promoteInProgressToCompleted,
             readCrossReviewRecommendation: crossReviewActivities.readCrossReviewRecommendation,
+            checkArtifactExists: artifactActivities.checkArtifactExists,
           },
           logger,
         });
