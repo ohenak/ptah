@@ -68,12 +68,12 @@ describe("InitCommand", () => {
     });
   });
 
-  // Task 16: Creates all files with correct content (was 17, now 18 with ptah.workflow.yaml)
+  // Task 16: Creates all files with correct content (was 17, now 18 with ptah.workflow.yaml; now 20 with 8 new skill stubs)
   describe("file creation", () => {
-    it("creates all 18 files from FILE_MANIFEST", async () => {
+    it("creates all 20 files from FILE_MANIFEST", async () => {
       const result = await command.execute();
       const allFileKeys = Object.keys(FILE_MANIFEST);
-      expect(allFileKeys).toHaveLength(18);
+      expect(allFileKeys).toHaveLength(20);
 
       for (const filePath of allFileKeys) {
         if (filePath === "ptah.config.json") {
@@ -163,7 +163,7 @@ describe("InitCommand", () => {
       // Second run on same fs state
       const result2 = await command.execute();
       expect(result2.created).toHaveLength(0);
-      expect(result2.skipped).toHaveLength(18); // all 18 files
+      expect(result2.skipped).toHaveLength(20); // all 20 files
       expect(result2.committed).toBe(false);
 
       // No git calls made during second run
@@ -240,21 +240,55 @@ describe("InitCommand", () => {
     it("reports correct created, skipped, and committed on fresh repo", async () => {
       const result = await command.execute();
 
-      // All 18 files should be created (directories aren't in created[])
-      expect(result.created).toHaveLength(18);
+      // All 20 files should be created (directories aren't in created[])
+      expect(result.created).toHaveLength(20);
       expect(result.skipped).toHaveLength(0);
       expect(result.committed).toBe(true);
     });
 
     it("reports correct values with mixed existing/new files", async () => {
       fs.addExisting("docs/overview.md", "existing");
-      fs.addExisting("ptah/skills/pm-agent.md", "existing");
+      fs.addExisting("ptah/skills/pm-author.md", "existing");
 
       const result = await command.execute();
 
-      expect(result.created).toHaveLength(16); // 18 - 2 existing
+      expect(result.created).toHaveLength(18); // 20 - 2 existing
       expect(result.skipped).toHaveLength(2);
       expect(result.committed).toBe(true);
+    });
+  });
+
+  // Phase 4 — Task 4.1: 8 new skill stubs are created by ptah init
+  describe("Phase 4 skill stubs", () => {
+    it("creates all 8 new skill stub files", async () => {
+      await command.execute();
+      const expectedSkills = [
+        "ptah/skills/pm-author.md",
+        "ptah/skills/pm-review.md",
+        "ptah/skills/se-author.md",
+        "ptah/skills/se-review.md",
+        "ptah/skills/te-author.md",
+        "ptah/skills/te-review.md",
+        "ptah/skills/tech-lead.md",
+        "ptah/skills/se-implement.md",
+      ];
+      for (const skillPath of expectedSkills) {
+        expect(fs.getFile(skillPath), `Expected skill stub "${skillPath}" to be created`).toBeDefined();
+      }
+    });
+
+    it("does not create old skill stub files (pm-agent.md, dev-agent.md, test-agent.md)", async () => {
+      await command.execute();
+      expect(fs.getFile("ptah/skills/pm-agent.md")).toBeUndefined();
+      expect(fs.getFile("ptah/skills/dev-agent.md")).toBeUndefined();
+      expect(fs.getFile("ptah/skills/test-agent.md")).toBeUndefined();
+    });
+
+    it("does not create old agent-log stub files", async () => {
+      await command.execute();
+      expect(fs.getFile("docs/agent-logs/pm-agent.md")).toBeUndefined();
+      expect(fs.getFile("docs/agent-logs/dev-agent.md")).toBeUndefined();
+      expect(fs.getFile("docs/agent-logs/test-agent.md")).toBeUndefined();
     });
   });
 

@@ -33,10 +33,10 @@ describe("DIRECTORY_MANIFEST", () => {
   });
 });
 
-// Task 10: FILE_MANIFEST
+// Task 10 / Phase 4 Task 4.1: FILE_MANIFEST
 describe("FILE_MANIFEST", () => {
-  it("contains exactly 18 entries (14 content + 3 .gitkeep + ptah.workflow.yaml)", () => {
-    expect(Object.keys(FILE_MANIFEST)).toHaveLength(18);
+  it("contains exactly 20 entries (removed 6 old stubs, added 8 new skill stubs)", () => {
+    expect(Object.keys(FILE_MANIFEST)).toHaveLength(20);
   });
 
   it("contains ptah.workflow.yaml with workflow configuration", () => {
@@ -46,26 +46,48 @@ describe("FILE_MANIFEST", () => {
     expect(FILE_MANIFEST["ptah.workflow.yaml"]).toContain("req-creation");
   });
 
-  it("contains all 14 content files", () => {
+  it("contains all base content files (excluding old agent stubs)", () => {
     const contentFiles = [
       "docs/overview.md",
       "docs/initial_project/requirements.md",
       "docs/initial_project/specifications.md",
       "docs/initial_project/plans.md",
       "docs/initial_project/properties.md",
-      "docs/agent-logs/pm-agent.md",
-      "docs/agent-logs/dev-agent.md",
-      "docs/agent-logs/test-agent.md",
       "docs/open-questions/pending.md",
       "docs/open-questions/resolved.md",
-      "ptah/skills/pm-agent.md",
-      "ptah/skills/dev-agent.md",
-      "ptah/skills/test-agent.md",
       "ptah.config.json",
     ];
     for (const file of contentFiles) {
       expect(FILE_MANIFEST).toHaveProperty(file);
     }
+  });
+
+  it("contains all 8 new skill stub files", () => {
+    const newSkillFiles = [
+      "ptah/skills/pm-author.md",
+      "ptah/skills/pm-review.md",
+      "ptah/skills/se-author.md",
+      "ptah/skills/se-review.md",
+      "ptah/skills/te-author.md",
+      "ptah/skills/te-review.md",
+      "ptah/skills/tech-lead.md",
+      "ptah/skills/se-implement.md",
+    ];
+    for (const file of newSkillFiles) {
+      expect(FILE_MANIFEST).toHaveProperty(file);
+    }
+  });
+
+  it("does NOT contain old skill stub files (pm-agent.md, dev-agent.md, test-agent.md)", () => {
+    expect(FILE_MANIFEST).not.toHaveProperty("ptah/skills/pm-agent.md");
+    expect(FILE_MANIFEST).not.toHaveProperty("ptah/skills/dev-agent.md");
+    expect(FILE_MANIFEST).not.toHaveProperty("ptah/skills/test-agent.md");
+  });
+
+  it("does NOT contain old agent-log stubs", () => {
+    expect(FILE_MANIFEST).not.toHaveProperty("docs/agent-logs/pm-agent.md");
+    expect(FILE_MANIFEST).not.toHaveProperty("docs/agent-logs/dev-agent.md");
+    expect(FILE_MANIFEST).not.toHaveProperty("docs/agent-logs/test-agent.md");
   });
 
   it("contains 3 .gitkeep files with empty content", () => {
@@ -96,12 +118,6 @@ describe("FILE_MANIFEST", () => {
     expect(FILE_MANIFEST["docs/initial_project/properties.md"]).toContain("# Properties");
   });
 
-  it("agent log files contain correct headers", () => {
-    expect(FILE_MANIFEST["docs/agent-logs/pm-agent.md"]).toContain("# PM Agent Log");
-    expect(FILE_MANIFEST["docs/agent-logs/dev-agent.md"]).toContain("# Dev Agent Log");
-    expect(FILE_MANIFEST["docs/agent-logs/test-agent.md"]).toContain("# Test Agent Log");
-  });
-
   it("open-questions files contain correct headers and stubs", () => {
     const pending = FILE_MANIFEST["docs/open-questions/pending.md"];
     expect(pending).toContain("# Pending Questions");
@@ -112,10 +128,15 @@ describe("FILE_MANIFEST", () => {
     expect(resolved).toContain("_Answered questions are moved here from pending.md by the Orchestrator._");
   });
 
-  it("skill placeholder files contain correct content", () => {
-    expect(FILE_MANIFEST["ptah/skills/pm-agent.md"]).toContain("# PM Agent Skill");
-    expect(FILE_MANIFEST["ptah/skills/dev-agent.md"]).toContain("# Dev Agent Skill");
-    expect(FILE_MANIFEST["ptah/skills/test-agent.md"]).toContain("# Test Agent Skill");
+  it("new skill stub files contain correct header and role names", () => {
+    expect(FILE_MANIFEST["ptah/skills/pm-author.md"]).toContain("# PM Author Skill");
+    expect(FILE_MANIFEST["ptah/skills/pm-review.md"]).toContain("# PM Review Skill");
+    expect(FILE_MANIFEST["ptah/skills/se-author.md"]).toContain("# SE Author Skill");
+    expect(FILE_MANIFEST["ptah/skills/se-review.md"]).toContain("# SE Review Skill");
+    expect(FILE_MANIFEST["ptah/skills/te-author.md"]).toContain("# TE Author Skill");
+    expect(FILE_MANIFEST["ptah/skills/te-review.md"]).toContain("# TE Review Skill");
+    expect(FILE_MANIFEST["ptah/skills/tech-lead.md"]).toContain("# Tech Lead Skill");
+    expect(FILE_MANIFEST["ptah/skills/se-implement.md"]).toContain("# SE Implement Skill");
   });
 
   it("ptah.config.json is a function (built via buildConfig)", () => {
@@ -123,9 +144,62 @@ describe("FILE_MANIFEST", () => {
     // that gets replaced by buildConfig() during execution
     expect(FILE_MANIFEST["ptah.config.json"]).toBeDefined();
   });
+
+  // Phase 4 Task 4.3: ptah.workflow.yaml template contains all 19 phases
+  it("ptah.workflow.yaml template contains all 19 phases", () => {
+    const yaml = FILE_MANIFEST["ptah.workflow.yaml"];
+    const expectedPhaseIds = [
+      "req-creation", "req-review", "req-approved",
+      "fspec-creation", "fspec-review", "fspec-approved",
+      "tspec-creation", "tspec-review", "tspec-approved",
+      "plan-creation", "plan-review", "plan-approved",
+      "properties-creation", "properties-review", "properties-approved",
+      "implementation",
+      "properties-tests",
+      "implementation-review",
+      "done",
+    ];
+    for (const phaseId of expectedPhaseIds) {
+      expect(yaml, `Expected phase "${phaseId}" in ptah.workflow.yaml`).toContain(phaseId);
+    }
+  });
+
+  it("ptah.workflow.yaml uses revision_bound: 5 on all 6 review phases", () => {
+    const yaml = FILE_MANIFEST["ptah.workflow.yaml"];
+    const matches = yaml.match(/revision_bound:\s*5/g);
+    // 6 review phases: req-review, fspec-review, tspec-review, plan-review, properties-review, implementation-review
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBe(6);
+  });
+
+  it("ptah.workflow.yaml has skip_if artifact.exists on req-creation", () => {
+    const yaml = FILE_MANIFEST["ptah.workflow.yaml"];
+    expect(yaml).toContain("field: artifact.exists");
+    expect(yaml).toContain("artifact: REQ");
+  });
+
+  it("ptah.workflow.yaml uses default: discipline key for reviewers (no backend-only/frontend-only/fullstack)", () => {
+    const yaml = FILE_MANIFEST["ptah.workflow.yaml"];
+    expect(yaml).toContain("default:");
+    expect(yaml).not.toContain("backend-only:");
+    expect(yaml).not.toContain("frontend-only:");
+    expect(yaml).not.toContain("fullstack:");
+  });
+
+  it("ptah.workflow.yaml has properties-tests phase between implementation and implementation-review", () => {
+    const yaml = FILE_MANIFEST["ptah.workflow.yaml"];
+    const implIdx = yaml.indexOf("id: implementation\n");
+    const propTestsIdx = yaml.indexOf("id: properties-tests");
+    const implReviewIdx = yaml.indexOf("id: implementation-review");
+    expect(implIdx).toBeGreaterThan(-1);
+    expect(propTestsIdx).toBeGreaterThan(-1);
+    expect(implReviewIdx).toBeGreaterThan(-1);
+    expect(implIdx).toBeLessThan(propTestsIdx);
+    expect(propTestsIdx).toBeLessThan(implReviewIdx);
+  });
 });
 
-// Task 11: buildConfig
+// Task 11 / Phase 4 Task 4.2: buildConfig
 describe("buildConfig", () => {
   it("uses provided project name", () => {
     const config = buildConfig("my-project");
@@ -139,12 +213,39 @@ describe("buildConfig", () => {
     expect(parsed.project.name).toBe("my-app");
   });
 
+  // Phase 4 Task 4.2: 8 agents in agents.active
+  it("produces 8 agents in agents.active", () => {
+    const config = buildConfig("test-project");
+    const parsed = JSON.parse(config);
+    expect(parsed.agents.active).toHaveLength(8);
+    expect(parsed.agents.active).toEqual([
+      "pm-author", "pm-review",
+      "se-author", "se-review",
+      "te-author", "te-review",
+      "tech-lead", "se-implement",
+    ]);
+  });
+
+  // Phase 4 Task 4.2: 8 corresponding skill paths in agents.skills
+  it("produces 8 skill paths in agents.skills", () => {
+    const config = buildConfig("test-project");
+    const parsed = JSON.parse(config);
+    expect(Object.keys(parsed.agents.skills)).toHaveLength(8);
+    expect(parsed.agents.skills["pm-author"]).toBe("./ptah/skills/pm-author.md");
+    expect(parsed.agents.skills["pm-review"]).toBe("./ptah/skills/pm-review.md");
+    expect(parsed.agents.skills["se-author"]).toBe("./ptah/skills/se-author.md");
+    expect(parsed.agents.skills["se-review"]).toBe("./ptah/skills/se-review.md");
+    expect(parsed.agents.skills["te-author"]).toBe("./ptah/skills/te-author.md");
+    expect(parsed.agents.skills["te-review"]).toBe("./ptah/skills/te-review.md");
+    expect(parsed.agents.skills["tech-lead"]).toBe("./ptah/skills/tech-lead.md");
+    expect(parsed.agents.skills["se-implement"]).toBe("./ptah/skills/se-implement.md");
+  });
+
   it("contains all required default fields", () => {
     const config = buildConfig("test-project");
     const parsed = JSON.parse(config);
 
     expect(parsed.agents.model).toBe("claude-sonnet-4-6");
-    expect(parsed.agents.active).toEqual(["pm-agent", "dev-agent", "test-agent"]);
     expect(parsed.orchestrator.max_turns_per_thread).toBe(10);
     expect(parsed.orchestrator.retry_attempts).toBe(3);
     expect(parsed.git.commit_prefix).toBe("[ptah]");

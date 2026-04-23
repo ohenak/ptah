@@ -50,21 +50,6 @@ _This file will be populated by the Dev Agent._
 _This file will be populated by the Test Agent._
 `,
 
-  "docs/agent-logs/pm-agent.md": `# PM Agent Log
-
-_Entries appended by the Orchestrator after each Skill invocation._
-`,
-
-  "docs/agent-logs/dev-agent.md": `# Dev Agent Log
-
-_Entries appended by the Orchestrator after each Skill invocation._
-`,
-
-  "docs/agent-logs/test-agent.md": `# Test Agent Log
-
-_Entries appended by the Orchestrator after each Skill invocation._
-`,
-
   "docs/open-questions/pending.md": `# Pending Questions
 
 _Questions from agents will be appended here by the Orchestrator._
@@ -75,22 +60,52 @@ _Questions from agents will be appended here by the Orchestrator._
 _Answered questions are moved here from pending.md by the Orchestrator._
 `,
 
-  "ptah/skills/pm-agent.md": `# PM Agent Skill
+  "ptah/skills/pm-author.md": `# PM Author Skill
 
-<!-- TODO: Define the PM Agent system prompt during Phase 2. -->
-<!-- This file is loaded by the Orchestrator as the PM Agent's role prompt. -->
+<!-- TODO: Populate this skill prompt with the pm-author role definition. -->
+<!-- This file is loaded by Ptah as the pm-author agent's role prompt. -->
 `,
 
-  "ptah/skills/dev-agent.md": `# Dev Agent Skill
+  "ptah/skills/pm-review.md": `# PM Review Skill
 
-<!-- TODO: Define the Dev Agent system prompt during Phase 2. -->
-<!-- This file is loaded by the Orchestrator as the Dev Agent's role prompt. -->
+<!-- TODO: Populate this skill prompt with the pm-review role definition. -->
+<!-- This file is loaded by Ptah as the pm-review agent's role prompt. -->
 `,
 
-  "ptah/skills/test-agent.md": `# Test Agent Skill
+  "ptah/skills/se-author.md": `# SE Author Skill
 
-<!-- TODO: Define the Test Agent system prompt during Phase 2. -->
-<!-- This file is loaded by the Orchestrator as the Test Agent's role prompt. -->
+<!-- TODO: Populate this skill prompt with the se-author role definition. -->
+<!-- This file is loaded by Ptah as the se-author agent's role prompt. -->
+`,
+
+  "ptah/skills/se-review.md": `# SE Review Skill
+
+<!-- TODO: Populate this skill prompt with the se-review role definition. -->
+<!-- This file is loaded by Ptah as the se-review agent's role prompt. -->
+`,
+
+  "ptah/skills/te-author.md": `# TE Author Skill
+
+<!-- TODO: Populate this skill prompt with the te-author role definition. -->
+<!-- This file is loaded by Ptah as the te-author agent's role prompt. -->
+`,
+
+  "ptah/skills/te-review.md": `# TE Review Skill
+
+<!-- TODO: Populate this skill prompt with the te-review role definition. -->
+<!-- This file is loaded by Ptah as the te-review agent's role prompt. -->
+`,
+
+  "ptah/skills/tech-lead.md": `# Tech Lead Skill
+
+<!-- TODO: Populate this skill prompt with the tech-lead role definition. -->
+<!-- This file is loaded by Ptah as the tech-lead agent's role prompt. -->
+`,
+
+  "ptah/skills/se-implement.md": `# SE Implement Skill
+
+<!-- TODO: Populate this skill prompt with the se-implement role definition. -->
+<!-- This file is loaded by Ptah as the se-implement agent's role prompt. -->
 `,
 
   "docs/architecture/decisions/.gitkeep": "",
@@ -99,34 +114,30 @@ _Answered questions are moved here from pending.md by the Orchestrator._
 
   "ptah.config.json": "CONFIG_PLACEHOLDER",
 
-  "ptah.workflow.yaml": `# Ptah Workflow Configuration
-#
-# This file configures the PDLC workflow phases for this project.
-# It is loaded at startup and validated against the agent registry.
-# See: https://github.com/ohenak/ptah for documentation.
-
-version: 1
+  "ptah.workflow.yaml": `version: 1
 phases:
   # --- Requirements ---
   - id: req-creation
     name: Requirements Creation
     type: creation
-    agent: pm
+    agent: pm-author
     context_documents:
       - "{feature}/overview"
     transition: req-review
+    skip_if:
+      field: artifact.exists
+      artifact: REQ
 
   - id: req-review
-    name: Requirements Review
+    name: REQ Review
     type: review
+    agent: pm-author
     reviewers:
-      backend-only: [eng, qa]
-      frontend-only: [fe, qa]
-      fullstack: [eng, fe, qa]
+      default: [se-review, te-review]
     context_documents:
       - "{feature}/REQ"
     transition: req-approved
-    revision_bound: 3
+    revision_bound: 5
 
   - id: req-approved
     name: Requirements Approved
@@ -135,74 +146,63 @@ phases:
 
   # --- Functional Specification ---
   - id: fspec-creation
-    name: Functional Specification Creation
+    name: FSPEC Creation
     type: creation
-    agent: pm
-    skip_if:
-      field: config.skipFspec
-      equals: true
+    agent: pm-author
     context_documents:
       - "{feature}/REQ"
     transition: fspec-review
 
   - id: fspec-review
-    name: Functional Specification Review
+    name: FSPEC Review
     type: review
-    skip_if:
-      field: config.skipFspec
-      equals: true
+    agent: pm-author
     reviewers:
-      backend-only: [eng, qa]
-      frontend-only: [fe, qa]
-      fullstack: [eng, fe, qa]
+      default: [se-review, te-review]
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
     transition: fspec-approved
-    revision_bound: 3
+    revision_bound: 5
 
   - id: fspec-approved
-    name: Functional Specification Approved
+    name: FSPEC Approved
     type: approved
-    skip_if:
-      field: config.skipFspec
-      equals: true
     transition: tspec-creation
 
   # --- Technical Specification ---
   - id: tspec-creation
-    name: Technical Specification Creation
+    name: TSPEC Creation
     type: creation
-    agent: eng
+    agent: se-author
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
     transition: tspec-review
 
   - id: tspec-review
-    name: Technical Specification Review
+    name: TSPEC Review
     type: review
+    agent: se-author
     reviewers:
-      backend-only: [pm, qa]
-      frontend-only: [pm, qa]
-      fullstack: [pm, qa, fe, eng]
+      default: [pm-review, te-review]
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
       - "{feature}/TSPEC"
     transition: tspec-approved
-    revision_bound: 3
+    revision_bound: 5
 
   - id: tspec-approved
-    name: Technical Specification Approved
+    name: TSPEC Approved
     type: approved
     transition: plan-creation
 
   # --- Execution Plan ---
   - id: plan-creation
-    name: Execution Plan Creation
+    name: PLAN Creation
     type: creation
-    agent: eng
+    agent: se-author
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
@@ -210,30 +210,29 @@ phases:
     transition: plan-review
 
   - id: plan-review
-    name: Execution Plan Review
+    name: PLAN Review
     type: review
+    agent: se-author
     reviewers:
-      backend-only: [pm, qa]
-      frontend-only: [pm, qa]
-      fullstack: [pm, qa, fe, eng]
+      default: [pm-review, te-review]
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
       - "{feature}/TSPEC"
       - "{feature}/PLAN"
     transition: plan-approved
-    revision_bound: 3
+    revision_bound: 5
 
   - id: plan-approved
-    name: Execution Plan Approved
+    name: PLAN Approved
     type: approved
     transition: properties-creation
 
   # --- Test Properties ---
   - id: properties-creation
-    name: Test Properties Creation
+    name: PROPERTIES Creation
     type: creation
-    agent: qa
+    agent: te-author
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
@@ -242,12 +241,11 @@ phases:
     transition: properties-review
 
   - id: properties-review
-    name: Test Properties Review
+    name: PROPERTIES Review
     type: review
+    agent: te-author
     reviewers:
-      backend-only: [pm, eng]
-      frontend-only: [pm, fe]
-      fullstack: [pm, eng, fe]
+      default: [pm-review, se-review]
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
@@ -255,38 +253,52 @@ phases:
       - "{feature}/PLAN"
       - "{feature}/PROPERTIES"
     transition: properties-approved
-    revision_bound: 3
+    revision_bound: 5
 
-  # --- Implementation ---
   - id: properties-approved
-    name: Test Properties Approved
+    name: PROPERTIES Approved
     type: approved
     transition: implementation
 
+  # --- Implementation ---
   - id: implementation
     name: Implementation
     type: implementation
-    agent: eng
+    agent: tech-lead
     context_documents:
       - "{feature}/REQ"
       - "{feature}/FSPEC"
       - "{feature}/TSPEC"
       - "{feature}/PLAN"
       - "{feature}/PROPERTIES"
+    transition: properties-tests
+
+  # --- Properties Tests ---
+  - id: properties-tests
+    name: Properties Tests
+    type: creation
+    agent: se-implement
+    context_documents:
+      - "{feature}/REQ"
+      - "{feature}/TSPEC"
+      - "{feature}/PLAN"
+      - "{feature}/PROPERTIES"
     transition: implementation-review
 
+  # --- Final Review ---
   - id: implementation-review
     name: Implementation Review
     type: review
+    agent: se-author
     reviewers:
-      default: [qa]
+      default: [pm-review, te-review]
     context_documents:
       - "{feature}/REQ"
       - "{feature}/TSPEC"
       - "{feature}/PLAN"
       - "{feature}/PROPERTIES"
     transition: done
-    revision_bound: 3
+    revision_bound: 5
 
   - id: done
     name: Done
@@ -302,17 +314,31 @@ export function buildConfig(projectName: string): string {
       name,
     },
     agents: {
-      active: ["pm-agent", "dev-agent", "test-agent"],
+      active: [
+        "pm-author", "pm-review",
+        "se-author", "se-review",
+        "te-author", "te-review",
+        "tech-lead", "se-implement",
+      ],
       skills: {
-        "pm-agent": "./ptah/skills/pm-agent.md",
-        "dev-agent": "./ptah/skills/dev-agent.md",
-        "test-agent": "./ptah/skills/test-agent.md",
+        "pm-author": "./ptah/skills/pm-author.md",
+        "pm-review": "./ptah/skills/pm-review.md",
+        "se-author": "./ptah/skills/se-author.md",
+        "se-review": "./ptah/skills/se-review.md",
+        "te-author": "./ptah/skills/te-author.md",
+        "te-review": "./ptah/skills/te-review.md",
+        "tech-lead": "./ptah/skills/tech-lead.md",
+        "se-implement": "./ptah/skills/se-implement.md",
       },
       colours: {
-        "pm-agent": "#1F4E79",
-        "dev-agent": "#E65100",
-        "frontend-agent": "#6A1B9A",
-        "test-agent": "#1B5E20",
+        "pm-author": "#1F4E79",
+        "pm-review": "#1F4E79",
+        "se-author": "#E65100",
+        "se-review": "#E65100",
+        "te-author": "#1B5E20",
+        "te-review": "#1B5E20",
+        "tech-lead": "#6A1B9A",
+        "se-implement": "#37474F",
       },
       role_mentions: {},
       model: "claude-sonnet-4-6",

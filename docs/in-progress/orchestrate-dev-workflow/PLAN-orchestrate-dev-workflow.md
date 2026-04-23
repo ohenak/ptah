@@ -125,9 +125,9 @@ Depends on Phase 2 (type changes). Independent of Phase 3. All three tasks can b
 
 | # | Task | Test File | Source File | Status |
 |---|------|-----------|-------------|--------|
-| 4.1 | Update `FILE_MANIFEST` in `defaults.ts`: remove 3 old skill stubs (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and 3 old agent-log stubs from `docs/agent-logs/`. Add 8 new skill stubs under `ptah/skills/`: `pm-author.md`, `pm-review.md`, `se-author.md`, `se-review.md`, `te-author.md`, `te-review.md`, `tech-lead.md`, `se-implement.md`. Update `init.test.ts` assertion to `expect(Object.keys(FILE_MANIFEST).length).toBe(20)`. Assert all 8 skill files created by `ptah init`. | `init.test.ts` | `defaults.ts` | ⬚ |
-| 4.2 | Update `buildConfig()` in `defaults.ts` to produce 8 agents in `agents.active` and 8 corresponding skill paths in `agents.skills`. | `defaults.test.ts` | `defaults.ts` | ⬚ |
-| 4.3 | Replace the `ptah.workflow.yaml` template in `FILE_MANIFEST` with the full 8-role YAML: 19 phases (`req-creation` through `done`), 8-role reviewer matrix, `revision_bound: 5` on all review phases, `properties-tests` phase between `implementation` and `implementation-review`, `skip_if: { field: artifact.exists, artifact: REQ }` on `req-creation`. Reviewers specified as `default:` discipline key. | `defaults.test.ts` | `defaults.ts` | ⬚ |
+| 4.1 | Update `FILE_MANIFEST` in `defaults.ts`: remove 3 old skill stubs (`pm-agent.md`, `dev-agent.md`, `test-agent.md`) and 3 old agent-log stubs from `docs/agent-logs/`. Add 8 new skill stubs under `ptah/skills/`: `pm-author.md`, `pm-review.md`, `se-author.md`, `se-review.md`, `te-author.md`, `te-review.md`, `tech-lead.md`, `se-implement.md`. Update `init.test.ts` assertion to `expect(Object.keys(FILE_MANIFEST).length).toBe(20)`. Assert all 8 skill files created by `ptah init`. | `init.test.ts` | `defaults.ts` | ✅ |
+| 4.2 | Update `buildConfig()` in `defaults.ts` to produce 8 agents in `agents.active` and 8 corresponding skill paths in `agents.skills`. | `defaults.test.ts` | `defaults.ts` | ✅ |
+| 4.3 | Replace the `ptah.workflow.yaml` template in `FILE_MANIFEST` with the full 8-role YAML: 19 phases (`req-creation` through `done`), 8-role reviewer matrix, `revision_bound: 5` on all review phases, `properties-tests` phase between `implementation` and `implementation-review`, `skip_if: { field: artifact.exists, artifact: REQ }` on `req-creation`. Reviewers specified as `default:` discipline key. | `defaults.test.ts` | `defaults.ts` | ✅ |
 
 ---
 
