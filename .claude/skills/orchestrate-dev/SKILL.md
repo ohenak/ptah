@@ -173,8 +173,8 @@ Wait for both agents to complete.
 
 Read both cross-review files. Check the `Recommendation:` line in each.
 
-- **Both Approved or Approved with minor changes** → exit loop, proceed to Step 3.
-- **Either Needs revision** → proceed to 2c.
+- **Both Approved or Approved with Minor Issues** → exit loop, proceed to Step 3.
+- **Either Need Attention** → proceed to 2c.
 
 Report gate status to user: which reviewers approved/failed, summary of critical findings.
 
@@ -408,8 +408,8 @@ Commit and push.
 ```
 
 **Gate Check:**
-- Both Approved → proceed to Step 10.
-- Either Needs revision → optimizer:
+- Both Approved or Approved with Minor Issues → proceed to Step 10.
+- Either Need Attention → optimizer:
 
 ```
 Invoke /se-implement to address implementation review feedback.
@@ -462,8 +462,8 @@ Each review loop has a **maximum of 5 iterations**. If the limit is reached:
 | Recommendation | Gate Decision |
 |----------------|---------------|
 | Approved | ✅ Pass |
-| Approved with minor changes | ✅ Pass |
-| Needs revision | ❌ Fail — trigger optimizer |
+| Approved with Minor Issues | ✅ Pass |
+| Need Attention | ❌ Fail — trigger optimizer |
 
 A gate passes only when **all reviewers** for that phase have issued a passing recommendation.
 
@@ -487,14 +487,14 @@ A gate passes only when **all reviewers** for that phase have issued a passing r
 
 ```
 [Phase R — REQ Review] Iteration 1
-  se-review:  Needs revision (3 findings: 2 High, 1 Low)
-  te-review:  Needs revision (2 findings: 1 High, 1 Medium)
+  se-review:  Need Attention (3 findings: 2 High, 1 Low)
+  te-review:  Need Attention (2 findings: 1 High, 1 Medium)
 
 [Phase R — REQ Review] pm-author addressing 6 findings...
 
 [Phase R — REQ Review] Iteration 2
   se-review:  Approved ✅
-  te-review:  Approved with minor changes ✅
+  te-review:  Approved with Minor Issues ✅
 
 [Phase R] REQ approved — proceeding to FSPEC.
 ```

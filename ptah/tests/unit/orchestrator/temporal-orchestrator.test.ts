@@ -528,8 +528,10 @@ describe("handleMessage — startNewWorkflow (G3)", () => {
       useTechLead: false,
     });
 
-    expect(discord.postPlainMessageCalls).toHaveLength(1);
-    expect(discord.postPlainMessageCalls[0].content).toBe("Started workflow ptah-auth for auth");
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("✅");
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0].content).toBe("Workflow started: ptah-auth");
   });
 
   it("posts notice when workflow already running (WorkflowExecutionAlreadyStartedError)", async () => {
@@ -546,6 +548,7 @@ describe("handleMessage — startNewWorkflow (G3)", () => {
 
     expect(discord.postPlainMessageCalls).toHaveLength(1);
     expect(discord.postPlainMessageCalls[0].content).toBe("Workflow already running for auth");
+    expect(discord.addReactionCalls).toHaveLength(0);
   });
 
   it("posts error when workflow start fails with unexpected error", async () => {
@@ -558,10 +561,10 @@ describe("handleMessage — startNewWorkflow (G3)", () => {
     });
     await orchestrator.handleMessage(msg);
 
-    expect(discord.postPlainMessageCalls).toHaveLength(1);
-    expect(discord.postPlainMessageCalls[0].content).toBe(
-      "Failed to start workflow for auth. Please try again.",
-    );
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("❌");
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0].content).toBe("Failed to start workflow: Temporal unreachable");
   });
 });
 
@@ -628,6 +631,10 @@ describe("handleMessage — user-answer routing (G4)", () => {
 
     // No Discord messages posted (answer is delivered silently)
     expect(discord.postPlainMessageCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+    // A ✅ reaction is added on the success path
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("✅");
   });
 
   it("posts error when user-answer signal delivery fails", async () => {
@@ -644,10 +651,10 @@ describe("handleMessage — user-answer routing (G4)", () => {
     });
     await orchestrator.handleMessage(msg);
 
-    expect(discord.postPlainMessageCalls).toHaveLength(1);
-    expect(discord.postPlainMessageCalls[0].content).toBe(
-      "Failed to deliver answer. Please try again.",
-    );
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("❌");
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0].content).toBe("Failed to route answer: signal failed");
   });
 
   it("silently ignores non-ad-hoc messages when workflow is in running state (BR-DR-09)", async () => {
@@ -1247,5 +1254,495 @@ describe("handleMessage — degenerate thread name slug handling (PROP-DR-24)", 
     // No warning logged — slug is "unnamed", not empty
     const warnings = logger.entriesAt("WARN");
     expect(warnings.filter((w) => w.message.includes("Empty slug"))).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MA: handleMessage — message acknowledgement
+// ---------------------------------------------------------------------------
+
+describe("handleMessage — message acknowledgement (MA)", () => {
+  let discord: FakeDiscordClient;
+  let temporalClient: FakeTemporalClient;
+  let logger: FakeLogger;
+  let agentRegistry: FakeAgentRegistry;
+  let orchestrator: TemporalOrchestrator;
+
+  const pmAgent = makeRegisteredAgent({ id: "pm", display_name: "PM" });
+
+  beforeEach(() => {
+    discord = new FakeDiscordClient();
+    temporalClient = new FakeTemporalClient();
+    logger = new FakeLogger();
+    agentRegistry = new FakeAgentRegistry([pmAgent]);
+    orchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+    );
+  });
+
+  // Standard message fixture for workflow-start tests
+  function makeWorkflowStartMessage() {
+    return createThreadMessage({
+      id: "msg-test",
+      threadId: "thread-test",
+      threadName: "test-feature — define requirements",
+      content: "@pm define requirements",
+    });
+  }
+
+  // Signal-routing fixture
+  function makeSignalRoutingMessage() {
+    temporalClient.workflowStates.set(
+      "ptah-test-feature",
+      defaultFeatureWorkflowState({ featureSlug: "test-feature", phaseStatus: "waiting-for-user" }),
+    );
+    return createThreadMessage({
+      id: "msg-test",
+      threadId: "thread-test",
+      threadName: "test-feature — define requirements",
+      content: "yes, proceed",
+    });
+  }
+
+  // AT-MA-01 — Workflow started: ✅ reaction posted
+  it("AT-MA-01: posts ✅ reaction when workflow starts successfully", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0]).toEqual({
+      channelId: "thread-test",
+      messageId: "msg-test",
+      emoji: "✅",
+    });
+  });
+
+  // AT-MA-02 — Workflow started: reply with workflow ID posted
+  it("AT-MA-02: posts 'Workflow started: {workflowId}' reply when workflow starts successfully", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0]).toEqual({
+      channelId: "thread-test",
+      messageId: "msg-test",
+      content: "Workflow started: ptah-test-feature",
+    });
+  });
+
+  // AT-MA-03 — Signal routed: ✅ reaction posted, no reply, no postPlainMessage
+  it("AT-MA-03: posts ✅ reaction and no reply when signal is routed successfully", async () => {
+    const message = makeSignalRoutingMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("✅");
+    expect(discord.replyToMessageCalls.filter((c) => c.messageId === message.id)).toHaveLength(0);
+    expect(discord.postPlainMessageCalls.filter((c) => c.threadId === message.threadId)).toHaveLength(0);
+  });
+
+  // AT-MA-04 — startWorkflowForFeature() throws: ❌ reaction posted
+  it("AT-MA-04: posts ❌ reaction when startWorkflowForFeature throws", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("❌");
+  });
+
+  // AT-MA-05 — routeUserAnswer() throws: ❌ reaction posted
+  it("AT-MA-05: posts ❌ reaction when routeUserAnswer throws", async () => {
+    const message = makeSignalRoutingMessage();
+    temporalClient.signalError = new Error("signal delivery failed");
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.addReactionCalls[0].emoji).toBe("❌");
+  });
+
+  // AT-MA-06 — Error reply: 'start workflow' operation label
+  it("AT-MA-06: error reply uses 'Failed to start workflow: {message}' when startWorkflowForFeature throws", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe(
+      "Failed to start workflow: connection timeout",
+    );
+  });
+
+  // AT-MA-07 — Error reply: 'route answer' operation label
+  it("AT-MA-07: error reply uses 'Failed to route answer: {message}' when routeUserAnswer throws", async () => {
+    const message = makeSignalRoutingMessage();
+    temporalClient.signalError = new Error("signal delivery failed");
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe(
+      "Failed to route answer: signal delivery failed",
+    );
+  });
+
+  // AT-MA-08 — Error reply: 200-character message not truncated
+  it("AT-MA-08: 200-character error message is not truncated in the reply", async () => {
+    temporalClient.startWorkflowError = new Error("x".repeat(200));
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const body = discord.replyToMessageCalls[0].content;
+    const prefix = "Failed to start workflow: ";
+    expect(body.startsWith(prefix)).toBe(true);
+    expect(body.slice(prefix.length).length).toBe(200);
+    expect(body.endsWith("x".repeat(200))).toBe(true);
+  });
+
+  // AT-MA-09 — Error reply: 201-character message truncated to 200
+  it("AT-MA-09: 201-character error message is truncated to 200 characters in the reply", async () => {
+    temporalClient.startWorkflowError = new Error("x".repeat(201));
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const body = discord.replyToMessageCalls[0].content;
+    const prefix = "Failed to start workflow: ";
+    expect(body.slice(prefix.length).length).toBe(200);
+    expect(body.slice(prefix.length)).toBe("x".repeat(200));
+  });
+
+  // AT-MA-10 — Error reply: non-Error thrown string uses String(err)
+  it("AT-MA-10: non-Error thrown string value uses String(err) in error reply", async () => {
+    temporalClient.startWorkflowErrorValue = "temporal unreachable";
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe(
+      "Failed to start workflow: temporal unreachable",
+    );
+  });
+
+  // Additional — non-Error object thrown value
+  it("Additional: non-Error object thrown value uses String(err) ([object Object]) in error reply", async () => {
+    temporalClient.startWorkflowErrorValue = { code: 503 };
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe(
+      "Failed to start workflow: [object Object]",
+    );
+  });
+
+  // AT-MA-11 — Ack failure: WARN logged, orchestrator unaffected
+  it("AT-MA-11: WARN is logged and handleMessage resolves normally when addReaction throws", async () => {
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message.includes("Acknowledgement failed: rate limited")),
+    ).toBe(true);
+  });
+
+  // AT-MA-12 — Ack failure: addReaction failure does not suppress replyToMessage
+  it("AT-MA-12: addReaction failure does not suppress the replyToMessage call", async () => {
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls.some(
+      (c) => c.content === "Workflow started: ptah-test-feature",
+    )).toBe(true);
+  });
+
+  // AT-MA-13 — Ack calls follow Temporal operation resolution (ordering)
+  it("AT-MA-13: acknowledgement calls follow Temporal operation resolution", async () => {
+    let resolveWorkflow!: (workflowId: string) => void;
+    const deferred = new Promise<string>((resolve) => {
+      resolveWorkflow = resolve;
+    });
+    temporalClient.startFeatureWorkflow = async (_params) => deferred;
+
+    const message = makeWorkflowStartMessage();
+    const handlePromise = orchestrator.handleMessage(message);
+
+    // Flush microtasks to let handleMessage reach the await point
+    // 3 flushes needed: queryWorkflowState → phaseDetector.detect → startFeatureWorkflow
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+
+    resolveWorkflow("ptah-test-feature");
+    await handlePromise;
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+  });
+
+  // AT-MA-14 — No double-acknowledgement per invocation
+  it("AT-MA-14: exactly one ✅ reaction is added per handleMessage invocation", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(
+      discord.addReactionCalls.filter(
+        (c) => c.messageId === message.id && c.emoji === "✅",
+      ).length,
+    ).toBe(1);
+  });
+
+  // AT-MA-15 — No acknowledgement on query failure early-exit
+  it("AT-MA-15: no reaction or reply posted when queryWorkflowState throws (early-exit path)", async () => {
+    temporalClient.queryWorkflowStateError = new Error("Temporal server unreachable");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+  });
+
+  // AT-MA-16 — Dual ack failure: both addReaction and replyToMessage throw
+  it("AT-MA-16: handleMessage resolves normally and logs two WARNs when both addReaction and replyToMessage throw", async () => {
+    discord.addReactionError = new Error("reaction rate limited");
+    discord.replyToMessageError = new Error("reply rate limited");
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message.includes("Acknowledgement failed: reaction rate limited")),
+    ).toBe(true);
+    expect(
+      warnings.some((w) => w.message.includes("Acknowledgement failed: reply rate limited")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-13 — Prefix not counted against 200-char truncation limit
+  it("PROP-MA-13: the 'Failed to start workflow: ' prefix is not counted against the 200-char limit (total length = 226)", async () => {
+    temporalClient.startWorkflowError = new Error("x".repeat(200));
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const content = discord.replyToMessageCalls[0].content;
+    expect(content.length).toBe(226);
+    expect(content.startsWith("Failed to start workflow: ")).toBe(true);
+  });
+
+  // PROP-MA-16 — replyToMessage throws: WARN logged, handleMessage resolves normally
+  it("PROP-MA-16: WARN is logged and handleMessage resolves normally when replyToMessage throws", async () => {
+    discord.replyToMessageError = new Error("reply failed");
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message.includes("Acknowledgement failed: reply failed")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-18 — Non-Error addReaction throw uses String(err) in WARN message
+  it("PROP-MA-18: non-Error thrown value from addReaction uses String(err) in WARN log (not undefined)", async () => {
+    discord.addReactionErrorValue = "rate limit exceeded";
+    const message = makeWorkflowStartMessage();
+
+    await expect(orchestrator.handleMessage(message)).resolves.toBeUndefined();
+
+    const warnings = logger.entriesAt("WARN");
+    expect(
+      warnings.some((w) => w.message === "Acknowledgement failed: rate limit exceeded"),
+    ).toBe(true);
+    expect(
+      warnings.some((w) => w.message === "Acknowledgement failed: undefined"),
+    ).toBe(false);
+  });
+
+  // PROP-MA-20 — Both addReaction and replyToMessage called exactly once per invocation
+  it("PROP-MA-20: exactly one addReaction call and one replyToMessage call per successful handleMessage invocation", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+  });
+
+  // PROP-MA-22 — ✅ and ❌ reactions are mutually exclusive for a single invocation
+  it("PROP-MA-22 (success path): a single handleMessage invocation does not produce both ✅ and ❌ reactions", async () => {
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const distinctEmoji = new Set(discord.addReactionCalls.map((c) => c.emoji));
+    expect(distinctEmoji.size).toBeLessThanOrEqual(1);
+  });
+
+  it("PROP-MA-22 (failure path): a single handleMessage invocation does not produce both ✅ and ❌ reactions", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const distinctEmoji = new Set(discord.addReactionCalls.map((c) => c.emoji));
+    expect(distinctEmoji.size).toBeLessThanOrEqual(1);
+  });
+
+  // PROP-MA-23 — channelId sourced from message.threadId, not message.parentChannelId
+  it("PROP-MA-23: channelId in addReaction and replyToMessage calls equals message.threadId, not message.parentChannelId", async () => {
+    const message = createThreadMessage({
+      id: "msg-test",
+      threadId: "thread-test",
+      parentChannelId: "parent-channel-different",
+      threadName: "test-feature — define requirements",
+      content: "@pm define requirements",
+    });
+    await orchestrator.handleMessage(message);
+
+    for (const call of discord.addReactionCalls) {
+      expect(call.channelId).toBe("thread-test");
+      expect(call.channelId).not.toBe("parent-channel-different");
+    }
+    for (const call of discord.replyToMessageCalls) {
+      expect(call.channelId).toBe("thread-test");
+      expect(call.channelId).not.toBe("parent-channel-different");
+    }
+  });
+
+  // PROP-MA-24 — messageId sourced from message.id
+  it("PROP-MA-24: messageId in addReaction and replyToMessage calls equals message.id", async () => {
+    const message = makeWorkflowStartMessage(); // id = "msg-test"
+    await orchestrator.handleMessage(message);
+
+    for (const call of discord.addReactionCalls) {
+      expect(call.messageId).toBe("msg-test");
+    }
+    for (const call of discord.replyToMessageCalls) {
+      expect(call.messageId).toBe("msg-test");
+    }
+  });
+
+  // PROP-MA-25 — workflowId in reply matches actual returned workflowId
+  it("PROP-MA-25: workflowId in 'Workflow started:' reply is the exact string returned by startWorkflowForFeature()", async () => {
+    const message = makeWorkflowStartMessage(); // featureSlug = "test-feature" → "ptah-test-feature"
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls[0].content).toBe("Workflow started: ptah-test-feature");
+  });
+
+  // PROP-MA-26 — No stack traces in error replies
+  it("PROP-MA-26: error reply does not contain stack traces or 'Error:' prefix", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const content = discord.replyToMessageCalls[0].content;
+    expect(content).toBe("Failed to start workflow: connection timeout");
+    expect(content).not.toContain("at ");
+    expect(content).not.toMatch(/^Error:/);
+  });
+
+  // PROP-MA-28 — WorkflowExecutionAlreadyStartedError → zero reactions, zero replies
+  it("PROP-MA-28: WorkflowExecutionAlreadyStartedError produces no emoji reaction and no replyToMessage call", async () => {
+    const err = new Error("already started");
+    err.name = "WorkflowExecutionAlreadyStartedError";
+    temporalClient.startWorkflowError = err;
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+    expect(
+      discord.postPlainMessageCalls.some((c) => c.content.includes("already running")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-29 — "Failed to query workflows:" never appears in any reply
+  it("PROP-MA-29: no replyToMessage call ever uses the 'Failed to query workflows:' prefix", async () => {
+    // Test across multiple scenarios to guard against rogue labels
+    const scenarios: Array<() => Promise<void>> = [
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        temporalClient.startWorkflowError = new Error("connection timeout");
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+      async () => {
+        discord = new FakeDiscordClient();
+        temporalClient = new FakeTemporalClient();
+        temporalClient.queryWorkflowStateError = new Error("Temporal server unreachable");
+        orchestrator = new TemporalOrchestrator(
+          makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry }),
+        );
+        await orchestrator.handleMessage(makeWorkflowStartMessage());
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      await scenario();
+      expect(
+        discord.replyToMessageCalls.every((c) => !c.content.startsWith("Failed to query workflows:")),
+      ).toBe(true);
+    }
+  });
+
+  // PROP-MA-30 — Phase detection failure → zero reactions, zero replies
+  it("PROP-MA-30: phase detection failure produces no emoji reaction and no replyToMessage call", async () => {
+    const phaseDetector = new FakePhaseDetector();
+    phaseDetector.detectError = new Error("phase detection failed");
+    const localOrchestrator = new TemporalOrchestrator(
+      makeDeps({ discordClient: discord, temporalClient, logger, agentRegistry, phaseDetector }),
+    );
+    const message = makeWorkflowStartMessage();
+    await localOrchestrator.handleMessage(message);
+
+    expect(discord.addReactionCalls).toHaveLength(0);
+    expect(discord.replyToMessageCalls).toHaveLength(0);
+  });
+
+  // PROP-MA-31 — WARN log exact format for acknowledgement failures
+  it("PROP-MA-31: WARN log message for addReaction failure is exactly 'Acknowledgement failed: rate limited'", async () => {
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const warnings = logger.entriesAt("WARN");
+    const ackWarnings = warnings.filter((w) => w.message.includes("Acknowledgement failed"));
+    expect(ackWarnings).toHaveLength(1);
+    expect(ackWarnings[0].message).toBe("Acknowledgement failed: rate limited");
+  });
+
+  // PROP-MA-32 — No ERROR-level log for acknowledgement failures
+  it("PROP-MA-32: acknowledgement failures do not produce any ERROR-level log entries", async () => {
+    discord.addReactionError = new Error("rate limited");
+    discord.replyToMessageError = new Error("reply failed");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    const errorEntries = logger.entriesAt("ERROR");
+    expect(
+      errorEntries.every((e) => !e.message.includes("Acknowledgement failed")),
+    ).toBe(true);
+  });
+
+  // PROP-MA-33 — Failure path: addReaction("❌") fails → replyToMessage still called
+  it("PROP-MA-33: on the failure path, addReaction throwing does not suppress the replyToMessage error reply", async () => {
+    temporalClient.startWorkflowError = new Error("connection timeout");
+    discord.addReactionError = new Error("rate limited");
+    const message = makeWorkflowStartMessage();
+    await orchestrator.handleMessage(message);
+
+    expect(discord.replyToMessageCalls).toHaveLength(1);
+    expect(discord.replyToMessageCalls[0].content).toBe("Failed to start workflow: connection timeout");
   });
 });

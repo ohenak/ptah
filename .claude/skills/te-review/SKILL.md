@@ -107,9 +107,9 @@ Write to `docs/{feature-name}/CROSS-REVIEW-test-engineer-{DOCUMENT-TYPE}[-v{N}].
 
 ## Recommendation
 
-**Approved** / **Approved with minor changes** / **Needs revision**
+**Approved** / **Approved with Minor Issues** / **Need Attention**
 
-> Any High or Medium finding → Needs revision (mandatory).
+> Any High or Medium finding → Need Attention (mandatory).
 ```
 
 ---
@@ -118,8 +118,8 @@ Write to `docs/{feature-name}/CROSS-REVIEW-test-engineer-{DOCUMENT-TYPE}[-v{N}].
 
 | Finding severity | Recommendation |
 |-----------------|---------------|
-| Any High or Medium finding | Needs revision |
-| Low findings only | Approved with minor changes |
+| Any High or Medium finding | Need Attention |
+| Low findings only | Approved with Minor Issues |
 | No findings | Approved |
 
 ---
