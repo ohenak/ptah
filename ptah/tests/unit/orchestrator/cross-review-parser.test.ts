@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   crossReviewPath,
   parseRecommendation,
@@ -294,5 +297,40 @@ describe("extractRecommendationValue", () => {
     // The parser uses last match — cross-review files may have table headers
     const content = "| Recommendation | |\n## Recommendation\nApproved";
     expect(extractRecommendationValue(content)).toBe("Approved");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROP-MAP-08: AGENT_TO_SKILL is derived by reversing SKILL_TO_AGENT (static scan)
+// ---------------------------------------------------------------------------
+
+describe("PROP-MAP-08: AGENT_TO_SKILL derived from SKILL_TO_AGENT reversal (static scan)", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const parserSrcPath = path.resolve(
+    currentDir,
+    "../../../src/orchestrator/pdlc/cross-review-parser.ts"
+  );
+
+  it("source defines SKILL_TO_AGENT before AGENT_TO_SKILL", () => {
+    const source = fs.readFileSync(parserSrcPath, "utf-8");
+    expect(source).toContain("SKILL_TO_AGENT");
+    expect(source).toContain("AGENT_TO_SKILL");
+    const skillToAgentIdx = source.indexOf("SKILL_TO_AGENT");
+    const agentToSkillIdx = source.indexOf("AGENT_TO_SKILL");
+    expect(skillToAgentIdx).toBeLessThan(agentToSkillIdx);
+  });
+
+  it("AGENT_TO_SKILL is built using Object.fromEntries and Object.entries(SKILL_TO_AGENT) — derived, not hand-maintained", () => {
+    const source = fs.readFileSync(parserSrcPath, "utf-8");
+    // The build site must contain the reversal pattern:
+    // Object.fromEntries(Object.entries(SKILL_TO_AGENT).map(...))
+    expect(source).toMatch(/Object\.fromEntries\s*\(\s*Object\.entries\s*\(\s*SKILL_TO_AGENT\s*\)/);
+  });
+
+  it("AGENT_TO_SKILL merges LEGACY_AGENT_TO_SKILL for backward-compat entries", () => {
+    const source = fs.readFileSync(parserSrcPath, "utf-8");
+    expect(source).toContain("LEGACY_AGENT_TO_SKILL");
+    // AGENT_TO_SKILL build block must spread LEGACY_AGENT_TO_SKILL
+    expect(source).toMatch(/AGENT_TO_SKILL[\s\S]*?LEGACY_AGENT_TO_SKILL/);
   });
 });

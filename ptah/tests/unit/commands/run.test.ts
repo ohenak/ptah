@@ -581,6 +581,54 @@ describe("pollUntilTerminal() — advanced behavior", () => {
     expect(allOutput).toContain("[Phase R — REQ Review] Passed");
   });
 
+  // PROP-CLI-24: emits "Revision Bound Reached ⚠️" when completedPhaseResults shows revision-bound-reached
+  it("(h-prop-cli-24) phase transition: emits Revision Bound Reached ⚠️ when completedPhaseResults shows req-review revision-bound-reached (PROP-CLI-24)", async () => {
+    const { pollUntilTerminal } = await importRun();
+    const { FakeTemporalClient: FTC, defaultFeatureWorkflowState } = await import("../../fixtures/factories.js");
+    const temporalClient = new FTC();
+    const workflowId = "ptah-test-feature";
+
+    let callCount = 0;
+    // First poll: req-review running, no completedPhaseResults
+    const runningState = defaultFeatureWorkflowState({
+      phaseStatus: "running",
+      currentPhaseId: "req-review",
+      completedPhaseResults: {},
+    });
+    // Second poll: moved to next phase, req-review completed with revision-bound-reached
+    const nextPhaseState = defaultFeatureWorkflowState({
+      phaseStatus: "running",
+      currentPhaseId: "fspec-creation",
+      completedPhaseResults: { "req-review": "revision-bound-reached" },
+    });
+    const completedState = defaultFeatureWorkflowState({ phaseStatus: "completed" });
+
+    temporalClient.queryWorkflowState = async (_id: string) => {
+      callCount++;
+      if (callCount === 1) return runningState;
+      if (callCount === 2) return nextPhaseState;
+      return completedState;
+    };
+
+    const stdout = makeStdout();
+    const stderr = makeStderr();
+
+    await pollUntilTerminal({
+      workflowId,
+      temporalClient,
+      discordConfig: undefined,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stderr: stderr as unknown as NodeJS.WriteStream,
+      stdin: {} as NodeJS.ReadableStream,
+      featureFolder: "docs/in-progress/test-feature",
+      slug: "test-feature",
+      fs: new FakeFileSystem(),
+    });
+
+    const allOutput = stdout.lines.join("");
+    expect(allOutput).toContain("[Phase R — REQ Review] Revision Bound Reached");
+  });
+
   it("(h) ROUTE_TO_USER state: handleQuestion() is called", async () => {
     const { pollUntilTerminal } = await importRun();
     const { FakeTemporalClient: FTC, defaultFeatureWorkflowState } = await import("../../fixtures/factories.js");

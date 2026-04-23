@@ -21,6 +21,7 @@ import {
   evaluateSkipCondition,
   isCompletionReady,
   deriveDocumentType,
+  computeReviewerList,
 } from "../../../../src/temporal/workflows/feature-lifecycle.js";
 
 // ---------------------------------------------------------------------------
@@ -736,6 +737,66 @@ describe("isCompletionReady — dynamic derivation (PROP-ICR-01 through PROP-ICR
     const signOffs = {};
 
     expect(isCompletionReady(signOffs, config)).toBe(true);
+  });
+
+  // PROP-ICR-05: must use computeReviewerList() to derive required agents
+  it("derives required reviewers via computeReviewerList() on the implementation-review phase (PROP-ICR-05)", () => {
+    // computeReviewerList with the implementation-review phase reviewers manifest should give same result
+    // as what isCompletionReady uses internally
+    const config = makeWorkflowConfigWithImplReview(["pm-review", "te-review"]);
+    const implPhase = config.phases.find((p) => p.id === "implementation-review")!;
+
+    // computeReviewerList derives the list that isCompletionReady uses
+    const derived = computeReviewerList(implPhase, { discipline: "default" } as never);
+    expect(derived).toContain("pm-review");
+    expect(derived).toContain("te-review");
+
+    // isCompletionReady must agree: all present → ready
+    expect(isCompletionReady({ "pm-review": true, "te-review": true }, config)).toBe(true);
+    // one missing → not ready
+    expect(isCompletionReady({ "pm-review": true }, config)).toBe(false);
+  });
+
+  // PROP-ICR-06: approved_with_minor_issues (stored as true) satisfies completion check
+  it("signOff stored as true satisfies completion check for any reviewer (PROP-ICR-06)", () => {
+    // parseRecommendation("Approved with Minor Issues") returns { status: "approved" }
+    // The workflow converts status "approved" → signOffs[agentId] = true
+    // isCompletionReady must count true as approved
+    const config = makeWorkflowConfigWithImplReview(["pm-review"]);
+    const signOffs = { "pm-review": true };
+
+    expect(isCompletionReady(signOffs, config)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROP-ICR-07: static scan — no single-arg isCompletionReady call site
+// ---------------------------------------------------------------------------
+
+describe("PROP-ICR-07: isCompletionReady call sites always pass workflowConfig (static scan)", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const workflowSrcPath = path.resolve(
+    currentDir,
+    "../../../../src/temporal/workflows/feature-lifecycle.ts"
+  );
+
+  it("every isCompletionReady( call is followed by a comma — no single-arg invocation", () => {
+    const source = fs.readFileSync(workflowSrcPath, "utf-8");
+    // Match all call sites: isCompletionReady(...)
+    // A single-arg call would have only one argument before the closing paren
+    // We verify by checking that no call to isCompletionReady has only one argument
+    // Pragmatic approach: find all isCompletionReady( occurrences and check they have a comma
+    const callPattern = /isCompletionReady\(([^)]+)\)/g;
+    let match: RegExpExecArray | null;
+    const singleArgCalls: string[] = [];
+    while ((match = callPattern.exec(source)) !== null) {
+      const args = match[1]!;
+      // If no comma in args, it's a single-argument call
+      if (!args.includes(",")) {
+        singleArgCalls.push(match[0]!);
+      }
+    }
+    expect(singleArgCalls).toHaveLength(0);
   });
 });
 
