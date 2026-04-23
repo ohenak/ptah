@@ -166,6 +166,7 @@ export interface ReadCrossReviewInput {
   featurePath: string;
   agentId: string;
   documentType: string;  // e.g., "REQ", "TSPEC"
+  revisionCount?: number;  // 1-indexed; undefined = revision 1 (unversioned)
 }
 
 export interface CrossReviewResult {
