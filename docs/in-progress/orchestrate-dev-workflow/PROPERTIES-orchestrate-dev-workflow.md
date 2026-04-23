@@ -6,7 +6,7 @@
 |-------|--------|
 | **Document ID** | PROPERTIES-021 |
 | **Parent Documents** | REQ-021 (v1.3), FSPEC-021 (v1.2), TSPEC-021 (v1.2), PLAN-021 (v1.1) |
-| **Version** | 1.1 |
+| **Version** | 1.2 |
 | **Date** | April 22, 2026 |
 | **Author** | Senior Test Engineer |
 | **Status** | Draft |
@@ -24,7 +24,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 | Domain | Count | Property IDs |
 |--------|-------|-------------|
 | CLI — ptah run | 24 | PROP-CLI-01 through PROP-CLI-24 |
-| SkipCondition Evaluation | 9 | PROP-SC-01 through PROP-SC-09 |
+| SkipCondition Evaluation | 10 | PROP-SC-01 through PROP-SC-09, PROP-SC-06A |
 | crossReviewPath Versioning | 6 | PROP-CRP-01 through PROP-CRP-06 |
 | parseRecommendation / VALUE_MATCHERS | 10 | PROP-PR-01 through PROP-PR-10 |
 | AGENT_TO_SKILL Mapping | 9 | PROP-MAP-01 through PROP-MAP-09 |
@@ -36,7 +36,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 | Workflow Validator | 4 | PROP-WFV-01 through PROP-WFV-04 |
 | Backward Compatibility | 1 | PROP-BC-01 |
 
-**Total: 95 properties**
+**Total: 96 properties**
 
 ---
 
@@ -87,11 +87,11 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | `ptah run` must print `Error: ptah.workflow.yaml not found in current directory.` to stdout and exit with code 1 when `ptah.workflow.yaml` is absent from the current working directory. No Temporal workflow must be started. |
+| **Statement** | `ptah run` must print `Error: ptah.workflow.yaml not found in current directory.` to stdout and exit with code 1 when `ptah.workflow.yaml` is absent from the current working directory. No Temporal workflow must be started. This property covers the `YamlWorkflowConfigLoader` catch-and-reformat path described in FSPEC-CLI-01 BR-CLI-06, where `WorkflowConfigError` is caught and reformatted into the context-appropriate headless error message. |
 | **Category** | Error Handling |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.6 |
-| **Requirements** | REQ-CLI-01 |
+| **Requirements** | REQ-CLI-01, FSPEC-CLI-01 (BR-CLI-06) |
 
 ### PROP-CLI-06
 
@@ -157,7 +157,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | Auto-detection must resolve `startAtPhase` to `req-review` with no stdout log message when only the REQ file exists in the feature folder and no gap artifacts (TSPEC, PLAN, PROPERTIES) are present beyond the absent FSPEC. |
+| **Statement** | Auto-detection must resolve `startAtPhase` to `req-review` with no stdout log message when only the REQ file is present in the feature folder (FSPEC, TSPEC, PLAN, and PROPERTIES are all absent). |
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.2 |
@@ -217,7 +217,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | Progress polling must emit `[Phase <label> — <title>] Iteration <N>` for each new review phase iteration and per-reviewer status lines (`Approved ✅` for `approved`; `Need Attention (<N> findings)` for `revision_requested`). Deduplication must suppress repeat emission when phase name, iteration number, all reviewer statuses, AND `completedPhaseResults` are all unchanged between consecutive polls. If `completedPhaseResults` changes (a phase exit result appears) but reviewer statuses are otherwise identical, the deduplication key is treated as changed and new lines are emitted. |
+| **Statement** | Progress polling must emit `[Phase <label> — <title>] Iteration <N>` for each new review phase iteration and per-reviewer status lines (`Approved ✅` for `approved`; `Need Attention (<N> findings)` for `revision_requested`). Deduplication must suppress repeat emission when the combined deduplication key is unchanged between consecutive polls. The deduplication key is the 4-tuple: (phase name, iteration number, all reviewer statuses as a sorted key-value string, `activeAgentIds` as a sorted comma-separated string). Additionally, any change to `completedPhaseResults` — specifically, a change in the set of phase IDs present in the map OR a change in any phase's result value — invalidates the key and causes new lines to be emitted even if the 4-tuple is otherwise unchanged. The `completedPhaseResults` predicate is: the set of `{phaseId: result}` pairs serialized as a sorted key-value string must be identical across consecutive polls for deduplication to suppress output. |
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.3b, 5.4b |
@@ -277,7 +277,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | `ptah run` progress polling must emit a phase transition line `[Phase <label> — <title>] Revision Bound Reached ⚠️` when `completedPhaseResults[phaseId] = "revision-bound-reached"` is detected in the workflow state for the first time for a given phase. Additionally, the optimizer-dispatch line `[Phase <label> — <title>] <agent-id> addressing feedback...` must be emitted when all reviewers for a phase are done AND `activeAgentIds` contains at least one agent ID — indicating the author agent is actively addressing feedback. Both lines are governed by the same deduplication key (see PROP-CLI-18): they are emitted only when the combined key changes. |
+| **Statement** | `ptah run` progress polling must emit a phase transition line `[Phase <label> — <title>] Revision Bound Reached ⚠️` when `completedPhaseResults[phaseId] = "revision-bound-reached"` is detected in the workflow state for the first time for a given phase. Additionally, the optimizer-dispatch line `[Phase <label> — <title>] <agent-id> addressing feedback...` must be emitted when all reviewers for a phase are done AND `activeAgentIds` contains at least one agent ID — indicating the author agent is actively addressing feedback. Both lines are governed by the same deduplication key (see PROP-CLI-18): they are emitted only when the combined key (phase name, iteration number, reviewer statuses, `activeAgentIds`, and `completedPhaseResults`) changes. In particular, a transition from `activeAgentIds = []` to `activeAgentIds = ["pm-author"]` — with reviewer statuses and `completedPhaseResults` otherwise unchanged — must change the deduplication key and cause the optimizer-dispatch line to be emitted. |
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 5.3b, 5.4b |
@@ -345,6 +345,17 @@ This document defines the testable system properties for the orchestrate-dev wor
 | **Category** | Functional |
 | **Test Level** | Unit |
 | **PLAN Tasks** | 3.2a, 3.2b |
+| **Requirements** | REQ-WF-05 |
+
+### PROP-SC-06A
+
+| Field | Detail |
+|-------|--------|
+| **Statement** | `createArtifactActivities()` factory must return an object that contains a `checkArtifactExists` property of type `function`. A unit test must call `createArtifactActivities(featurePath)` and assert: (a) the return value is an object (not `undefined` or `null`), and (b) `typeof result.checkArtifactExists === "function"`. This verifies the factory return-shape satisfies the `WorkflowActivities` interface contract expected by the Temporal worker registration in `bin/ptah.ts`. If the factory returns the wrong shape, the activity is silently unregistered at Temporal worker startup — a runtime failure that no type-level check can catch. |
+| **Category** | Contract |
+| **Test Level** | Unit |
+| **Test File** | `ptah/tests/unit/temporal/activities/artifact-activity.test.ts` |
+| **PLAN Tasks** | 3.2a |
 | **Requirements** | REQ-WF-05 |
 
 ### PROP-SC-07
@@ -741,9 +752,10 @@ This document defines the testable system properties for the orchestrate-dev wor
 
 | Field | Detail |
 |-------|--------|
-| **Statement** | The agent context prompt injected via `SkillActivityInput.revisionCount` must include the line `Cross-review output file: CROSS-REVIEW-{skillName}-{docType}[-v{N}].md` (with `-v{N}` suffix for N ≥ 2; no suffix for N = 1) so the agent knows exactly where to write its output. |
+| **Statement** | The agent context prompt assembled by `buildInvokeSkillInput()` in `skill-activity.ts` must include the line `Cross-review output file: CROSS-REVIEW-{skillName}-{docType}[-v{N}].md` (with `-v{N}` suffix for N ≥ 2; no suffix for N = 1) so the agent knows exactly where to write its output. The test must be a unit test of `buildInvokeSkillInput()` directly in `skill-activity.test.ts`, asserting on the constructed prompt string — not a test of `runReviewCycle()`, which can only verify that `revisionCount` is passed through the `SkillActivityInput` struct but cannot verify the prompt assembly logic. |
 | **Category** | Contract |
 | **Test Level** | Unit |
+| **Test File** | `ptah/tests/unit/temporal/skill-activity.test.ts` |
 | **PLAN Tasks** | 3.5 |
 | **Requirements** | REQ-NF-03 |
 
@@ -1053,7 +1065,7 @@ This document defines the testable system properties for the orchestrate-dev wor
 | REQ-WF-02 | PROP-INIT-08 | None |
 | REQ-WF-03 | PROP-INIT-05, PROP-RRC-06 | None |
 | REQ-WF-04 | PROP-INIT-06, PROP-WFV-01 | None |
-| REQ-WF-05 | PROP-SC-01 through PROP-SC-09 | None |
+| REQ-WF-05 | PROP-SC-01 through PROP-SC-09, PROP-SC-06A | None |
 | REQ-WF-06 | PROP-ICR-01 through PROP-ICR-07 | None |
 | REQ-AG-01 | PROP-INIT-01, PROP-INIT-02 | None |
 | REQ-AG-02 | PROP-INIT-03, PROP-INIT-04 | None |
@@ -1114,7 +1126,8 @@ The following 2 properties require end-to-end validation (maximum E2E tests per 
 | `ptah/tests/unit/orchestrator/cross-review-parser.test.ts` | PROP-CRP-01–06, PROP-PR-01–10, PROP-MAP-01–09 |
 | `ptah/tests/unit/temporal/cross-review-activity.test.ts` | PROP-CRP-05, PROP-PR-06, PROP-PR-07 |
 | `ptah/tests/unit/temporal/activities/artifact-activity.test.ts` (new) | PROP-SC-06 |
-| `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | PROP-SC-01–09, PROP-RWV-01–07, PROP-RRC-01–06, PROP-ICR-01–07, PROP-CNP-01, PROP-CNP-03–05, PROP-PR-09, PROP-PR-10 |
+| `ptah/tests/unit/temporal/workflows/feature-lifecycle.test.ts` | PROP-SC-01–09, PROP-SC-06A, PROP-RWV-01–07, PROP-RRC-01–02, PROP-RRC-04–06, PROP-ICR-01–07, PROP-CNP-01, PROP-CNP-03–05, PROP-PR-09, PROP-PR-10 |
+| `ptah/tests/unit/temporal/skill-activity.test.ts` | PROP-RRC-03 |
 | `ptah/tests/unit/config/workflow-validator.test.ts` | PROP-INIT-06 (revision_bound validation), PROP-WFV-01–04 |
 | `ptah/tests/unit/config/defaults.test.ts` | PROP-INIT-01–08 |
 | `ptah/tests/unit/commands/init.test.ts` | PROP-INIT-01, PROP-INIT-02 |
@@ -1131,6 +1144,7 @@ The following 2 properties require end-to-end validation (maximum E2E tests per 
 |---------|------|--------|---------|
 | 1.0 | April 22, 2026 | Senior Test Engineer | Initial PROPERTIES document. 87 properties across 10 domains, derived from REQ-021 v1.3, FSPEC-021 v1.2, TSPEC-021 v1.2, and PLAN-021 v1.1. Coverage matrix confirms all 25 requirements have at least one property. 12 negative properties and 2 E2E properties identified. |
 | 1.1 | April 22, 2026 | Senior Test Engineer | Addressed cross-review feedback from product-manager (3 High, 4 Medium) and software-engineer (3 High, 4 Medium). **High findings resolved:** (1) PM-F-01: Added PROP-WFV-01 — workflow validator must throw WorkflowConfigError for review phase missing `revision_bound`, covering REQ-WF-04 negative AC. (2) PM-F-02: Added PROP-WFV-02, PROP-WFV-03, PROP-WFV-04 — YAML validator acceptance of valid `artifact.exists` SkipCondition and rejection of two malformed variants (missing `artifact` field; spurious `equals` field with `artifact.exists`). (3) PM-F-03: Added PROP-CLI-23 (Passed ✅ phase transition) and PROP-CLI-24 (Revision Bound Reached ⚠️ + optimizer-dispatch line) to cover REQ-CLI-03 phase transition output. (4) SE-F-01: Rewrote PROP-RRC-05 — clarified that `runReviewCycle()` builds path list unconditionally and the silent-skip responsibility belongs to `DefaultContextAssembler`; updated PROP-RWV-07 to reflect the same layering. (5) SE-F-02: Fixed PROP-CLI-01 — reclassified from Integration to Unit, added explicit note that FakeTemporalClient drives the test; removed the Integration classification conflict with `tests/unit/` file placement. (6) SE-F-03: Added PROP-SC-09 — negative property asserting the pre-loop scan must still fire for phases before `startAtPhase` when `startAtPhase` is set to a later phase. **Medium findings resolved:** (7) PM-F-04 / SE-F-11: Revised PROP-INIT-02 — replaced hardcoded `20` with derivation rule and instruction to verify baseline count; kept `20` as the PLAN-stated expected value with a verification caveat. (8) PM-F-05: Added PROP-BC-01 (new Backward Compatibility domain) — integration property verifying `ptah start` continues to operate with old 3-agent config post-upgrade. (9) PM-F-06: Removed PROP-CNP-02 (deep-copy requirement) — reclassified as a TSPEC implementation decision not derivable from product requirements; renumbered PROP-CNP-03 and PROP-CNP-04 accordingly (PROP-CNP-02 number retired). (10) SE-F-04: Updated PROP-CLI-06 to explicitly require two independent test cases — one for `Running` status and one for `ContinuedAsNew` status. (11) SE-F-05: Updated PROP-CNP-05 to require the token appear within the activities registration block context, not merely anywhere in the file. (12) SE-F-06: Added PROP-PR-10 — complementary import/call assertion verifying `parseRecommendation` is imported and called in `feature-lifecycle.ts`. (13) SE-F-07: Updated PROP-CLI-18 deduplication key to include `completedPhaseResults` alongside phase, iteration, and reviewer statuses. Property index updated (95 total properties, 12 domains). Coverage matrix updated to include new properties. Negative properties section updated. Test file mapping updated. |
+| 1.2 | April 22, 2026 | Senior Test Engineer | Addressed all Medium findings from second-iteration cross-reviews (software-engineer v2: F-01 through F-04; product-manager v2: F-01 through F-02). **(1) SE-v2-F-01:** Rewrote PROP-CLI-12 statement to remove the ambiguous parenthetical condition inconsistent with PLAN T3 — now reads "only the REQ file is present in the feature folder (FSPEC, TSPEC, PLAN, and PROPERTIES are all absent)." **(2) SE-v2-F-02 + PM-v2-F-01:** Extended PROP-CLI-18 deduplication key to include `activeAgentIds` (as a sorted comma-separated string) as the fourth component of the key tuple. Added exact predicate for `completedPhaseResults` participation: the set of `{phaseId: result}` pairs serialized as a sorted key-value string must be identical across consecutive polls. Updated PROP-CLI-24 to explicitly state that a transition from `activeAgentIds = []` to `activeAgentIds = ["pm-author"]` changes the key and causes the optimizer-dispatch line to be emitted, even when reviewer statuses and `completedPhaseResults` are unchanged. **(3) SE-v2-F-03:** Added PROP-SC-06A — new Contract/Unit property requiring `createArtifactActivities()` factory to return an object with a `checkArtifactExists` function property, covering PLAN task 3.2a test case (d) and guarding against silent Temporal worker registration failures. Test file: `artifact-activity.test.ts`. **(4) SE-v2-F-04:** Corrected PROP-RRC-03 — added explicit Test File field pointing to `skill-activity.test.ts`; updated statement to specify that the test must be a unit test of `buildInvokeSkillInput()` in `skill-activity.ts`, not a test of `runReviewCycle()`. Test file mapping in Section 18 updated: PROP-RRC-03 removed from `feature-lifecycle.test.ts` entry and added to a new `skill-activity.test.ts` entry. **(5) PM-v2-F-02:** Added FSPEC-CLI-01 BR-CLI-06 traceability to PROP-CLI-05 — statement now explicitly names the `WorkflowConfigError` catch-and-reformat path as the source of this behavioral contract; Requirements field updated to include `FSPEC-CLI-01 (BR-CLI-06)`. Property index updated (96 total properties, 12 domains). Coverage matrix updated. |
 
 ---
 
