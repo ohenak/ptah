@@ -6,6 +6,8 @@
  *   C2: revision_requested
  *   C3: parse_error (file not found, unknown agent, unrecognized value, empty file)
  *
+ * Phase 1, Task 1.4: Updated to reflect two-step parse pattern and revisionCount threading.
+ *
  * @see TSPEC Section 5.3, Section 7.3
  */
 
@@ -290,5 +292,105 @@ describe("readCrossReviewRecommendation — parse_error paths", () => {
     expect(warnMessages).toHaveLength(1);
     expect(warnMessages[0].message).toContain("Cross-review file not found");
     expect(warnMessages[0].message).toContain("CROSS-REVIEW-engineer-REQ.md");
+  });
+});
+
+// ===========================================================================
+// Task 1.4: revisionCount threading — two-step parse pattern
+// ===========================================================================
+
+describe("readCrossReviewRecommendation — revisionCount threading", () => {
+  it("reads unversioned path when revisionCount is absent", async () => {
+    const fs = new FakeFileSystem();
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md",
+      "## Recommendation: Approved",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput());
+    expect(result).toEqual({ status: "approved" });
+  });
+
+  it("reads unversioned path when revisionCount is 1", async () => {
+    const fs = new FakeFileSystem();
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md",
+      "## Recommendation: Approved",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput({ revisionCount: 1 }));
+    expect(result).toEqual({ status: "approved" });
+  });
+
+  it("reads versioned -v2 path when revisionCount is 2", async () => {
+    const fs = new FakeFileSystem();
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ-v2.md",
+      "## Recommendation: Approved",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput({ revisionCount: 2 }));
+    expect(result).toEqual({ status: "approved" });
+  });
+
+  it("returns parse_error when versioned file not found (v2 not present)", async () => {
+    const fs = new FakeFileSystem();
+    // Only unversioned file exists — should not find the v2 path
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md",
+      "## Recommendation: Approved",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput({ revisionCount: 2 }));
+    expect(result).toEqual({
+      status: "parse_error",
+      reason: "Cross-review file not found",
+    });
+  });
+
+  it("parses 'approved with minor issues' via two-step pattern", async () => {
+    const fs = new FakeFileSystem();
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md",
+      "## Recommendation\n\nApproved with minor issues",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput());
+    expect(result).toEqual({ status: "approved" });
+  });
+
+  it("parses 'Need Attention' via two-step pattern as revision_requested", async () => {
+    const fs = new FakeFileSystem();
+    fs.addExisting(
+      "docs/in-progress/auth/CROSS-REVIEW-engineer-REQ.md",
+      "## Recommendation\n\nNeed Attention",
+    );
+    const { readCrossReviewRecommendation } = createCrossReviewActivities({
+      fs,
+      logger: new FakeLogger(),
+    });
+
+    const result = await readCrossReviewRecommendation(makeInput());
+    expect(result).toEqual({ status: "revision_requested" });
   });
 });

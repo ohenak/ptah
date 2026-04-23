@@ -14,6 +14,7 @@ import type { ReadCrossReviewInput, CrossReviewResult } from "../types.js";
 import {
   agentIdToSkillName,
   crossReviewPath,
+  extractRecommendationValue,
   parseRecommendation,
 } from "../../orchestrator/pdlc/cross-review-parser.js";
 
@@ -36,7 +37,7 @@ export function createCrossReviewActivities(deps: CrossReviewActivityDeps) {
   async function readCrossReviewRecommendation(
     input: ReadCrossReviewInput,
   ): Promise<CrossReviewResult> {
-    const { featurePath, agentId, documentType } = input;
+    const { featurePath, agentId, documentType, revisionCount } = input;
 
     // Step 1: Map agentId to skillName (reviewer token)
     const skillName = agentIdToSkillName(agentId);
@@ -47,8 +48,8 @@ export function createCrossReviewActivities(deps: CrossReviewActivityDeps) {
       };
     }
 
-    // Step 2: Construct file path
-    const filePath = crossReviewPath(featurePath, skillName, documentType);
+    // Step 2: Construct file path (with optional revision versioning)
+    const filePath = crossReviewPath(featurePath, skillName, documentType, revisionCount);
 
     // Step 3: Read file
     let content: string;
@@ -62,8 +63,14 @@ export function createCrossReviewActivities(deps: CrossReviewActivityDeps) {
       };
     }
 
-    // Step 4: Parse recommendation
-    const parsed = parseRecommendation(content);
+    // Step 4: Extract recommendation value from file content (two-step pattern)
+    const rawValue = extractRecommendationValue(content);
+    if (rawValue === null) {
+      return { status: "parse_error", reason: "No Recommendation heading found" };
+    }
+
+    // Step 5: Parse extracted value
+    const parsed = parseRecommendation(rawValue);
     if (parsed.status === "parse_error") {
       return parsed;
     }
