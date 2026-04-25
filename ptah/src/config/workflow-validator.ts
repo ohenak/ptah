@@ -25,6 +25,7 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
+  warnings: ValidationError[];
 }
 
 export interface WorkflowValidator {
@@ -38,9 +39,10 @@ export interface WorkflowValidator {
 export class DefaultWorkflowValidator implements WorkflowValidator {
   validate(config: WorkflowConfig, agentRegistry: AgentRegistry): ValidationResult {
     const errors: ValidationError[] = [];
+    const warnings: ValidationError[] = [];
 
     this.validateUniquePhaseIds(config.phases, errors);
-    this.validateRequiredFields(config.phases, errors);
+    this.validateRequiredFields(config.phases, errors, warnings);
     this.validateAgentRefs(config.phases, agentRegistry, errors);
     this.validateTransitions(config.phases, errors);
     this.validateNoCycles(config.phases, errors);
@@ -48,6 +50,7 @@ export class DefaultWorkflowValidator implements WorkflowValidator {
     return {
       valid: errors.length === 0,
       errors,
+      warnings,
     };
   }
 
@@ -65,7 +68,7 @@ export class DefaultWorkflowValidator implements WorkflowValidator {
     }
   }
 
-  private validateRequiredFields(phases: PhaseDefinition[], errors: ValidationError[]): void {
+  private validateRequiredFields(phases: PhaseDefinition[], errors: ValidationError[], warnings: ValidationError[]): void {
     for (const phase of phases) {
       if (phase.type === "creation" || phase.type === "implementation") {
         if (!phase.agent && (!phase.agents || phase.agents.length === 0)) {
@@ -86,12 +89,12 @@ export class DefaultWorkflowValidator implements WorkflowValidator {
           });
         }
 
-        // PROP-WFV-01: revision_bound required for review phases
+        // PROP-WFV-01: revision_bound missing produces a warning for backward compat
         if (phase.revision_bound === undefined || phase.revision_bound === null) {
-          errors.push({
+          warnings.push({
             phase: phase.id,
             field: "revision_bound",
-            message: `Phase "${phase.id}" of type "review" must have a "revision_bound" field.`,
+            message: `Phase "${phase.id}" of type "review" should have a "revision_bound" field.`,
           });
         }
       }

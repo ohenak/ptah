@@ -262,7 +262,7 @@ export const PHASE_LABELS: Record<string, { label: string; title: string }> = {
   "fspec-review":          { label: "F",   title: "FSPEC Review" },
   "tspec-review":          { label: "T",   title: "TSPEC Review" },
   "plan-review":           { label: "P",   title: "PLAN Review" },
-  "properties-review":     { label: "PT",  title: "PROPERTIES Review" },
+  "properties-review":     { label: "PR",  title: "PROPERTIES Review" },
   "properties-tests":      { label: "PTT", title: "Properties Tests" },
   "implementation-review": { label: "IR",  title: "Implementation Review" },
 };
@@ -377,7 +377,7 @@ export async function emitProgressLines(
   // Optimizer (author) dispatch detection
   const allReviewersDone =
     Object.keys(reviewerStatuses).length > 0 &&
-    Object.values(reviewerStatuses).every((s) => s !== "pending" && s !== "running");
+    Object.values(reviewerStatuses).every((s) => s !== "pending");
 
   const activeAgentIds = state.activeAgentIds ?? [];
   if (allReviewersDone && activeAgentIds.length > 0) {
@@ -507,19 +507,29 @@ interface EmittedState {
  * Poll the workflow state until a terminal state is reached.
  * Returns 0 for completed, 1 for failed/cancelled/revision-bound-reached.
  */
+const MAX_CONSECUTIVE_QUERY_ERRORS = 5;
+
 export async function pollUntilTerminal(params: PollParams): Promise<number> {
   const { workflowId, temporalClient, stdout, featureFolder, slug, fs } = params;
 
   let lastEmittedState: EmittedState | null = null;
   let lastTrackedPhaseId: string | null = null;
+  let consecutiveErrors = 0;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     let state: FeatureWorkflowState;
     try {
       state = await temporalClient.queryWorkflowState(workflowId);
+      consecutiveErrors = 0;
     } catch {
-      // Transient query error — keep polling
+      consecutiveErrors++;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_QUERY_ERRORS) {
+        stdout.write(
+          `workflow query failed ${MAX_CONSECUTIVE_QUERY_ERRORS} times consecutively — giving up\n`
+        );
+        return 1;
+      }
       await sleep(2000);
       continue;
     }
@@ -727,7 +737,7 @@ export class RunCommand {
     // STEP 7: Connect and start workflow
     await temporalClient.connect();
 
-    const featureConfig = { discipline: "backend-only" as const, skipFspec: false };
+    const featureConfig = { discipline: "fullstack" as const, skipFspec: false };
 
     const workflowId = await temporalClient.startFeatureWorkflow({
       featureSlug: slug,

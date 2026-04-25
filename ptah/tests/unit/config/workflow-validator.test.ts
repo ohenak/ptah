@@ -330,8 +330,8 @@ describe("DefaultWorkflowValidator", () => {
   // PROP-WFV-01: revision_bound required for review phases
   // -------------------------------------------------------------------------
 
-  describe("PROP-WFV-01: revision_bound required for review phases", () => {
-    it("rejects a review phase missing revision_bound", () => {
+  describe("PROP-WFV-01: revision_bound missing emits warning (backward compat)", () => {
+    it("review phase missing revision_bound produces a warning (not an error)", () => {
       const config = makeConfig([
         makePhase({
           id: "req-review",
@@ -344,8 +344,9 @@ describe("DefaultWorkflowValidator", () => {
 
       const result = validator.validate(config, registry);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings).toContainEqual(
         expect.objectContaining({
           phase: "req-review",
           field: "revision_bound",
@@ -563,5 +564,57 @@ describe("DefaultWorkflowValidator", () => {
       );
       expect(hasAgentError).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes
+// ---------------------------------------------------------------------------
+
+describe("PROP-WFV-01 (updated): revision_bound missing emits warning, not error", () => {
+  const validator = new DefaultWorkflowValidator();
+
+  it("review phase missing revision_bound produces a warning (not an error)", () => {
+    const config = makeConfig([
+      makePhase({
+        id: "req-review",
+        type: "review",
+        reviewers: { default: ["eng"] },
+        // revision_bound intentionally omitted
+      }),
+    ]);
+    const registry = makeRegistry(["eng"]);
+
+    const result = validator.validate(config, registry);
+
+    // valid must be true — missing revision_bound is not a hard error
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    // but a warning must be present
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        phase: "req-review",
+        field: "revision_bound",
+        message: expect.stringContaining("revision_bound"),
+      })
+    );
+  });
+
+  it("review phase with revision_bound present produces no warning", () => {
+    const config = makeConfig([
+      makePhase({
+        id: "req-review",
+        type: "review",
+        reviewers: { default: ["eng"] },
+        revision_bound: 5,
+      }),
+    ]);
+    const registry = makeRegistry(["eng"]);
+
+    const result = validator.validate(config, registry);
+
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toHaveLength(0);
   });
 });

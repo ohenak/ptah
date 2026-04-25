@@ -192,6 +192,24 @@ Depends on Phases 2 and 3. Tasks 5.1, 5.2, 5.3a/5.3b, 5.4a/5.4b, and 5.5 are ind
 
 ---
 
+## 10. Phase 6 — Review Feedback Fixes
+
+**Source files:** `src/config/workflow-validator.ts`, `src/commands/run.ts`, `src/temporal/client.ts`, `src/orchestrator/pdlc/cross-review-parser.ts`, `bin/ptah.ts`
+**Test files:** `tests/unit/config/workflow-validator.test.ts`, `tests/unit/commands/run.test.ts`, `tests/unit/temporal/client.test.ts`, `tests/unit/orchestrator/cross-review-parser.test.ts`
+
+All tasks are independent.
+
+| # | Task | Source File | Test File | Status |
+|---|------|-------------|-----------|--------|
+| 6.1 | Move `revision_bound` missing from error to warning in `DefaultWorkflowValidator`. Add `warnings: ValidationError[]` to `ValidationResult`. Update `bin/ptah.ts` to log warnings. Update PROP-WFV-01 test to assert warning, not error. | `workflow-validator.ts`, `bin/ptah.ts` | `workflow-validator.test.ts` | ⬚ |
+| 6.2 | Add `MAX_CONSECUTIVE_QUERY_ERRORS = 5` to `pollUntilTerminal()`. On 5 consecutive failures exit with code 1 and message `Error: workflow query failed 5 times consecutively; giving up.\n`. Reset counter on successful poll. | `run.ts` | `run.test.ts` | ⬚ |
+| 6.3 | Change hardcoded `discipline: "backend-only"` to `discipline: "default"` in `RunCommand.execute()`. | `run.ts` | `run.test.ts` | ⬚ |
+| 6.4 | Fix `PHASE_LABELS["properties-review"]` label from `"PT"` to `"PR"`. | `run.ts` | `run.test.ts` | ⬚ |
+| 6.5 | Sanitize `prefix` in `listWorkflowsByPrefix()` by replacing `'` with `''` (Temporal SQL escaping) before string interpolation. | `client.ts` | `client.test.ts` | ⬚ |
+| 6.6 | Remove self-referential `SKILL_TO_AGENT` entries (`"pm-review"`, `"te-review"`, `"se-review"`) and add the correct forward entries (`"product-manager" → "pm-review"`, `"test-engineer" → "te-review"`) per REQ-CR-01. Keep `"software-engineer" → "se-review"`. | `cross-review-parser.ts` | `cross-review-parser.test.ts` | ⬚ |
+
+---
+
 ## 11. Risk Notes
 
 | Risk | Mitigation |

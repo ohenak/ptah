@@ -408,7 +408,7 @@ export function isCompletionReady(
   }
 
   // Dynamic derivation from implementation-review phase reviewers
-  const requiredAgents = computeReviewerList(implReviewPhase, { discipline: "default" } as FeatureConfig);
+  const requiredAgents = computeReviewerList(implReviewPhase, { discipline: "default", skipFspec: false } as unknown as FeatureConfig);
 
   for (const agentId of requiredAgents) {
     if (signOffs[agentId] !== true) return false;

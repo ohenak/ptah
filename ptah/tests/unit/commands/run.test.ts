@@ -972,7 +972,7 @@ describe("emitProgressLines()", () => {
       "properties-tests",
       "implementation-review",
     ] as const;
-    const expectedLabels = ["R", "F", "T", "P", "PT", "PTT", "IR"] as const;
+    const expectedLabels = ["R", "F", "T", "P", "PR", "PTT", "IR"] as const;
 
     for (let i = 0; i < phaseIds.length; i++) {
       const phaseId = phaseIds[i]!;
@@ -1614,5 +1614,90 @@ describe("RunCommand.execute() — integration tests", () => {
     expect(outputStr).toContain('workflow already running for feature "my-feature"');
     expect(outputStr).toContain("Use --from-phase to restart");
     expect(temporalClient.startedWorkflows).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes
+// ---------------------------------------------------------------------------
+
+describe("pollUntilTerminal() — consecutive error threshold (6.2)", () => {
+  it("exits with code 1 after 5 consecutive queryWorkflowState errors", async () => {
+    const { pollUntilTerminal } = await importRun();
+    const { FakeTemporalClient: FTC } = await import("../../fixtures/factories.js");
+    const temporalClient = new FTC();
+    const workflowId = "ptah-test-feature";
+
+    let callCount = 0;
+    temporalClient.queryWorkflowState = async (_id: string) => {
+      callCount++;
+      throw new Error("Persistent connection failure");
+    };
+
+    const stdout = makeStdout();
+    const stderr = makeStderr();
+
+    const exitCode = await pollUntilTerminal({
+      workflowId,
+      temporalClient,
+      discordConfig: undefined,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stderr: stderr as unknown as NodeJS.WriteStream,
+      stdin: {} as NodeJS.ReadableStream,
+      featureFolder: "docs/in-progress/test-feature",
+      slug: "test-feature",
+      fs: new (await import("../../fixtures/factories.js")).FakeFileSystem(),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(callCount).toBe(5);
+    const outputStr = stdout.lines.join("");
+    expect(outputStr).toContain("workflow query failed 5 times consecutively");
+  }, 15000);
+
+  it("resets consecutive error count after a successful poll", async () => {
+    const { pollUntilTerminal } = await importRun();
+    const { FakeTemporalClient: FTC, defaultFeatureWorkflowState } = await import("../../fixtures/factories.js");
+    const temporalClient = new FTC();
+    const workflowId = "ptah-test-feature";
+
+    let callCount = 0;
+    const completedState = defaultFeatureWorkflowState({ phaseStatus: "completed" });
+    temporalClient.queryWorkflowState = async (_id: string) => {
+      callCount++;
+      // 4 errors, then success — counter resets, workflow completes
+      if (callCount <= 4) throw new Error("error");
+      if (callCount === 5) return completedState;
+      throw new Error("unreachable");
+    };
+
+    const stdout = makeStdout();
+    const stderr = makeStderr();
+
+    const exitCode = await pollUntilTerminal({
+      workflowId,
+      temporalClient,
+      discordConfig: undefined,
+      stdout: stdout as unknown as NodeJS.WriteStream,
+      stderr: stderr as unknown as NodeJS.WriteStream,
+      stdin: {} as NodeJS.ReadableStream,
+      featureFolder: "docs/in-progress/test-feature",
+      slug: "test-feature",
+      fs: new (await import("../../fixtures/factories.js")).FakeFileSystem(),
+    });
+
+    expect(exitCode).toBe(0);
+  }, 15000);
+});
+
+describe("PHASE_LABELS properties-review label (6.4)", () => {
+  it("PHASE_LABELS properties-review has label PR not PT", async () => {
+    const { PHASE_LABELS } = await importRun();
+    expect(PHASE_LABELS["properties-review"]?.label).toBe("PR");
+  });
+
+  it("PHASE_LABELS properties-tests has label PTT", async () => {
+    const { PHASE_LABELS } = await importRun();
+    expect(PHASE_LABELS["properties-tests"]?.label).toBe("PTT");
   });
 });

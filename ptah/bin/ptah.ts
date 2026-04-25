@@ -126,6 +126,9 @@ async function main(): Promise<void> {
 
       const validator = new DefaultWorkflowValidator();
       const validation = validator.validate(workflowConfig, agentRegistry);
+      for (const w of validation.warnings) {
+        logger.warn(`Workflow config warning in phase '${w.phase}' field '${w.field}': ${w.message}`);
+      }
       if (!validation.valid) {
         for (const err of validation.errors) {
           logger.error(`Workflow config error in phase '${err.phase}' field '${err.field}': ${err.message}`);

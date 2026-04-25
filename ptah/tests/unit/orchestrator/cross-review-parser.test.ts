@@ -131,12 +131,12 @@ describe("skillNameToAgentId", () => {
     expect(skillNameToAgentId("engineer")).toBe("eng");
   });
 
-  it("maps 'product-manager' to 'pm'", () => {
-    expect(skillNameToAgentId("product-manager")).toBe("pm");
+  it("maps 'product-manager' to 'pm-review'", () => {
+    expect(skillNameToAgentId("product-manager")).toBe("pm-review");
   });
 
-  it("maps 'test-engineer' to 'qa'", () => {
-    expect(skillNameToAgentId("test-engineer")).toBe("qa");
+  it("maps 'test-engineer' to 'te-review'", () => {
+    expect(skillNameToAgentId("test-engineer")).toBe("te-review");
   });
 
   it("maps 'frontend-engineer' to 'fe'", () => {
@@ -152,18 +152,18 @@ describe("skillNameToAgentId", () => {
   });
 });
 
-// Task 1.2: New SKILL_TO_AGENT entries (new skill names → new agent IDs)
-describe("skillNameToAgentId — new role entries", () => {
-  it("maps 'pm-review' to 'pm-review' agent", () => {
-    expect(skillNameToAgentId("pm-review")).toBe("pm-review");
+// Task 1.2: Role agent IDs are NOT skill names — skillNameToAgentId returns null for them
+describe("skillNameToAgentId — agent IDs are not skill names", () => {
+  it("'pm-review' is an agent ID not a skill name — returns null", () => {
+    expect(skillNameToAgentId("pm-review")).toBeNull();
   });
 
-  it("maps 'te-review' to 'te-review' agent", () => {
-    expect(skillNameToAgentId("te-review")).toBe("te-review");
+  it("'te-review' is an agent ID not a skill name — returns null", () => {
+    expect(skillNameToAgentId("te-review")).toBeNull();
   });
 
-  it("maps 'se-review' to 'se-review' agent", () => {
-    expect(skillNameToAgentId("se-review")).toBe("se-review");
+  it("'se-review' is an agent ID not a skill name — returns null", () => {
+    expect(skillNameToAgentId("se-review")).toBeNull();
   });
 });
 
@@ -355,5 +355,43 @@ describe("PROP-MAP-08: AGENT_TO_SKILL derived from SKILL_TO_AGENT reversal (stat
     expect(source).toContain("LEGACY_AGENT_TO_SKILL");
     // AGENT_TO_SKILL build block must spread LEGACY_AGENT_TO_SKILL
     expect(source).toMatch(/AGENT_TO_SKILL[\s\S]*?LEGACY_AGENT_TO_SKILL/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes — SKILL_TO_AGENT corrections (6.6)
+// ---------------------------------------------------------------------------
+
+describe("skillNameToAgentId — corrected mappings (6.6)", () => {
+  it("'product-manager' maps to 'pm-review' (canonical new agent)", () => {
+    expect(skillNameToAgentId("product-manager")).toBe("pm-review");
+  });
+
+  it("'test-engineer' maps to 'te-review' (canonical new agent)", () => {
+    expect(skillNameToAgentId("test-engineer")).toBe("te-review");
+  });
+
+  it("'software-engineer' maps to 'se-review'", () => {
+    expect(skillNameToAgentId("software-engineer")).toBe("se-review");
+  });
+
+  it("'pm-review' is not a skill name — returns null", () => {
+    expect(skillNameToAgentId("pm-review")).toBeNull();
+  });
+
+  it("'te-review' is not a skill name — returns null", () => {
+    expect(skillNameToAgentId("te-review")).toBeNull();
+  });
+
+  it("'se-review' is not a skill name — returns null", () => {
+    expect(skillNameToAgentId("se-review")).toBeNull();
+  });
+
+  it("backward-compat: agentIdToSkillName('pm') still returns 'product-manager'", () => {
+    expect(agentIdToSkillName("pm")).toBe("product-manager");
+  });
+
+  it("backward-compat: agentIdToSkillName('qa') still returns 'test-engineer'", () => {
+    expect(agentIdToSkillName("qa")).toBe("test-engineer");
   });
 });

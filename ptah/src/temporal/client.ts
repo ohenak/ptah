@@ -141,7 +141,8 @@ export class TemporalClientWrapperImpl implements TemporalClientWrapper {
   ): Promise<string[]> {
     this.ensureConnected();
     const ids: string[] = [];
-    let query = `WorkflowId STARTS_WITH '${prefix}'`;
+    const sanitizedPrefix = prefix.replace(/'/g, "''");
+    let query = `WorkflowId STARTS_WITH '${sanitizedPrefix}'`;
     if (options?.statusFilter && options.statusFilter.length > 0) {
       const statusList = options.statusFilter.map((s) => `'${s}'`).join(", ");
       query += ` AND ExecutionStatus IN (${statusList})`;

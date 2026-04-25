@@ -5,12 +5,8 @@ import type { ParsedRecommendation } from "./v4-types.js";
 const SKILL_TO_AGENT: Record<string, string> = {
   "engineer": "eng",
   "frontend-engineer": "fe",
-  "product-manager": "pm",
-  "test-engineer": "qa",
-  // New canonical skill → agent entries
-  "pm-review": "pm-review",
-  "te-review": "te-review",
-  "se-review": "se-review",
+  "product-manager": "pm-review",
+  "test-engineer": "te-review",
   "software-engineer": "se-review",
 };
 

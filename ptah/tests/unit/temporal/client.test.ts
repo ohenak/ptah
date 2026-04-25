@@ -533,3 +533,32 @@ describe("bin/ptah.ts static-structure: checkArtifactExists activity registratio
     ).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes — listWorkflowsByPrefix prefix sanitization (6.5)
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowsByPrefix — prefix sanitization (6.5)", () => {
+  let client: TemporalClientWrapperImpl;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    client = new TemporalClientWrapperImpl(makeTemporalConfig());
+    await client.connect();
+  });
+
+  it("escapes single quotes in prefix to prevent query injection", async () => {
+    temporalClientModule._mockList.mockReturnValueOnce({
+      [Symbol.asyncIterator]: async function* () {},
+    });
+
+    await client.listWorkflowsByPrefix("ptah-my-feature'--");
+
+    const callArg = temporalClientModule._mockList.mock.calls[0]?.[0];
+    const query: string = callArg?.query ?? "";
+    // The raw single quote must not appear in the query string unescaped
+    // Temporal SQL escape: replace ' with ''
+    expect(query).not.toContain("ptah-my-feature'--");
+    expect(query).toContain("ptah-my-feature''--");
+  });
+});
