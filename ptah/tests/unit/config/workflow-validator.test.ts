@@ -38,7 +38,7 @@ describe("DefaultWorkflowValidator", () => {
     it("accepts a valid minimal config", () => {
       const config = makeConfig([
         makePhase({ id: "req-creation", type: "creation", agent: "pm" }),
-        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] } }),
+        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] }, revision_bound: 3 }),
         makePhase({ id: "req-approved", type: "approved" }),
       ]);
       const registry = makeRegistry(["pm", "eng"]);
@@ -71,6 +71,7 @@ describe("DefaultWorkflowValidator", () => {
             fullstack: ["eng", "fe", "qa"],
             default: ["eng"],
           },
+          revision_bound: 3,
         }),
       ]);
       const registry = makeRegistry(["eng", "fe", "qa"]);
@@ -83,7 +84,7 @@ describe("DefaultWorkflowValidator", () => {
     it("accepts explicit transitions", () => {
       const config = makeConfig([
         makePhase({ id: "req-creation", agent: "pm", transition: "req-review" }),
-        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] }, transition: "req-approved" }),
+        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] }, transition: "req-approved", revision_bound: 3 }),
         makePhase({ id: "req-approved", type: "approved" }),
       ]);
       const registry = makeRegistry(["pm", "eng"]);
@@ -96,7 +97,7 @@ describe("DefaultWorkflowValidator", () => {
     it("allows review loops (review → creation → review)", () => {
       const config = makeConfig([
         makePhase({ id: "req-creation", agent: "pm", transition: "req-review" }),
-        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] }, transition: "req-approved" }),
+        makePhase({ id: "req-review", type: "review", reviewers: { default: ["eng"] }, transition: "req-approved", revision_bound: 3 }),
         makePhase({ id: "req-approved", type: "approved" }),
       ]);
       const registry = makeRegistry(["pm", "eng"]);
@@ -326,6 +327,177 @@ describe("DefaultWorkflowValidator", () => {
   });
 
   // -------------------------------------------------------------------------
+  // PROP-WFV-01: revision_bound required for review phases
+  // -------------------------------------------------------------------------
+
+  describe("PROP-WFV-01: revision_bound missing emits warning (backward compat)", () => {
+    it("review phase missing revision_bound produces a warning (not an error)", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          // revision_bound intentionally omitted
+        }),
+      ]);
+      const registry = makeRegistry(["eng"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings).toContainEqual(
+        expect.objectContaining({
+          phase: "req-review",
+          field: "revision_bound",
+          message: expect.stringContaining("revision_bound"),
+        })
+      );
+    });
+
+    it("accepts a review phase with revision_bound present", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-review",
+          type: "review",
+          reviewers: { default: ["eng"] },
+          revision_bound: 5,
+        }),
+      ]);
+      const registry = makeRegistry(["eng"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // PROP-WFV-02: valid artifact.exists skip_if block
+  // -------------------------------------------------------------------------
+
+  describe("PROP-WFV-02: valid artifact.exists skip_if", () => {
+    it("accepts a skip_if block with field: artifact.exists and a non-empty artifact", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "artifact.exists", artifact: "REQ" },
+        }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // PROP-WFV-03: artifact.exists without artifact field is invalid
+  // -------------------------------------------------------------------------
+
+  describe("PROP-WFV-03: artifact.exists missing artifact field", () => {
+    it("rejects a skip_if with field: artifact.exists but no artifact property", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "artifact.exists" } as unknown as import("../../../../src/config/workflow-config.js").SkipCondition,
+        }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          phase: "req-creation",
+          field: "skip_if",
+          message: expect.stringContaining("artifact"),
+        })
+      );
+    });
+
+    it("rejects a skip_if with field: artifact.exists and empty artifact string", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "artifact.exists", artifact: "" },
+        }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          phase: "req-creation",
+          field: "skip_if",
+        })
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // PROP-WFV-04: malformed discriminated union is rejected
+  // -------------------------------------------------------------------------
+
+  describe("PROP-WFV-04: malformed discriminated union", () => {
+    it("rejects artifact.exists skip_if that also has an equals property", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "artifact.exists", artifact: "REQ", equals: true } as unknown as import("../../../../src/config/workflow-config.js").SkipCondition,
+        }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          phase: "req-creation",
+          field: "skip_if",
+          message: expect.stringContaining("equals"),
+        })
+      );
+    });
+
+    it("rejects a config.* skip_if that also has an artifact property", () => {
+      const config = makeConfig([
+        makePhase({
+          id: "req-creation",
+          type: "creation",
+          agent: "pm",
+          skip_if: { field: "config.skipFspec", equals: true, artifact: "REQ" } as unknown as import("../../../../src/config/workflow-config.js").SkipCondition,
+        }),
+      ]);
+      const registry = makeRegistry(["pm"]);
+
+      const result = validator.validate(config, registry);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          phase: "req-creation",
+          field: "skip_if",
+          message: expect.stringContaining("artifact"),
+        })
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // PROP-NF-06: ValidationResult contract — invalid configs must produce
   // valid:false with descriptive errors to signal startup should halt
   // -------------------------------------------------------------------------
@@ -392,5 +564,57 @@ describe("DefaultWorkflowValidator", () => {
       );
       expect(hasAgentError).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes
+// ---------------------------------------------------------------------------
+
+describe("PROP-WFV-01 (updated): revision_bound missing emits warning, not error", () => {
+  const validator = new DefaultWorkflowValidator();
+
+  it("review phase missing revision_bound produces a warning (not an error)", () => {
+    const config = makeConfig([
+      makePhase({
+        id: "req-review",
+        type: "review",
+        reviewers: { default: ["eng"] },
+        // revision_bound intentionally omitted
+      }),
+    ]);
+    const registry = makeRegistry(["eng"]);
+
+    const result = validator.validate(config, registry);
+
+    // valid must be true — missing revision_bound is not a hard error
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    // but a warning must be present
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        phase: "req-review",
+        field: "revision_bound",
+        message: expect.stringContaining("revision_bound"),
+      })
+    );
+  });
+
+  it("review phase with revision_bound present produces no warning", () => {
+    const config = makeConfig([
+      makePhase({
+        id: "req-review",
+        type: "review",
+        reviewers: { default: ["eng"] },
+        revision_bound: 5,
+      }),
+    ]);
+    const registry = makeRegistry(["eng"]);
+
+    const result = validator.validate(config, registry);
+
+    expect(result.valid).toBe(true);
+    expect(result.warnings).toHaveLength(0);
   });
 });

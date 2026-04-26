@@ -422,6 +422,7 @@ export class MigrateCommand {
         result[v5Phase] = {
           reviewerStatuses: { ...reviewState.reviewerStatuses },
           revisionCount: reviewState.revisionCount,
+          writtenVersions: {},
         };
       }
     }

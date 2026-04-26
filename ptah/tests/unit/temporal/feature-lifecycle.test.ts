@@ -11,7 +11,7 @@
  *   - buildInitialWorkflowState (D2)
  *   - resolveContextDocuments   (D14)
  *   - computeReviewerList       (D9)
- *   - mapRecommendationToStatus (D9)
+ *   - resolveRecommendationStatus (D9)
  *   - buildInvokeSkillInput     (D3)
  *   - buildRevisionInput        (D10)
  *
@@ -35,7 +35,7 @@ import {
   resolveContextDocuments,
   extractCompletedPrefix,
   computeReviewerList,
-  mapRecommendationToStatus,
+  resolveRecommendationStatus,
   buildInvokeSkillInput,
   buildRevisionInput,
   recordSignOff,
@@ -738,36 +738,36 @@ describe("computeReviewerList", () => {
 });
 
 // ---------------------------------------------------------------------------
-// D9: mapRecommendationToStatus — BR-17
+// D9: resolveRecommendationStatus — BR-17 (replaces mapRecommendationToStatus)
 // ---------------------------------------------------------------------------
 
-describe("mapRecommendationToStatus", () => {
+describe("resolveRecommendationStatus", () => {
   it("maps 'Approved' to 'approved'", () => {
-    expect(mapRecommendationToStatus("Approved")).toBe("approved");
+    expect(resolveRecommendationStatus("Approved")).toBe("approved");
   });
 
   it("maps 'Approved with minor changes' to 'approved' (BR-17)", () => {
-    expect(mapRecommendationToStatus("Approved with minor changes")).toBe("approved");
+    expect(resolveRecommendationStatus("Approved with minor changes")).toBe("approved");
   });
 
   it("maps 'Needs revision' to 'revision_requested'", () => {
-    expect(mapRecommendationToStatus("Needs revision")).toBe("revision_requested");
+    expect(resolveRecommendationStatus("Needs revision")).toBe("revision_requested");
   });
 
   it("maps 'LGTM' to 'approved'", () => {
-    expect(mapRecommendationToStatus("LGTM")).toBe("approved");
+    expect(resolveRecommendationStatus("LGTM")).toBe("approved");
   });
 
   it("maps 'lgtm' (lowercase) to 'approved'", () => {
-    expect(mapRecommendationToStatus("lgtm")).toBe("approved");
+    expect(resolveRecommendationStatus("lgtm")).toBe("approved");
   });
 
   it("is case-insensitive — 'approved' (lowercase) maps to 'approved'", () => {
-    expect(mapRecommendationToStatus("approved")).toBe("approved");
+    expect(resolveRecommendationStatus("approved")).toBe("approved");
   });
 
-  it("returns null for unrecognized recommendation strings", () => {
-    expect(mapRecommendationToStatus("Conditional Approval")).toBeNull();
+  it("returns 'revision_requested' for unrecognized recommendation strings", () => {
+    expect(resolveRecommendationStatus("Conditional Approval")).toBe("revision_requested");
   });
 });
 
@@ -1019,9 +1019,9 @@ describe("buildInitialWorkflowState — CAN payload support", () => {
       featureConfig: makeFeatureConfig(),
       workflowConfig: makeConfig(phases),
       startedAt: "2026-04-02T00:00:00Z",
-      signOffs: { qa: "2026-04-01T10:00:00Z" },
+      signOffs: { qa: true },
     });
-    expect(state.signOffs).toEqual({ qa: "2026-04-01T10:00:00Z" });
+    expect(state.signOffs).toEqual({ qa: true });
   });
 
   it("uses null worktreeRoot from CAN payload", () => {
@@ -1064,27 +1064,27 @@ describe("buildInitialWorkflowState — CAN payload support", () => {
 // ---------------------------------------------------------------------------
 
 describe("recordSignOff", () => {
-  it("records agent ID and timestamp in signOffs", () => {
+  it("records agent ID as true in signOffs", () => {
     const signOffs = {};
-    const updated = recordSignOff(signOffs, "qa", "2026-04-02T10:00:00Z");
-    expect(updated).toEqual({ qa: "2026-04-02T10:00:00Z" });
+    const updated = recordSignOff(signOffs, "qa");
+    expect(updated).toEqual({ qa: true });
   });
 
   it("adds to existing signOffs without mutating the original", () => {
-    const signOffs = { qa: "2026-04-02T10:00:00Z" };
-    const updated = recordSignOff(signOffs, "pm", "2026-04-02T11:00:00Z");
+    const signOffs = { qa: true };
+    const updated = recordSignOff(signOffs, "pm");
     expect(updated).toEqual({
-      qa: "2026-04-02T10:00:00Z",
-      pm: "2026-04-02T11:00:00Z",
+      qa: true,
+      pm: true,
     });
     // Original is not mutated
-    expect(signOffs).toEqual({ qa: "2026-04-02T10:00:00Z" });
+    expect(signOffs).toEqual({ qa: true });
   });
 
   it("overwrites existing sign-off for the same agent", () => {
-    const signOffs = { qa: "2026-04-02T10:00:00Z" };
-    const updated = recordSignOff(signOffs, "qa", "2026-04-02T12:00:00Z");
-    expect(updated).toEqual({ qa: "2026-04-02T12:00:00Z" });
+    const signOffs = { qa: false };
+    const updated = recordSignOff(signOffs, "qa");
+    expect(updated).toEqual({ qa: true });
   });
 });
 
@@ -1093,31 +1093,27 @@ describe("recordSignOff", () => {
 // ---------------------------------------------------------------------------
 
 describe("isCompletionReady", () => {
-  it("returns true when both qa and pm have signed off", () => {
-    expect(isCompletionReady({
-      qa: "2026-04-02T10:00:00Z",
-      pm: "2026-04-02T11:00:00Z",
-    })).toBe(true);
+  // Uses legacy fallback (no implementation-review phase)
+  const legacyConfig = { version: 1, phases: [{ id: "req", name: "REQ", type: "creation" as const, agent: "pm" }] };
+
+  it("returns true when both qa and pm have signed off (legacy fallback)", () => {
+    expect(isCompletionReady({ qa: true, pm: true }, legacyConfig)).toBe(true);
   });
 
-  it("returns false when only qa has signed off", () => {
-    expect(isCompletionReady({ qa: "2026-04-02T10:00:00Z" })).toBe(false);
+  it("returns false when only qa has signed off (legacy fallback)", () => {
+    expect(isCompletionReady({ qa: true }, legacyConfig)).toBe(false);
   });
 
-  it("returns false when only pm has signed off", () => {
-    expect(isCompletionReady({ pm: "2026-04-02T11:00:00Z" })).toBe(false);
+  it("returns false when only pm has signed off (legacy fallback)", () => {
+    expect(isCompletionReady({ pm: true }, legacyConfig)).toBe(false);
   });
 
-  it("returns false when signOffs is empty", () => {
-    expect(isCompletionReady({})).toBe(false);
+  it("returns false when signOffs is empty (legacy fallback)", () => {
+    expect(isCompletionReady({}, legacyConfig)).toBe(false);
   });
 
-  it("returns true even when extra agents have signed off", () => {
-    expect(isCompletionReady({
-      qa: "2026-04-02T10:00:00Z",
-      pm: "2026-04-02T11:00:00Z",
-      eng: "2026-04-02T12:00:00Z",
-    })).toBe(true);
+  it("returns true even when extra agents have signed off (legacy fallback)", () => {
+    expect(isCompletionReady({ qa: true, pm: true, eng: true }, legacyConfig)).toBe(true);
   });
 });
 
@@ -1147,15 +1143,17 @@ describe("buildContinueAsNewPayload", () => {
   it("carries featurePath and signOffs, nulls worktreeRoot", () => {
     const state = {
       featurePath: "docs/in-progress/my-feature/" as string | null,
-      signOffs: { qa: "2026-04-02T10:00:00Z" },
+      signOffs: { qa: true },
       adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
+      reviewStates: {},
     };
     const payload = buildContinueAsNewPayload(state);
     expect(payload).toEqual({
       featurePath: "docs/in-progress/my-feature/",
       worktreeRoot: null,
-      signOffs: { qa: "2026-04-02T10:00:00Z" },
+      signOffs: { qa: true },
       adHocQueue: [],
+      reviewStates: {},
     });
   });
 
@@ -1164,6 +1162,7 @@ describe("buildContinueAsNewPayload", () => {
       featurePath: null,
       signOffs: {},
       adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
+      reviewStates: {},
     };
     const payload = buildContinueAsNewPayload(state);
     expect(payload.featurePath).toBeNull();
@@ -1172,11 +1171,12 @@ describe("buildContinueAsNewPayload", () => {
   });
 
   it("creates a shallow copy of signOffs (not the same reference)", () => {
-    const signOffs = { qa: "2026-04-02T10:00:00Z", pm: "2026-04-02T11:00:00Z" };
+    const signOffs = { qa: true, pm: true };
     const state = {
       featurePath: "docs/in-progress/my-feature/" as string | null,
       signOffs,
       adHocQueue: [] as import("../../../src/temporal/types.js").AdHocRevisionSignal[],
+      reviewStates: {},
     };
     const payload = buildContinueAsNewPayload(state);
     expect(payload.signOffs).not.toBe(signOffs);

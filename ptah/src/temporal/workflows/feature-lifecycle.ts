@@ -4,7 +4,7 @@
  * This file contains:
  * 1. Pure helper functions (exported for unit testing) — resolveNextPhase,
  *    evaluateSkipCondition, buildInitialWorkflowState, resolveContextDocuments,
- *    computeReviewerList, mapRecommendationToStatus, buildInvokeSkillInput,
+ *    computeReviewerList, resolveRecommendationStatus, buildInvokeSkillInput,
  *    buildRevisionInput.
  * 2. The featureLifecycleWorkflow Temporal Workflow definition (deterministic,
  *    no I/O, uses only Temporal SDK primitives).
@@ -17,7 +17,7 @@
  */
 
 import * as wf from "@temporalio/workflow";
-import type { PhaseDefinition, WorkflowConfig } from "../../config/workflow-config.js";
+import type { PhaseDefinition, WorkflowConfig, SkipCondition } from "../../config/workflow-config.js";
 import type { FeatureConfig } from "../../types.js";
 import type {
   AdHocRevisionSignal,
@@ -29,17 +29,17 @@ import type {
   RetryOrCancelSignal,
   ResumeOrCancelSignal,
   ReviewState,
-  ReviewerStatusValue,
   ForkJoinState,
   ForkJoinAgentResult,
   StartWorkflowParams,
   ReadCrossReviewInput,
   CrossReviewResult,
+  CheckArtifactExistsInput,
 } from "../types.js";
 import type { MergeResult, MergeWorktreeInput, ResolveFeaturePathInput } from "../activities/skill-activity.js";
 import type { FeatureResolverResult } from "../../orchestrator/feature-resolver.js";
 import type { PromotionInput, PromotionResult } from "../../orchestrator/promotion-activity.js";
-import { agentIdToSkillName, crossReviewPath } from "../../orchestrator/pdlc/cross-review-parser.js";
+import { agentIdToSkillName, crossReviewPath, parseRecommendation } from "../../orchestrator/pdlc/cross-review-parser.js";
 
 // ---------------------------------------------------------------------------
 // Context document resolution context
@@ -65,6 +65,11 @@ const DOC_TYPE_TOKENS: Record<string, string> = {
   PROPERTIES: "PROPERTIES",
 };
 
+/** Special-case overrides for phase IDs whose document type cannot be derived by regex. */
+const DOCUMENT_TYPE_OVERRIDES: Record<string, string> = {
+  "properties-tests": "PROPERTIES",
+};
+
 /**
  * Derive the uppercase document type abbreviation from a phase ID.
  * Strips the phase type suffix (-creation, -review, -approved) and uppercases.
@@ -74,8 +79,12 @@ const DOC_TYPE_TOKENS: Record<string, string> = {
  *   "fspec-creation"    -> "FSPEC"
  *   "tspec-review"      -> "TSPEC"
  *   "properties-review" -> "PROPERTIES"
+ *   "properties-tests"  -> "PROPERTIES" (override)
  */
 export function deriveDocumentType(phaseId: string): string {
+  if (DOCUMENT_TYPE_OVERRIDES[phaseId]) {
+    return DOCUMENT_TYPE_OVERRIDES[phaseId];
+  }
   return phaseId.replace(/-(?:creation|review|approved)$/, "").toUpperCase();
 }
 
@@ -147,13 +156,30 @@ export function resolveContextDocuments(
 /**
  * Evaluate whether a skip_if condition is satisfied for the given FeatureConfig.
  *
- * Currently supports top-level boolean fields on FeatureConfig.
- * Returns false (do not skip) for unknown fields to avoid accidental skips.
+ * Supports two condition types:
+ * - `config.*` branch: reads a boolean field from FeatureConfig.
+ * - `artifact.exists` branch: looks up the pre-fetched artifact existence map.
+ *
+ * Returns false (do not skip) for unknown config fields to avoid accidental skips.
+ *
+ * @throws Error if `condition.field === "artifact.exists"` and `artifactExists` is undefined.
  */
 export function evaluateSkipCondition(
-  condition: { field: string; equals: boolean },
+  condition: SkipCondition,
   featureConfig: FeatureConfig,
+  artifactExists?: Record<string, boolean>,
 ): boolean {
+  if (condition.field === "artifact.exists") {
+    if (artifactExists === undefined) {
+      throw new Error(
+        "evaluateSkipCondition: artifactExists map not yet populated — " +
+        "checkArtifactExists Activity must run before evaluating artifact.exists conditions"
+      );
+    }
+    return artifactExists[condition.artifact] ?? false;
+  }
+
+  // config.* branch
   const config = featureConfig as unknown as Record<string, unknown>;
   const fieldKey = condition.field.startsWith("config.")
     ? condition.field.slice(7)
@@ -188,6 +214,7 @@ export function resolveNextPhase(
   currentPhaseId: string,
   config: WorkflowConfig,
   featureConfig: FeatureConfig,
+  artifactExists?: Record<string, boolean>,
 ): string | null {
   const phases = config.phases;
   const currentIndex = phases.findIndex((p) => p.id === currentPhaseId);
@@ -214,10 +241,10 @@ export function resolveNextPhase(
   // Rule 3: Evaluate skip_if on the candidate next phase
   if (
     nextPhase.skip_if &&
-    evaluateSkipCondition(nextPhase.skip_if, featureConfig)
+    evaluateSkipCondition(nextPhase.skip_if, featureConfig, artifactExists)
   ) {
     // Skip this phase — recurse from it to find the next non-skipped phase
-    return resolveNextPhase(nextPhase.id, config, featureConfig);
+    return resolveNextPhase(nextPhase.id, config, featureConfig, artifactExists);
   }
 
   return nextPhase.id;
@@ -239,7 +266,7 @@ export interface BuildInitialStateParams {
   /** Carried forward from continue-as-new payload (always null — new run gets fresh worktrees) */
   worktreeRoot?: string | null;
   /** Carried forward from continue-as-new payload */
-  signOffs?: Record<string, string>;
+  signOffs?: Record<string, boolean>;
 }
 
 /**
@@ -281,6 +308,25 @@ export function buildInitialWorkflowState(
     startingPhaseId = workflowConfig.phases[0].id;
   }
 
+  // PROP-RWV-02: Pre-populate reviewStates entries for all review phases so that
+  // writtenVersions is initialized to {} for each review phase at workflow start.
+  // When initialReviewState is provided (from ContinueAsNew), use those values directly.
+  let initializedReviewStates: Record<string, ReviewState>;
+  if (initialReviewState !== undefined) {
+    initializedReviewStates = initialReviewState;
+  } else {
+    initializedReviewStates = {};
+    for (const phase of workflowConfig.phases) {
+      if (phase.type === "review") {
+        initializedReviewStates[phase.id] = {
+          reviewerStatuses: {},
+          revisionCount: 0,
+          writtenVersions: {},
+        };
+      }
+    }
+  }
+
   return {
     featureSlug,
     featureConfig,
@@ -289,7 +335,7 @@ export function buildInitialWorkflowState(
     completedPhaseIds: [],
     activeAgentIds: [],
     phaseStatus: "running",
-    reviewStates: initialReviewState ?? {},
+    reviewStates: initializedReviewStates,
     forkJoinState: null,
     pendingQuestion: null,
     failureInfo: null,
@@ -300,7 +346,26 @@ export function buildInitialWorkflowState(
     signOffs: signOffs ?? {},
     adHocQueue: [],
     adHocInProgress: false,
+    artifactExists: {},
+    completedPhaseResults: {},
   };
+}
+
+// ---------------------------------------------------------------------------
+// D9: Resolve recommendation string to ReviewerStatusValue (PROP-PR-10)
+// Consolidated to use canonical parseRecommendation from cross-review-parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a raw recommendation string to a ReviewerStatusValue.
+ * Delegates to the canonical parseRecommendation() from cross-review-parser (PROP-PR-10).
+ */
+export function resolveRecommendationStatus(
+  recommendation: string,
+): "approved" | "revision_requested" {
+  const parsed = parseRecommendation(recommendation);
+  if (parsed.status === "parse_error") return "revision_requested";
+  return parsed.status as "approved" | "revision_requested";
 }
 
 // ---------------------------------------------------------------------------
@@ -314,11 +379,10 @@ export function buildInitialWorkflowState(
  * @returns The updated signOffs record.
  */
 export function recordSignOff(
-  signOffs: Record<string, string>,
+  signOffs: Record<string, boolean>,
   agentId: string,
-  timestamp: string,
-): Record<string, string> {
-  return { ...signOffs, [agentId]: timestamp };
+): Record<string, boolean> {
+  return { ...signOffs, [agentId]: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -326,11 +390,30 @@ export function recordSignOff(
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether both required sign-offs (qa and pm) are present.
+ * Check whether all required sign-offs are present and true.
  * Returns true if completion promotion should be triggered.
+ *
+ * Derives required agents dynamically from the `implementation-review` phase in workflowConfig.
+ * Falls back to legacy `signOffs.qa && signOffs.pm` check when no such phase exists.
  */
-export function isCompletionReady(signOffs: Record<string, string>): boolean {
-  return signOffs.qa !== undefined && signOffs.pm !== undefined;
+export function isCompletionReady(
+  signOffs: Record<string, boolean>,
+  workflowConfig: WorkflowConfig,
+): boolean {
+  const implReviewPhase = workflowConfig.phases.find((p) => p.id === "implementation-review");
+
+  if (!implReviewPhase) {
+    // Legacy fallback — require qa and pm sign-offs
+    return signOffs["qa"] === true && signOffs["pm"] === true;
+  }
+
+  // Dynamic derivation from implementation-review phase reviewers
+  const requiredAgents = computeReviewerList(implReviewPhase, { discipline: "default", skipFspec: false } as unknown as FeatureConfig);
+
+  for (const agentId of requiredAgents) {
+    if (signOffs[agentId] !== true) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -354,23 +437,35 @@ export function needsBacklogPromotion(lifecycle: string): boolean {
 export interface ContinueAsNewPayload {
   featurePath: string | null;
   worktreeRoot: null; // always null — new run gets fresh worktrees
-  signOffs: Record<string, string>;
+  signOffs: Record<string, boolean>;
   /** Carry pending ad-hoc signals across continue-as-new boundary */
   adHocQueue: AdHocRevisionSignal[];
+  /** Carry reviewStates (including writtenVersions) across continue-as-new boundary */
+  reviewStates: Record<string, ReviewState>;
 }
 
 /**
  * Build the continue-as-new payload carrying lifecycle state across CAN boundaries.
  * worktreeRoot is always nulled — each new run creates its own worktrees.
+ * reviewStates is deep-copied to preserve writtenVersions.
  */
 export function buildContinueAsNewPayload(
-  state: Pick<FeatureWorkflowState, "featurePath" | "signOffs" | "adHocQueue">,
+  state: Pick<FeatureWorkflowState, "featurePath" | "signOffs" | "adHocQueue" | "reviewStates">,
 ): ContinueAsNewPayload {
+  const copiedReviewStates: Record<string, ReviewState> = {};
+  for (const [phaseId, rs] of Object.entries(state.reviewStates)) {
+    copiedReviewStates[phaseId] = {
+      reviewerStatuses: { ...rs.reviewerStatuses },
+      revisionCount: rs.revisionCount,
+      writtenVersions: { ...rs.writtenVersions },
+    };
+  }
   return {
     featurePath: state.featurePath,
     worktreeRoot: null,
     signOffs: { ...state.signOffs },
     adHocQueue: [...state.adHocQueue],
+    reviewStates: copiedReviewStates,
   };
 }
 
@@ -389,6 +484,8 @@ export interface BuildInvokeSkillInputParams {
   priorAnswer?: string;
   /** Pre-resolved context document paths. When provided, overrides phase.context_documents. */
   resolvedContextDocumentRefs?: string[];
+  /** 1-indexed revision number — injected into agent context prompt. */
+  revisionCount?: number;
 }
 
 /**
@@ -427,6 +524,7 @@ export function buildInvokeSkillInput(
     priorQuestion,
     priorAnswer,
     resolvedContextDocumentRefs,
+    revisionCount,
   } = params;
 
   return {
@@ -441,6 +539,7 @@ export function buildInvokeSkillInput(
     isRevision,
     ...(priorQuestion !== undefined ? { priorQuestion } : {}),
     ...(priorAnswer !== undefined ? { priorAnswer } : {}),
+    ...(revisionCount !== undefined ? { revisionCount } : {}),
   };
 }
 
@@ -474,34 +573,6 @@ export function computeReviewerList(
   if (reviewers.default && reviewers.default.length > 0) return reviewers.default;
 
   return [];
-}
-
-// ---------------------------------------------------------------------------
-// D9: Map recommendation string to ReviewerStatusValue
-// ---------------------------------------------------------------------------
-
-/**
- * Map a cross-review file Recommendation string to a ReviewerStatusValue.
- *
- * Per BR-17: "Approved with minor changes" is treated as "approved".
- *
- * Returns null for unrecognized recommendation strings (caller should retry
- * the reviewer Activity — parse error).
- */
-export function mapRecommendationToStatus(
-  recommendation: string,
-): ReviewerStatusValue | null {
-  const normalized = recommendation.toLowerCase().trim();
-  switch (normalized) {
-    case "approved":
-    case "approved with minor changes":
-    case "lgtm":
-      return "approved";
-    case "needs revision":
-      return "revision_requested";
-    default:
-      return null;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -650,11 +721,21 @@ const { readCrossReviewRecommendation } = wf.proxyActivities<{
   },
 });
 
+// Artifact existence activity proxy — short timeout for file checks (PROP-SC-06)
+const { checkArtifactExists } = wf.proxyActivities<{
+  checkArtifactExists(input: CheckArtifactExistsInput): Promise<boolean>;
+}>({
+  startToCloseTimeout: "30 seconds",
+  retry: { maximumAttempts: 2, initialInterval: "2 seconds" },
+});
+
 // ---------------------------------------------------------------------------
 // Signal and Query definitions
 // ---------------------------------------------------------------------------
 
 const userAnswerSignal = wf.defineSignal<[UserAnswerSignal]>("user-answer");
+// REQ-NF-02: humanAnswerSignal — used by ptah run stdin path (signalHumanAnswer in client.ts)
+const humanAnswerSignal = wf.defineSignal<[string]>("humanAnswerSignal");
 const retryOrCancelSignal = wf.defineSignal<[RetryOrCancelSignal]>("retry-or-cancel");
 const resumeOrCancelSignal = wf.defineSignal<[ResumeOrCancelSignal]>("resume-or-cancel");
 const adHocRevisionSignal = wf.defineSignal<[AdHocRevisionSignal]>("ad-hoc-revision");
@@ -742,7 +823,9 @@ async function handleQuestionFlow(params: {
     workflowId,
   });
 
-  // Wait for user-answer Signal (BR-07: Temporal buffers signals)
+  // Wait for user-answer Signal (BR-07: Temporal buffers signals).
+  // Accepts both the Discord path ("user-answer" / UserAnswerSignal) and the
+  // stdin path ("humanAnswerSignal" / plain string) per REQ-NF-02.
   let receivedAnswer: UserAnswerSignal | null = null;
 
   wf.setHandler(userAnswerSignal, (signal) => {
@@ -755,6 +838,18 @@ async function handleQuestionFlow(params: {
         return;
       }
       receivedAnswer = signal;
+    }
+  });
+
+  // REQ-NF-02: also handle humanAnswerSignal (plain string) sent by ptah run stdin path
+  wf.setHandler(humanAnswerSignal, (answerText) => {
+    if (receivedAnswer === null) {
+      // Wrap the plain string into a UserAnswerSignal shape so the rest of the flow works uniformly
+      receivedAnswer = {
+        answer: answerText,
+        answeredBy: "stdin",
+        answeredAt: new Date().toISOString(),
+      };
     }
   });
 
@@ -877,7 +972,7 @@ async function dispatchSingleAgent(params: {
 
   // LGTM or TASK_COMPLETE — advance
   if (result.routingSignalType === "LGTM") {
-    recordSignOff(state.signOffs, agentId, new Date().toISOString());
+    state.signOffs = recordSignOff(state.signOffs, agentId);
   }
   state.activeAgentIds = [];
   _state = state;
@@ -1026,7 +1121,7 @@ async function dispatchForkJoin(params: {
       });
       // Use questionResult directly — handleQuestionFlow already re-invoked the agent
       if (questionResult.routingSignalType === "LGTM") {
-        recordSignOff(state.signOffs, agentId, new Date().toISOString());
+        state.signOffs = recordSignOff(state.signOffs, agentId);
       }
       agentResults[agentId] = {
         status: questionResult.routingSignalType === "LGTM" || questionResult.routingSignalType === "TASK_COMPLETE"
@@ -1184,9 +1279,13 @@ async function runReviewCycle(params: {
     state.reviewStates[reviewPhase.id] = {
       reviewerStatuses: {},
       revisionCount: 0,
+      writtenVersions: {},
     };
   }
   const reviewState = state.reviewStates[reviewPhase.id];
+
+  // Compute current revision number (1-indexed) — PROP-RRC-01
+  const currentRevision = reviewState.revisionCount + 1;
 
   // Reset statuses for this review round (BR-18: all reviewers re-review)
   reviewState.reviewerStatuses = {};
@@ -1218,9 +1317,12 @@ async function runReviewCycle(params: {
         forkJoin: false,
         isRevision: false,
         resolvedContextDocumentRefs: resolvedContextDocs,
+        revisionCount: currentRevision,
       });
       try {
         const result = await invokeSkill(input);
+        // Track written version for this reviewer — PROP-RWV-03
+        reviewState.writtenVersions[reviewerId] = currentRevision;
         reviewerResults[reviewerId] = result;
       } catch (err: unknown) {
         reviewerResults[reviewerId] = err instanceof Error ? err : new Error(String(err));
@@ -1248,11 +1350,12 @@ async function runReviewCycle(params: {
       return runReviewCycle(params);
     }
 
-    // REQ-RC-01 E2: Read cross-review recommendation from file via activity
+    // REQ-RC-01 E2: Read cross-review recommendation from file via activity — PROP-RRC-02
     const crossReviewResult = await readCrossReviewRecommendation({
       featurePath: state.featurePath!,
       agentId: reviewerId,
       documentType: docType,
+      revisionCount: currentRevision,
     });
 
     // REQ-RC-01 E3: Handle parse_error — enter failure flow
@@ -1315,12 +1418,16 @@ async function runReviewCycle(params: {
   // D10: Dispatch author for revision
   // REQ-RC-01 E4: Use agentIdToSkillName + crossReviewPath + deriveDocumentType
   const revisionDocType = deriveDocumentType(reviewPhase.id);
-  const crossReviewRefs = Object.keys(reviewState.reviewerStatuses)
-    .filter((id) => reviewState.reviewerStatuses[id] === "revision_requested")
-    .map((id) => {
-      const skillName = agentIdToSkillName(id) ?? id;
-      return crossReviewPath(state.featurePath!, skillName, revisionDocType);
-    });
+  // PROP-RRC-04/PROP-RWV-07: Build full version history from writtenVersions (no revision_requested filter)
+  const crossReviewRefs: string[] = [];
+  for (const reviewerId of Object.keys(reviewState.writtenVersions)) {
+    const skillName = agentIdToSkillName(reviewerId) ?? reviewerId;
+    const highestVersion = reviewState.writtenVersions[reviewerId];
+    for (let v = 1; v <= highestVersion; v++) {
+      const refPath = crossReviewPath(state.featurePath!, skillName, revisionDocType, v);
+      crossReviewRefs.push(refPath);
+    }
+  }
 
   const revisionInput = buildRevisionInput({
     creationPhase,
@@ -1447,7 +1554,7 @@ export async function featureLifecycleWorkflow(
 
     for (const reviewPhase of cascadePhases) {
       // Check skip_if
-      if (reviewPhase.skip_if && evaluateSkipCondition(reviewPhase.skip_if, st.featureConfig)) {
+      if (reviewPhase.skip_if && evaluateSkipCondition(reviewPhase.skip_if, st.featureConfig, st.artifactExists)) {
         continue;
       }
 
@@ -1499,6 +1606,28 @@ export async function featureLifecycleWorkflow(
     _state = state;
   }
 
+  // ── Pre-loop artifact existence scan (PROP-SC-07/SC-08/SC-09) ────────────
+  // Collect unique docTypes from all phases with skip_if.field === "artifact.exists"
+  // (scan full config — not filtered by startAtPhase)
+  {
+    const artifactDocTypes = new Set<string>();
+    for (const phase of workflowConfig.phases) {
+      if (phase.skip_if?.field === "artifact.exists") {
+        const artifact = (phase.skip_if as { field: "artifact.exists"; artifact: string }).artifact;
+        artifactDocTypes.add(artifact);
+      }
+    }
+    for (const docType of artifactDocTypes) {
+      const exists = await checkArtifactExists({
+        slug: featureSlug,
+        docType,
+        featurePath: state.featurePath ?? "./",
+      });
+      state.artifactExists[docType] = exists;
+    }
+    _state = state;
+  }
+
   // D2: Main workflow loop — iterate through phases
   while (true) {
     const currentPhaseId = state.currentPhaseId;
@@ -1511,10 +1640,10 @@ export async function featureLifecycleWorkflow(
     // D2: Evaluate skip_if on current phase
     if (
       currentPhase.skip_if &&
-      evaluateSkipCondition(currentPhase.skip_if, featureConfig)
+      evaluateSkipCondition(currentPhase.skip_if, featureConfig, state.artifactExists)
     ) {
       // Skip this phase — advance to next without dispatching
-      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
       if (nextPhaseId === null) break; // workflow complete
       state.completedPhaseIds.push(currentPhaseId);
       state.currentPhaseId = nextPhaseId;
@@ -1526,7 +1655,7 @@ export async function featureLifecycleWorkflow(
     // Determine phase type and dispatch accordingly
     if (currentPhase.type === "approved") {
       // D2: Auto-transition — approved phases do not dispatch any Activity
-      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
       state.completedPhaseIds.push(currentPhaseId);
       if (nextPhaseId === null) break; // workflow complete
       state.currentPhaseId = nextPhaseId;
@@ -1565,7 +1694,7 @@ export async function featureLifecycleWorkflow(
 
       // All reviewers approved — advance to approved phase
       state.completedPhaseIds.push(currentPhaseId);
-      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
       if (nextPhaseId === null) break;
       state.currentPhaseId = nextPhaseId;
       state.phaseStatus = "running";
@@ -1592,7 +1721,7 @@ export async function featureLifecycleWorkflow(
 
       // Advance to next phase
       state.completedPhaseIds.push(currentPhaseId);
-      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
       if (nextPhaseId === null) break;
       state.currentPhaseId = nextPhaseId;
       state.phaseStatus = "running";
@@ -1618,7 +1747,7 @@ export async function featureLifecycleWorkflow(
 
       // Advance to next phase
       state.completedPhaseIds.push(currentPhaseId);
-      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+      const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
       if (nextPhaseId === null) break;
       state.currentPhaseId = nextPhaseId;
       state.phaseStatus = "running";
@@ -1627,7 +1756,7 @@ export async function featureLifecycleWorkflow(
     }
 
     // Phase has neither agent, agents, nor is approved/review — skip it
-    const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig);
+    const nextPhaseId = resolveNextPhase(currentPhaseId, workflowConfig, featureConfig, state.artifactExists);
     state.completedPhaseIds.push(currentPhaseId);
     if (nextPhaseId === null) break;
     state.currentPhaseId = nextPhaseId;
@@ -1639,7 +1768,7 @@ export async function featureLifecycleWorkflow(
   await drainAdHocQueue();
 
   // ── E7: Completion promotion — trigger when both qa + pm have signed off ──
-  if (isCompletionReady(state.signOffs) && state.featurePath !== null) {
+  if (isCompletionReady(state.signOffs, workflowConfig) && state.featurePath !== null) {
     const completionResult = await promoteInProgressToCompleted({
       featureSlug,
       featureBranch,

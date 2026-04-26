@@ -27,8 +27,12 @@ export interface TemporalClientWrapper {
   signalRetryOrCancel(workflowId: string, action: "retry" | "cancel"): Promise<void>;
   signalResumeOrCancel(workflowId: string, action: "resume" | "cancel"): Promise<void>;
   signalAdHocRevision(workflowId: string, signal: AdHocRevisionSignal): Promise<void>;
+  signalHumanAnswer(workflowId: string, answer: string): Promise<void>;
   queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState>;
-  listWorkflowsByPrefix(prefix: string): Promise<string[]>;
+  listWorkflowsByPrefix(
+    prefix: string,
+    options?: { statusFilter?: ("Running" | "ContinuedAsNew")[] },
+  ): Promise<string[]>;
   isConnected(): boolean;
 }
 
@@ -119,18 +123,31 @@ export class TemporalClientWrapperImpl implements TemporalClientWrapper {
     await handle.signal("ad-hoc-revision", signal);
   }
 
+  async signalHumanAnswer(workflowId: string, answer: string): Promise<void> {
+    this.ensureConnected();
+    const handle = this.workflowClient!.getHandle(workflowId);
+    await handle.signal("humanAnswerSignal", answer);
+  }
+
   async queryWorkflowState(workflowId: string): Promise<FeatureWorkflowState> {
     this.ensureConnected();
     const handle = this.workflowClient!.getHandle(workflowId);
     return handle.query("workflow-state") as Promise<FeatureWorkflowState>;
   }
 
-  async listWorkflowsByPrefix(prefix: string): Promise<string[]> {
+  async listWorkflowsByPrefix(
+    prefix: string,
+    options?: { statusFilter?: ("Running" | "ContinuedAsNew")[] },
+  ): Promise<string[]> {
     this.ensureConnected();
     const ids: string[] = [];
-    const iterable = this.workflowClient!.list({
-      query: `WorkflowId STARTS_WITH '${prefix}'`,
-    });
+    const sanitizedPrefix = prefix.replace(/'/g, "''");
+    let query = `WorkflowId STARTS_WITH '${sanitizedPrefix}'`;
+    if (options?.statusFilter && options.statusFilter.length > 0) {
+      const statusList = options.statusFilter.map((s) => `'${s}'`).join(", ");
+      query += ` AND ExecutionStatus IN (${statusList})`;
+    }
+    const iterable = this.workflowClient!.list({ query });
     for await (const info of iterable) {
       ids.push(info.workflowId);
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { makeAgentEntry, makeRegisteredAgent } from "../../fixtures/factories.js";
+import { makeAgentEntry, makeRegisteredAgent, FakeTemporalClient } from "../../fixtures/factories.js";
 import type { AgentEntry, RegisteredAgent } from "../../../src/types.js";
 
 describe("makeAgentEntry", () => {
@@ -51,5 +51,99 @@ describe("makeRegisteredAgent", () => {
     const agent: RegisteredAgent = makeRegisteredAgent();
     expect(typeof agent.display_name).toBe("string");
     expect(agent.display_name.length).toBeGreaterThan(0);
+  });
+});
+
+describe("FakeTemporalClient", () => {
+  describe("signalHumanAnswer", () => {
+    it("records the call in humanAnswerSignals array", async () => {
+      const client = new FakeTemporalClient();
+
+      await client.signalHumanAnswer("ptah-my-feature", "Yes, use GitHub OAuth");
+
+      expect(client.humanAnswerSignals).toHaveLength(1);
+      expect(client.humanAnswerSignals[0]).toEqual({
+        workflowId: "ptah-my-feature",
+        answer: "Yes, use GitHub OAuth",
+      });
+    });
+
+    it("accumulates multiple signalHumanAnswer calls in order", async () => {
+      const client = new FakeTemporalClient();
+
+      await client.signalHumanAnswer("ptah-feature-a", "Answer one");
+      await client.signalHumanAnswer("ptah-feature-b", "Answer two");
+
+      expect(client.humanAnswerSignals).toHaveLength(2);
+      expect(client.humanAnswerSignals[0]!.workflowId).toBe("ptah-feature-a");
+      expect(client.humanAnswerSignals[1]!.workflowId).toBe("ptah-feature-b");
+    });
+  });
+
+  describe("listWorkflowsByPrefix — statusFilter", () => {
+    it("returns only Running workflow IDs when statusFilter is ['Running']", async () => {
+      const client = new FakeTemporalClient();
+      // Pre-populate workflowIds for the prefix
+      client.workflowIds.set("ptah-", ["ptah-feature-a", "ptah-feature-b"]);
+      // Pre-populate workflow statuses
+      client.workflowStatuses.set("ptah-feature-a", "Running");
+      client.workflowStatuses.set("ptah-feature-b", "Completed");
+
+      const result = await client.listWorkflowsByPrefix("ptah-", { statusFilter: ["Running"] });
+
+      expect(result).toEqual(["ptah-feature-a"]);
+      expect(result).not.toContain("ptah-feature-b");
+    });
+
+    it("returns only ContinuedAsNew workflow IDs when statusFilter is ['ContinuedAsNew']", async () => {
+      const client = new FakeTemporalClient();
+      client.workflowIds.set("ptah-", ["ptah-feature-a", "ptah-feature-b", "ptah-feature-c"]);
+      client.workflowStatuses.set("ptah-feature-a", "Running");
+      client.workflowStatuses.set("ptah-feature-b", "ContinuedAsNew");
+      client.workflowStatuses.set("ptah-feature-c", "Completed");
+
+      const result = await client.listWorkflowsByPrefix("ptah-", { statusFilter: ["ContinuedAsNew"] });
+
+      expect(result).toEqual(["ptah-feature-b"]);
+    });
+
+    it("returns Running and ContinuedAsNew IDs when statusFilter includes both", async () => {
+      const client = new FakeTemporalClient();
+      client.workflowIds.set("ptah-", ["ptah-a", "ptah-b", "ptah-c"]);
+      client.workflowStatuses.set("ptah-a", "Running");
+      client.workflowStatuses.set("ptah-b", "ContinuedAsNew");
+      client.workflowStatuses.set("ptah-c", "Completed");
+
+      const result = await client.listWorkflowsByPrefix("ptah-", {
+        statusFilter: ["Running", "ContinuedAsNew"],
+      });
+
+      expect(result).toContain("ptah-a");
+      expect(result).toContain("ptah-b");
+      expect(result).not.toContain("ptah-c");
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns all IDs unchanged when no statusFilter is provided (backward compat)", async () => {
+      const client = new FakeTemporalClient();
+      client.workflowIds.set("ptah-", ["ptah-feature-a", "ptah-feature-b"]);
+      client.workflowStatuses.set("ptah-feature-a", "Running");
+      client.workflowStatuses.set("ptah-feature-b", "Completed");
+
+      const result = await client.listWorkflowsByPrefix("ptah-");
+
+      expect(result).toEqual(["ptah-feature-a", "ptah-feature-b"]);
+    });
+
+    it("returns all IDs when options is provided but statusFilter is absent", async () => {
+      const client = new FakeTemporalClient();
+      client.workflowIds.set("ptah-", ["ptah-feature-a", "ptah-feature-b"]);
+      client.workflowStatuses.set("ptah-feature-a", "Running");
+      client.workflowStatuses.set("ptah-feature-b", "Completed");
+
+      const result = await client.listWorkflowsByPrefix("ptah-", {});
+
+      expect(result).toEqual(["ptah-feature-a", "ptah-feature-b"]);
+    });
   });
 });

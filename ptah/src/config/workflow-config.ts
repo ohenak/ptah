@@ -21,10 +21,9 @@ export interface ReviewerManifest {
   fullstack?: string[];
 }
 
-export interface SkipCondition {
-  field: string;  // e.g., "config.skipFspec"
-  equals: boolean;
-}
+export type SkipCondition =
+  | { field: `config.${string}`; equals: boolean }
+  | { field: "artifact.exists"; artifact: string };
 
 export interface ActivityRetryConfig {
   maxAttempts?: number;

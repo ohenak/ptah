@@ -222,6 +222,7 @@ describe("ad-hoc queue preservation before termination / CAN", () => {
       featurePath: "docs/in-progress/test/" as string | null,
       signOffs: {},
       adHocQueue: signals,
+      reviewStates: {},
     };
 
     const payload = buildContinueAsNewPayload(state);
@@ -236,6 +237,7 @@ describe("ad-hoc queue preservation before termination / CAN", () => {
       featurePath: null,
       signOffs: {},
       adHocQueue: [] as AdHocRevisionSignal[],
+      reviewStates: {},
     };
 
     const payload = buildContinueAsNewPayload(state);

@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Mock @temporalio/client before any imports that use it
 vi.mock("@temporalio/client", () => {
@@ -500,5 +503,62 @@ describe("TemporalClientWrapperImpl", () => {
         client.signalAdHocRevision("ptah-auth-feature", adHocSignal),
       ).rejects.toThrow(/not connected/i);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 3.9: bin/ptah.ts registers checkArtifactExists activity
+// ---------------------------------------------------------------------------
+
+describe("bin/ptah.ts static-structure: checkArtifactExists activity registration", () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const binPtahPath = path.resolve(currentDir, "../../../bin/ptah.ts");
+
+  it("bin/ptah.ts source contains the checkArtifactExists token", () => {
+    const source = fs.readFileSync(binPtahPath, "utf-8");
+    expect(source).toContain("checkArtifactExists");
+  });
+
+  // PROP-CNP-05: checkArtifactExists must appear within the activities registration block,
+  // not merely anywhere in the file (e.g. an import or comment would not satisfy this property).
+  it("checkArtifactExists token appears within the activities registration block in bin/ptah.ts (PROP-CNP-05)", () => {
+    const source = fs.readFileSync(binPtahPath, "utf-8");
+    // The activities block is the object literal passed to createTemporalWorker({ activities: { ... } }).
+    // We verify checkArtifactExists appears within the activities: { ... } block by matching
+    // the pattern: "activities:" followed (within ~2000 chars) by "checkArtifactExists".
+    const activitiesBlockPattern = /activities\s*:\s*\{[\s\S]{0,2000}checkArtifactExists/;
+    expect(
+      activitiesBlockPattern.test(source),
+      "Expected checkArtifactExists to appear within the activities registration block"
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 Review Fixes — listWorkflowsByPrefix prefix sanitization (6.5)
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowsByPrefix — prefix sanitization (6.5)", () => {
+  let client: TemporalClientWrapperImpl;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    client = new TemporalClientWrapperImpl(makeTemporalConfig());
+    await client.connect();
+  });
+
+  it("escapes single quotes in prefix to prevent query injection", async () => {
+    temporalClientModule._mockList.mockReturnValueOnce({
+      [Symbol.asyncIterator]: async function* () {},
+    });
+
+    await client.listWorkflowsByPrefix("ptah-my-feature'--");
+
+    const callArg = temporalClientModule._mockList.mock.calls[0]?.[0];
+    const query: string = callArg?.query ?? "";
+    // The raw single quote must not appear in the query string unescaped
+    // Temporal SQL escape: replace ' with ''
+    expect(query).not.toContain("ptah-my-feature'--");
+    expect(query).toContain("ptah-my-feature''--");
   });
 });
