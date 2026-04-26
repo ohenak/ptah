@@ -195,7 +195,7 @@ export interface CrossReviewResult {
 export interface CheckArtifactExistsInput {
   slug: string;        // feature slug (e.g. "my-feature")
   docType: string;     // document type prefix (e.g. "REQ", "FSPEC", "TSPEC")
-  featurePath: string; // feature folder path (e.g. "docs/in-progress/my-feature/")
+  featurePath: string; // resolved feature folder path
 }
 
 // ---------------------------------------------------------------------------
